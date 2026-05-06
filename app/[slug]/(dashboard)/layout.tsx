@@ -1,0 +1,63 @@
+import { redirect } from 'next/navigation'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import Sidebar from '@/components/layout/Sidebar'
+import Topbar from '@/components/layout/Topbar'
+
+export default async function DashboardLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode
+  params: { slug: string }
+}) {
+  const { slug } = params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Use service client to fetch property — middleware already verified the user
+  // has this slug in their property_slugs, so bypassing RLS here is safe.
+  const service = await createServiceClient()
+  const { data: property } = await service
+    .from('properties')
+    .select('id, name, license_status')
+    .eq('slug', slug)
+    .single()
+
+  if (!property || property.license_status === 'suspended') {
+    redirect(`/${slug}/suspended`)
+  }
+
+  // Auto-switch active property ONLY for active/trial properties, and only
+  // when the user's current active slug differs from the one they navigated to.
+  if (user && user.app_metadata?.property_slug !== slug) {
+    await service.auth.admin.updateUserById(user.id, {
+      app_metadata: {
+        ...user.app_metadata,
+        property_id: property.id,
+        property_slug: slug,
+      },
+    })
+  }
+
+  // Fetch all properties this user has access to (for the switcher)
+  const propertyIds: string[] = (user?.app_metadata?.property_ids as string[] | undefined) ??
+    (user?.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])
+
+  const { data: userProperties } = propertyIds.length > 0
+    ? await service.from('properties').select('id, name, slug').in('id', propertyIds)
+    : { data: [] }
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <Sidebar slug={slug} />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Topbar
+          title={property.name}
+          slug={slug}
+          properties={userProperties ?? []}
+        />
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      </div>
+    </div>
+  )
+}
