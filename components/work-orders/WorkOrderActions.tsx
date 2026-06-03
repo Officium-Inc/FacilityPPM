@@ -124,7 +124,7 @@ export default function WorkOrderActions({ workOrder }: WorkOrderActionsProps) {
             href={`${process.env.NEXT_PUBLIC_APP_URL}/sign-off/${workOrder.sign_off_token}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline"
+            className="inline-flex items-center gap-2 text-sm text-green-600 hover:underline"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             Preview sign-off page
@@ -193,7 +193,7 @@ function ActionButton({
       disabled={loading}
       className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center ${
         variant === 'primary'
-          ? 'bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white'
+          ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white'
           : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
       }`}
     >

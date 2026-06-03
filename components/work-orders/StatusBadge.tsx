@@ -3,7 +3,7 @@ import type { WorkOrderStatus } from '@/types'
 
 const statusConfig: Record<WorkOrderStatus, { label: string; classes: string }> = {
   scheduled: { label: 'Scheduled', classes: 'bg-gray-100 text-gray-700' },
-  assigned: { label: 'Assigned', classes: 'bg-blue-100 text-blue-700' },
+  assigned: { label: 'Assigned', classes: 'bg-green-100 text-green-700' },
   in_progress: { label: 'In Progress', classes: 'bg-yellow-100 text-yellow-800' },
   on_hold: { label: 'On Hold', classes: 'bg-orange-100 text-orange-700' },
   completed: { label: 'Completed', classes: 'bg-teal-100 text-teal-700' },

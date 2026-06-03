@@ -98,9 +98,9 @@ export default function TopbarClient({
       {switching && (
         <div className="switch-overlay fixed inset-0 z-[9999] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
           <div className="switch-spinner flex flex-col items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+            <div className="w-10 h-10 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" />
             <p className="text-sm font-medium text-gray-700">
-              Switching to <span className="text-blue-600">{switchingTo}</span>…
+              Switching to <span className="text-green-600">{switchingTo}</span>…
             </p>
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function TopbarClient({
                   >
                     <span className="truncate">{p.name}</span>
                     {p.slug === currentSlug && (
-                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-2" />
+                      <Check className="w-3.5 h-3.5 text-green-600 shrink-0 ml-2" />
                     )}
                   </button>
                 ))}
@@ -148,8 +148,8 @@ export default function TopbarClient({
           <Bell className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center">
-            <span className="text-blue-700 font-medium text-xs uppercase">
+          <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center">
+            <span className="text-green-700 font-medium text-xs uppercase">
               {userEmail.charAt(0)}
             </span>
           </div>

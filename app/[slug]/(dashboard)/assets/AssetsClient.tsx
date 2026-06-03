@@ -68,7 +68,7 @@ export default function AssetsClient({ slug: _slug, assets, buildings }: Props) 
         </div>
         <button
           onClick={() => { setShowAdd(true); setError(null) }}
-          className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add Asset
@@ -94,7 +94,7 @@ export default function AssetsClient({ slug: _slug, assets, buildings }: Props) 
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Building *</label>
                 <select required value={form.building_id} onChange={(e) => set('building_id', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                   <option value="">— Select building —</option>
                   {buildings.map((b) => (
                     <option key={b.id} value={b.id}>{b.name} ({b.site_name})</option>
@@ -104,35 +104,35 @@ export default function AssetsClient({ slug: _slug, assets, buildings }: Props) 
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Asset Name *</label>
                 <input required value={form.name} onChange={(e) => set('name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   placeholder="e.g. AHU-01 Level 3" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
                 <input value={form.category} onChange={(e) => set('category', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   placeholder="e.g. HVAC, Electrical" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Location</label>
                 <input value={form.location} onChange={(e) => set('location', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   placeholder="e.g. Level 3 Ceiling Void" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Make</label>
                 <input value={form.make} onChange={(e) => set('make', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Model</label>
                 <input value={form.model} onChange={(e) => set('model', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Serial Number</label>
                 <input value={form.serial_no} onChange={(e) => set('serial_no', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               </div>
               <div className="col-span-2 flex justify-end gap-3 pt-1">
                 <button type="button" onClick={() => setShowAdd(false)}
@@ -140,7 +140,7 @@ export default function AssetsClient({ slug: _slug, assets, buildings }: Props) 
                   Cancel
                 </button>
                 <button type="submit" disabled={loading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors disabled:opacity-50">
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50">
                   {loading ? 'Adding…' : 'Add Asset'}
                 </button>
               </div>

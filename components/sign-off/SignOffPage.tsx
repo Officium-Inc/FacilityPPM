@@ -69,7 +69,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-blue-800 text-white py-5 px-6">
+      <div className="bg-green-800 text-white py-5 px-6">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
@@ -77,7 +77,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
             </div>
             <div>
               <p className="font-bold text-base leading-tight">Marajo Property Management</p>
-              <p className="text-blue-200 text-xs">Maintenance Sign-Off</p>
+              <p className="text-green-200 text-xs">Maintenance Sign-Off</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
 
@@ -168,7 +168,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
           <button
             onClick={handleApprove}
             disabled={loading || !signature || !confirmed || !name.trim()}
-            className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+            className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
           >
             <CheckCircle className="w-4 h-4" />
             {loading ? 'Submitting…' : 'Approve & Sign Off'}

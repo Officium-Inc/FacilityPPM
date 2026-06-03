@@ -33,7 +33,7 @@ export default function Sidebar({ slug }: { slug: string }) {
       {/* Brand */}
       <div className="px-6 py-5 border-b border-gray-700/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-sm">M</span>
           </div>
           <div>
@@ -54,7 +54,7 @@ export default function Sidebar({ slug }: { slug: string }) {
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
                 active
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-green-600 text-white'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
               )}
             >
