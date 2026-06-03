@@ -30,20 +30,22 @@ export default function LoginForm({ slug, propertyName }: Props) {
       return
     }
 
-    // Verify the logged-in user actually has access to THIS property
+    // Determine which property to land on after login.
+    // If the user has access to the slug they logged in on, use it;
+    // otherwise fall back to their first accessible property.
     const meta = data.user?.app_metadata ?? {}
     const userSlugs: string[] = (meta.property_slugs as string[] | undefined) ??
       (meta.property_slug ? [meta.property_slug as string] : [])
 
-    if (!userSlugs.includes(slug)) {
-      // Account exists but is not assigned to this property — sign out and show error
+    if (userSlugs.length === 0) {
       await supabase.auth.signOut()
-      setError('Your account does not have access to this property.')
+      setError('Your account is not assigned to any property. Contact your administrator.')
       setLoading(false)
       return
     }
 
-    router.push(`/${slug}`)
+    const destination = userSlugs.includes(slug) ? slug : userSlugs[0]
+    router.push(`/${destination}`)
     router.refresh()
   }
 

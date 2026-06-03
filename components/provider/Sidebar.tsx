@@ -31,7 +31,7 @@ export default function ProviderSidebar() {
           </div>
           <div>
             <p className="text-white font-semibold text-sm leading-tight">FacilityPPM</p>
-            <p className="text-blue-400 text-xs font-medium">Provider Portal</p>
+            <p className="text-blue-400 text-xs font-medium">Control Panel</p>
           </div>
         </div>
       </div>

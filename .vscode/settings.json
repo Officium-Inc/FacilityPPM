@@ -1,0 +1,5 @@
+{
+  "github.copilot.chat.codeSearch.enabled": true,
+  "chat.codeGeneration.useInstructionFiles": true,
+  "github.copilot.chat.indexing.enabled": true
+}

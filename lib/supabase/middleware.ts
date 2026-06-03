@@ -2,7 +2,7 @@ import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Slugs that are reserved and must never be treated as property slugs
-const RESERVED_SLUGS = new Set(['provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login'])
+const RESERVED_SLUGS = new Set(['provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login', 'invite', 'reset-password'])
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -36,6 +36,24 @@ export async function updateSession(request: NextRequest) {
   const segments = pathname.split('/').filter(Boolean)
   const firstSegment = segments[0] ?? ''
 
+  // ── Unified login page ─────────────────────────────────────────
+  if (pathname === '/login') {
+    // Already authenticated — redirect to the appropriate dashboard
+    if (user) {
+      const url = request.nextUrl.clone()
+      if (user.app_metadata?.role === 'provider') {
+        url.pathname = '/provider/properties'
+      } else {
+        const activeSlug = user.app_metadata?.property_slug as string | undefined
+        const slugs: string[] = (user.app_metadata?.property_slugs as string[] | undefined) ??
+          (activeSlug ? [activeSlug] : [])
+        url.pathname = activeSlug ?? slugs[0] ? `/${activeSlug ?? slugs[0]}` : '/login'
+      }
+      return NextResponse.redirect(url)
+    }
+    return supabaseResponse // public
+  }
+
   // ── Provider routes ──────────────────────────────────────────────
   if (firstSegment === 'provider') {
     if (pathname === '/provider/login') return supabaseResponse // public
@@ -54,11 +72,16 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse
   }
 
+  // ── Invite + reset-password routes (public) ───────────────────────
+  if (firstSegment === 'invite' || firstSegment === 'reset-password') {
+    return supabaseResponse
+  }
+
   // ── Root redirect ─────────────────────────────────────────────────
   if (!firstSegment) {
     if (!user) {
       const url = request.nextUrl.clone()
-      url.pathname = '/provider/login'
+      url.pathname = '/login'
       return NextResponse.redirect(url)
     }
     if (user.app_metadata?.role === 'provider') {
@@ -87,25 +110,22 @@ export async function updateSession(request: NextRequest) {
   const isLoginPath = pathname === `/${slug}/login`
   const isSuspendedPath = pathname === `/${slug}/suspended`
 
-  // Login + suspended are public
-  if (isLoginPath || isSuspendedPath) {
-    // If already authenticated as a user who has access to this slug, redirect to dashboard
-    if (isLoginPath && user) {
-      const userSlugs: string[] = (user.app_metadata?.property_slugs as string[] | undefined) ??
-        (user.app_metadata?.property_slug ? [user.app_metadata.property_slug as string] : [])
-      if (userSlugs.includes(slug)) {
-        const url = request.nextUrl.clone()
-        url.pathname = `/${slug}`
-        return NextResponse.redirect(url)
-      }
-    }
+  // /[slug]/login → redirect to unified /login
+  if (isLoginPath) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // /[slug]/suspended is public
+  if (isSuspendedPath) {
     return supabaseResponse
   }
 
   // All other [slug]/* routes require auth
   if (!user) {
     const url = request.nextUrl.clone()
-    url.pathname = `/${slug}/login`
+    url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
@@ -119,10 +139,10 @@ export async function updateSession(request: NextRequest) {
       url.pathname = '/provider/properties'
       return NextResponse.redirect(url)
     }
-    // Redirect to their active property or this slug's login
+    // Redirect to their active property or unified login
     const activeSlug = user.app_metadata?.property_slug as string | undefined
     const url = request.nextUrl.clone()
-    url.pathname = activeSlug ? `/${activeSlug}` : `/${slug}/login`
+    url.pathname = activeSlug ? `/${activeSlug}` : '/login'
     return NextResponse.redirect(url)
   }
 
