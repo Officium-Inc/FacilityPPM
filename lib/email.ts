@@ -1,7 +1,15 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM = process.env.RESEND_FROM_EMAIL ?? 'noreply@facilityppm.com'
+function createTransporter() {
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  if (!user || !pass) throw new Error('GMAIL_USER or GMAIL_APP_PASSWORD env vars are not set')
+
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  })
+}
 
 export async function sendSignOffEmail({
   tenantEmail,
@@ -20,8 +28,9 @@ export async function sendSignOffEmail({
   if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const signOffUrl = `${appUrl}/sign-off/${token}`
 
-  const { error } = await resend.emails.send({
-    from: FROM,
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: tenantEmail,
     subject: `Action Required: Please sign off on ${woNumber} — ${propertyName}`,
     html: `
@@ -48,8 +57,6 @@ export async function sendSignOffEmail({
       </div>
     `,
   })
-
-  if (error) throw new Error(`Resend error: ${error.message}`)
 }
 
 export async function sendInviteEmail({
@@ -70,8 +77,9 @@ export async function sendInviteEmail({
   const inviteUrl = `${appUrl}/invite/${token}`
   const greeting = toName ? `Hi ${toName},` : 'Hi,'
 
-  const { error } = await resend.emails.send({
-    from: FROM,
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: toEmail,
     subject: `You've been invited to ${propertyName} on FacilityPPM`,
     html: `
@@ -98,6 +106,4 @@ export async function sendInviteEmail({
       </div>
     `,
   })
-
-  if (error) throw new Error(`Resend error: ${error.message}`)
 }
