@@ -5,6 +5,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 const RESERVED_SLUGS = new Set(['provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login', 'invite', 'reset-password'])
 
 export async function updateSession(request: NextRequest) {
+  // Guard: if Supabase env vars are not configured, pass through instead of crashing.
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.error('Missing Supabase environment variables — middleware skipped.')
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const cookieMethods: CookieMethodsServer = {
