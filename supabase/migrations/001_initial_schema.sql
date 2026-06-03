@@ -322,6 +322,26 @@ create policy "Property-scoped read audit_log" on audit_log
 create policy "Authenticated insert audit_log" on audit_log
   for insert with check (auth.role() = 'authenticated');
 
+-- Invitations (email-based property invites)
+create table invitations (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid not null references properties(id) on delete cascade,
+  email text not null,
+  invited_name text,
+  token text unique not null default encode(gen_random_bytes(32), 'hex'),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  used_at timestamptz,
+  created_at timestamptz default now()
+);
+create index on invitations (token);
+create index on invitations (property_id);
+alter table invitations enable row level security;
+create policy "Provider manage invitations" on invitations
+  for all using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'provider');
+-- Public read for token-based acceptance (validated at app layer)
+create policy "Public read invitation by token" on invitations
+  for select using (true);
+
 -- Seed Data --
 
 -- Roles
