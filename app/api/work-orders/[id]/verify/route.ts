@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const now = new Date().toISOString()
 
   const { error } = await service.from('work_orders').update({
-    status: 'verified',
+    status: 'completed',
     head_engineer_id: headEngineer?.id ?? null,
     head_engineer_verified_at: now,
     head_engineer_notes: notes?.trim() ?? null,
