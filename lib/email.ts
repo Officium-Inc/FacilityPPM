@@ -11,6 +11,51 @@ function createTransporter() {
   })
 }
 
+export async function sendReceiptEmail({
+  tenantEmail,
+  tenantName,
+  woNumber,
+  propertyName,
+  pdfBuffer,
+}: {
+  tenantEmail: string
+  tenantName: string
+  woNumber: string
+  propertyName: string
+  pdfBuffer: Buffer
+}) {
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    to: tenantEmail,
+    subject: `Signed Receipt: ${woNumber} — ${propertyName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #15803d; padding: 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
+          <p style="color: #bbf7d0; margin: 4px 0 0;">FacilityPPM — Signed Acknowledgement Receipt</p>
+        </div>
+        <div style="padding: 32px 24px; background: #f9fafb;">
+          <p>Dear ${tenantName},</p>
+          <p>Thank you for signing off on work order <strong>${woNumber}</strong> for <strong>${propertyName}</strong>.</p>
+          <p>Please find your tamper-evident acknowledgement receipt attached to this email as a PDF. Keep it for your records.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you have any questions or concerns, please contact Marajo Property Management directly.</p>
+        </div>
+        <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+        </div>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: `${woNumber}-receipt.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
+  })
+}
+
 export async function sendSignOffEmail({
   tenantEmail,
   tenantName,

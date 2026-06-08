@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: wo, error: fetchErr } = await supabase
     .from('work_orders')
     .select(`
-      id, wo_number, status, sign_off_token, property_id,
+      id, wo_number, status, sign_off_token, property_id, tenant_email, tenant_name,
       ppm_schedules(title, assets(name, buildings(name, sites(name))))
     `)
     .eq('id', id)
@@ -68,9 +68,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const assets = (wo.ppm_schedules as { assets?: { name?: string; buildings?: { sites?: { name?: string } } } } | null)?.assets
     const siteName = assets?.buildings?.sites?.name ?? 'your property'
+    const email = (wo as { tenant_email?: string | null }).tenant_email
+    if (!email) throw new Error('No tenant email on record — cannot send sign-off link')
     await sendSignOffEmail({
-      tenantEmail: 'tenant@example.com', // In production, pull from tenant record
-      tenantName: 'Tenant',
+      tenantEmail: email,
+      tenantName: (wo as { tenant_name?: string | null }).tenant_name ?? email,
       woNumber: wo.wo_number,
       propertyName: siteName,
       token,

@@ -77,6 +77,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     hours_logged: hoursLogged ?? null,
     sign_off_token: signOffToken,
     sign_off_expires_at: signOffExpiry.toISOString(),
+    tenant_email: tenantEmail.trim(),
+    tenant_name: tenantName?.trim() ?? tenantEmail.trim(),
     updated_at: new Date().toISOString(),
   }).eq('id', id)
 

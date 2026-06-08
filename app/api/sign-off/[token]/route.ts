@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
+import { sendReceiptEmail } from '@/lib/email'
+import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
+import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
+import type { WorkOrder } from '@/types'
+import React, { type ReactElement, type JSXElementConstructor } from 'react'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -16,7 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Fetch work order by token
   const { data: wo, error: fetchErr } = await supabase
     .from('work_orders')
-    .select('id, wo_number, status, sign_off_expires_at, signed_at, property_id')
+    .select('id, wo_number, status, sign_off_expires_at, signed_at, property_id, tenant_email, tenant_name')
     .eq('sign_off_token', token)
     .single()
 
@@ -116,11 +121,51 @@ export async function POST(request: NextRequest, { params }: Params) {
       ip_address: ip,
     })
 
-    // Trigger PDF generation asynchronously (fire-and-forget)
-    fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL}/api/pdf/${wo.id}`,
-      { method: 'GET', headers: { 'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY ?? '' } }
-    ).catch(() => {})
+    // Generate PDF and email receipt to tenant
+    const tenantEmail = (wo as { tenant_email?: string | null }).tenant_email
+    const tenantName = (wo as { tenant_name?: string | null }).tenant_name ?? tenantEmail ?? signedByName
+    try {
+      const { data: fullWo } = await supabase
+        .from('work_orders')
+        .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name, email), ppm_schedules(id, title, assets(id, name, category, location, buildings(id, name, sites(id, name, address, city)))), checklist_items(*)`)
+        .eq('id', wo.id)
+        .single()
+
+      if (fullWo) {
+        const recordHash = generateRecordHash({
+          wo_id: fullWo.id,
+          signed_by: signedByName,
+          signed_at: now,
+          ip,
+        })
+        const element = React.createElement(AcknowledgementReceipt, { workOrder: fullWo as WorkOrder, recordHash }) as ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>
+        const buffer = await renderToBuffer(element)
+
+        // Upload to storage and save pdf_url
+        const fileName = `receipts/${fullWo.wo_number}-${fullWo.id}.pdf`
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(fileName, buffer, { contentType: 'application/pdf', upsert: true })
+        if (!uploadError && uploadData) {
+          const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(fileName)
+          await supabase.from('work_orders').update({ pdf_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', wo.id)
+        }
+
+        // Email receipt to tenant
+        if (tenantEmail) {
+          const siteName = (fullWo as { ppm_schedules?: { assets?: { buildings?: { sites?: { name?: string } } } } }).ppm_schedules?.assets?.buildings?.sites?.name ?? 'your property'
+          await sendReceiptEmail({
+            tenantEmail,
+            tenantName: tenantName ?? signedByName,
+            woNumber: wo.wo_number,
+            propertyName: siteName,
+            pdfBuffer: Buffer.from(buffer),
+          })
+        }
+      }
+    } catch {
+      // PDF/email failure is non-fatal
+    }
 
     return NextResponse.json({ success: true })
   }
