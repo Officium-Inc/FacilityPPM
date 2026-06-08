@@ -18,7 +18,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const supabase = await createClient()
   const service = await createServiceClient()
 
-  const { data: wo } = await supabase
+  const { data: wo, error: woError } = await supabase
     .from('work_orders')
     .select(`
       *,
@@ -31,13 +31,14 @@ export default async function WorkOrderDetailPage({ params }: Props) {
         )
       ),
       checklist_items(*),
-      work_order_reports(*),
-      work_order_costings(*),
-      work_order_completion_evidence(*)
+      work_order_reports!work_order_reports_work_order_id_fkey(*),
+      work_order_costings!work_order_costings_work_order_id_fkey(*),
+      work_order_completion_evidence!work_order_completion_evidence_work_order_id_fkey(*)
     `)
     .eq('id', id)
     .single()
 
+  if (woError) console.error('[WO detail] query error:', woError)
   if (!wo) notFound()
 
   // Fetch approval trail + engineers list (service client for broader access)
