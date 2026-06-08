@@ -27,7 +27,7 @@ export default async function DashboardPage({ params }: Props) {
   ] = await Promise.all([
     supabase
       .from('work_orders')
-      .select(`*, engineers(id, full_name), ppm_schedules(id, title, assets(id, name))`)
+      .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name), ppm_schedules(id, title, assets(id, name))`)
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false })
       .limit(10),

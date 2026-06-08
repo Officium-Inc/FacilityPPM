@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     .from('work_orders')
     .select(`
       *,
-      engineers(id, full_name, email),
+      engineers!work_orders_engineer_id_fkey(id, full_name, email),
       ppm_schedules(
         id, title,
         assets(

@@ -15,7 +15,7 @@ export default async function SignOffTokenPage({ params }: Props) {
     .from('work_orders')
     .select(`
       *,
-      engineers(id, full_name),
+      engineers!work_orders_engineer_id_fkey(id, full_name),
       ppm_schedules(
         id, title,
         assets(
