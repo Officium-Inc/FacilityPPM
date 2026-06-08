@@ -84,9 +84,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             {workOrder.type} · {workOrder.priority} priority
           </p>
         </div>
-        {workOrder.pdf_url && (
+        {workOrder.status === 'completed' && (
           <a
-            href={workOrder.pdf_url}
+            href={workOrder.pdf_url ?? `/api/pdf/${workOrder.id}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
