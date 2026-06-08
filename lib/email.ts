@@ -128,7 +128,7 @@ export async function sendCostingApprovalEmail({
   const approvalUrl = `${appUrl}/costing-approval/${token}`
   const greeting = toName ? `Dear ${toName},` : 'Dear Tenant,'
 
-  const transporter = createTransport()
+  const transporter = createTransporter()
   await transporter.sendMail({
     from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: toEmail,
