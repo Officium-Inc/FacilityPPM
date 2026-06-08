@@ -17,7 +17,7 @@ function buildNav(slug: string) {
     { href: `/${slug}`, label: 'Dashboard', icon: LayoutDashboard },
     { href: `/${slug}/work-orders`, label: 'Work Orders', icon: ClipboardList },
     { href: `/${slug}/assets`, label: 'Assets', icon: Package },
-    { href: `/${slug}/engineers`, label: 'Engineers', icon: Users },
+    { href: `/${slug}/engineers`, label: 'Members', icon: Users },
     { href: `/${slug}/schedules`, label: 'Schedules', icon: CalendarClock },
     { href: `/${slug}/reports`, label: 'Reports', icon: BarChart3 },
   ]
