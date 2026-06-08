@@ -2,7 +2,7 @@ import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Slugs that are reserved and must never be treated as property slugs
-const RESERVED_SLUGS = new Set(['provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login', 'invite', 'reset-password'])
+const RESERVED_SLUGS = new Set(['provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login', 'invite', 'reset-password', 'costing-approval', 'fault-reports'])
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -69,6 +69,11 @@ export async function updateSession(request: NextRequest) {
 
   // ── Sign-off routes (public, token-validated in route handler) ────
   if (firstSegment === 'sign-off') {
+    return supabaseResponse
+  }
+
+  // ── Costing approval routes (public, token-validated in route handler) ─
+  if (firstSegment === 'costing-approval') {
     return supabaseResponse
   }
 

@@ -6,7 +6,7 @@ import type { WorkOrder } from '@/types'
 import SignaturePad from './SignaturePad'
 import RejectPanel from './RejectPanel'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
-import { CheckCircle, Shield } from 'lucide-react'
+import { CheckCircle, Shield, Star } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface SignOffPageProps {
@@ -19,6 +19,8 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
   const [signature, setSignature] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [name, setName] = useState('')
+  const [rating, setRating] = useState<number | null>(null)
+  const [ratingComment, setRatingComment] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,6 +55,8 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
         signatureData: signature,
         signedByName: name.trim(),
         confirmedAt: new Date().toISOString(),
+        rating: rating ?? undefined,
+        ratingComment: ratingComment.trim() || undefined,
       }),
     })
 
@@ -69,7 +73,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-blue-800 text-white py-5 px-6">
+      <div className="bg-green-800 text-white py-5 px-6">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
@@ -77,7 +81,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
             </div>
             <div>
               <p className="font-bold text-base leading-tight">Marajo Property Management</p>
-              <p className="text-blue-200 text-xs">Maintenance Sign-Off</p>
+              <p className="text-green-200 text-xs">Maintenance Sign-Off</p>
             </div>
           </div>
         </div>
@@ -107,19 +111,53 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
         </div>
 
         {/* Checklist */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="font-semibold text-gray-900 text-sm mb-2">
-            Completed Checklist ({checklist.length} items)
-          </h3>
-          {checklist.map((item) => (
-            <ChecklistItemComponent
-              key={item.id}
-              description={item.description}
-              result={item.result}
-              remarks={item.remarks}
-              photoUrls={item.photo_urls}
+        {checklist.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-2">
+              Completed Checklist ({checklist.length} items)
+            </h3>
+            {checklist.map((item) => (
+              <ChecklistItemComponent
+                key={item.id}
+                description={item.description}
+                result={item.result}
+                remarks={item.remarks}
+                photoUrls={item.photo_urls}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Rating */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <h3 className="font-semibold text-gray-900 text-sm">Rate the Service (optional)</h3>
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                onClick={() => setRating(rating === star ? null : star)}
+                className="p-1 transition-transform hover:scale-110"
+                type="button"
+              >
+                <Star
+                  className={`w-8 h-8 transition-colors ${
+                    rating !== null && star <= rating
+                      ? 'text-yellow-400 fill-yellow-400'
+                      : 'text-gray-300'
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
+          {rating !== null && (
+            <textarea
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              placeholder="Leave a comment about the service (optional)…"
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
             />
-          ))}
+          )}
         </div>
 
         {/* Sign-off form */}
@@ -135,7 +173,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
           </div>
 
@@ -168,7 +206,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
           <button
             onClick={handleApprove}
             disabled={loading || !signature || !confirmed || !name.trim()}
-            className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+            className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
           >
             <CheckCircle className="w-4 h-4" />
             {loading ? 'Submitting…' : 'Approve & Sign Off'}
@@ -197,3 +235,4 @@ function Detail({ label, value }: { label: string; value: string }) {
     </div>
   )
 }
+

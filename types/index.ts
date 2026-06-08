@@ -9,14 +9,22 @@ export interface Property {
 }
 
 export type WorkOrderStatus =
+  // Legacy statuses (kept for backwards compatibility)
   | 'scheduled'
-  | 'assigned'
-  | 'in_progress'
   | 'on_hold'
-  | 'completed'
-  | 'verified'
   | 'cancelled'
   | 'overdue'
+  // New workflow statuses
+  | 'new_report'
+  | 'inspecting'
+  | 'costing'
+  | 'pending_approval'
+  | 'assigned'
+  | 'in_progress'
+  | 'svc_submitted'
+  | 'signed'
+  | 'verified'
+  | 'completed'
 
 export type WorkOrderType = 'ppm' | 'reactive' | 'statutory' | 'project'
 export type Priority = 'critical' | 'high' | 'medium' | 'low'
@@ -125,6 +133,21 @@ export interface WorkOrder {
   signature_data: string | null
   rejection_reason: string | null
   pdf_url: string | null
+  // Workflow v2 fields
+  report_id: string | null
+  costing_token: string | null
+  costing_token_expires_at: string | null
+  costing_approved_at: string | null
+  costing_approved_by_name: string | null
+  costing_approval_signature: string | null
+  head_engineer_id: string | null
+  head_engineer_verified_at: string | null
+  head_engineer_notes: string | null
+  due_date: string | null
+  assignment_instructions: string | null
+  hours_logged: number | null
+  rating: number | null
+  rating_comment: string | null
   created_at: string
   updated_at: string
   engineers?: Engineer | null
@@ -152,6 +175,82 @@ export interface AuditLog {
   entity_type: string | null
   entity_id: string | null
   metadata: Record<string, unknown>
+  ip_address: string | null
+  created_at: string
+}
+
+// ── Workflow v2 types ──────────────────────────────────────────
+
+export interface WorkOrderReport {
+  id: string
+  work_order_id: string | null
+  fault_description: string
+  location_notes: string | null
+  reported_by_name: string
+  reported_by_contact: string | null
+  urgency: Priority
+  photo_urls: string[]
+  inspection_notes: string | null
+  root_cause: string | null
+  scope_of_work: string | null
+  inspection_photo_urls: string[]
+  inspected_by_id: string | null
+  inspected_at: string | null
+  created_at: string
+}
+
+export interface CostingLineItem {
+  description: string
+  qty: number
+  unit_cost: number
+}
+
+export interface WorkOrderCosting {
+  id: string
+  work_order_id: string
+  labour_hours: number
+  labour_rate: number
+  labour_total: number
+  materials_total: number
+  subcontractor_total: number
+  grand_total: number
+  line_items: CostingLineItem[]
+  notes: string | null
+  submitted_by_id: string | null
+  submitted_at: string
+  created_at: string
+}
+
+export interface WorkOrderCompletionEvidence {
+  id: string
+  work_order_id: string
+  work_description: string
+  completion_photo_urls: string[]
+  supporting_doc_urls: string[]
+  submitted_by_id: string | null
+  submitted_at: string
+  created_at: string
+}
+
+export interface ServiceRating {
+  id: string
+  work_order_id: string
+  rated_engineer_id: string | null
+  rating: number
+  comment: string | null
+  submitted_by_name: string | null
+  rated_at: string
+}
+
+export interface ApprovalTrailEntry {
+  id: string
+  work_order_id: string
+  stage: 'costing_approval' | 'sign_off' | 'final_verification'
+  actor_name: string
+  actor_role: 'tenant' | 'engineer' | 'head_engineer'
+  decision: 'approved' | 'rejected'
+  reason: string | null
+  signature_data: string | null
   ip_address: string | null
   created_at: string
 }

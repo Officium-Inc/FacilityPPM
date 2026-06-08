@@ -42,7 +42,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const now = new Date().toISOString()
 
   if (action === 'approve') {
-    const { signatureData, signedByName, confirmedAt } = body
+    const { signatureData, signedByName, confirmedAt, rating, ratingComment } = body
 
     if (!signatureData || !signedByName) {
       return NextResponse.json({ error: 'Missing signature or name.' }, { status: 400 })
@@ -63,12 +63,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { error: updateErr } = await supabase
       .from('work_orders')
       .update({
-        status: 'verified',
+        status: 'signed',
         signed_at: now,
         signed_by_name: signedByName,
         signed_by_ip: ip,
         signed_by_device: device,
         signature_data: signatureData,
+        rating: rating ?? null,
+        rating_comment: ratingComment?.trim() ?? null,
         updated_at: now,
       })
       .eq('id', wo.id)
@@ -76,6 +78,29 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
     }
+
+    // Save rating record if provided
+    const ratingValue = body.rating as number | undefined
+    if (ratingValue && ratingValue >= 1 && ratingValue <= 5) {
+      await supabase.from('service_ratings').insert({
+        work_order_id: wo.id,
+        rated_engineer_id: null, // engineer_id not in scope of this token query
+        rating: ratingValue,
+        comment: (body.ratingComment as string | undefined)?.trim() ?? null,
+        submitted_by_name: signedByName,
+      })
+    }
+
+    // Add to approval trail
+    await supabase.from('approval_trail').insert({
+      work_order_id: wo.id,
+      stage: 'sign_off',
+      actor_name: signedByName,
+      actor_role: 'tenant',
+      decision: 'approved',
+      signature_data: signatureData,
+      ip_address: ip,
+    })
 
     // Log audit
     await supabase.from('audit_log').insert({
@@ -110,8 +135,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { error: updateErr } = await supabase
       .from('work_orders')
       .update({
-        status: 'scheduled',
+        status: 'in_progress',
         rejection_reason: rejectionReason.trim(),
+        sign_off_token: null,
+        sign_off_expires_at: null,
         updated_at: now,
       })
       .eq('id', wo.id)
