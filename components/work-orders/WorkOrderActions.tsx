@@ -1,4 +1,4 @@
-'use client'
+ï»¿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -99,9 +99,9 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       {status === 'inspecting' && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Record Inspection Findings</p>
-          <textarea value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Inspection notes & diagnosis…" rows={3} className={INPUT} />
+          <textarea value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Inspection notes & diagnosisâ€¦" rows={3} className={INPUT} />
           <input type="text" value={rootCause} onChange={(e) => setRootCause(e.target.value)} placeholder="Root cause" className={INPUT} />
-          <textarea value={scopeOfWork} onChange={(e) => setScopeOfWork(e.target.value)} placeholder="Scope of work required…" rows={2} className={INPUT} />
+          <textarea value={scopeOfWork} onChange={(e) => setScopeOfWork(e.target.value)} placeholder="Scope of work requiredâ€¦" rows={2} className={INPUT} />
           <ActionButton
             onClick={() => apiPost(`/api/work-orders/${workOrder.id}/inspection`, { inspectionNotes, rootCause, scopeOfWork })}
             loading={loading} icon={ClipboardCheck} label="Submit Inspection ? Proceed to Costing"
@@ -138,7 +138,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           <p className="text-sm font-semibold text-gray-800">
             Total: ?{(labourHours * labourRate + materialsTotal + subcontractorTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
           </p>
-          <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Additional notes…" rows={2} className={INPUT} />
+          <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Additional notesâ€¦" rows={2} className={INPUT} />
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send approval to tenant</p>
           <input type="email" value={tenantEmail} onChange={(e) => setTenantEmail(e.target.value)} placeholder="Tenant email" className={INPUT} />
           <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} placeholder="Tenant name (optional)" className={INPUT} />
@@ -151,7 +151,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
 
       {status === 'pending_approval' && !workOrder.rejection_reason && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">
-          Awaiting tenant cost approval — a link has been sent.
+          Awaiting tenant cost approval â€” a link has been sent.
         </div>
       )}
 
@@ -165,13 +165,13 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
             </div>
           )}
           <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className={INPUT}>
-            <option value="">Select engineer…</option>
+            <option value="">Select engineerâ€¦</option>
             {engineers.map((eng) => (
               <option key={eng.id} value={eng.id}>{eng.full_name}</option>
             ))}
           </select>
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={INPUT} />
-          <textarea value={assignInstructions} onChange={(e) => setAssignInstructions(e.target.value)} placeholder="Assignment instructions…" rows={2} className={INPUT} />
+          <textarea value={assignInstructions} onChange={(e) => setAssignInstructions(e.target.value)} placeholder="Assignment instructionsâ€¦" rows={2} className={INPUT} />
           <ActionButton
             onClick={() => apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions })}
             loading={loading} icon={UserCheck} label="Confirm Assignment"
@@ -183,7 +183,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       {status === 'in_progress' && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Submit Completion Evidence</p>
-          <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={3} className={INPUT} />
+          <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was doneâ€¦" rows={3} className={INPUT} />
           <input type="number" value={hoursLogged} onChange={(e) => setHoursLogged(Number(e.target.value))} placeholder="Hours logged" min={0} step={0.5} className={INPUT} />
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send sign-off to tenant</p>
           <input type="email" value={evidenceTenantEmail} onChange={(e) => setEvidenceTenantEmail(e.target.value)} placeholder="Tenant email" className={INPUT} />
@@ -217,7 +217,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
             {workOrder.rating_comment && <p className="text-teal-600 text-xs italic mt-0.5">&ldquo;{workOrder.rating_comment}&rdquo;</p>}
           </div>
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Head Engineer Final Verification</p>
-          <textarea value={verifyNotes} onChange={(e) => setVerifyNotes(e.target.value)} placeholder="Final verification notes (optional)…" rows={2} className={INPUT} />
+          <textarea value={verifyNotes} onChange={(e) => setVerifyNotes(e.target.value)} placeholder="Final verification notes (optional)â€¦" rows={2} className={INPUT} />
           <ActionButton onClick={() => apiPost(`/api/work-orders/${workOrder.id}/verify`, { notes: verifyNotes })} loading={loading} icon={ClipboardCheck} label="Approve & Mark Verified" />
         </div>
       )}
@@ -255,7 +255,7 @@ function ActionButton({ onClick, loading, icon: Icon, label, variant = 'primary'
   return (
     <button onClick={onClick} disabled={loading} className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center ${variant === 'primary' ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'}`}>
       <Icon className="w-4 h-4" />
-      {loading ? 'Please wait…' : label}
+      {loading ? 'Please waitâ€¦' : label}
     </button>
   )
 }
