@@ -253,7 +253,15 @@ function ActionButton({ onClick, loading, icon: Icon, label, variant = 'primary'
   onClick: () => void; loading: boolean; icon: React.ElementType; label: string; variant?: 'primary' | 'secondary'
 }) {
   return (
-    <button onClick={onClick} disabled={loading} className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center ${variant === 'primary' ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'}`}>
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center ${
+        variant === 'primary'
+          ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white'
+          : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
+      }`}
+    >
       <Icon className="w-4 h-4" />
       {loading ? 'Please wait…' : label}
     </button>

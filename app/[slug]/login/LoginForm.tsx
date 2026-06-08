@@ -54,7 +54,7 @@ export default function LoginForm({ slug, propertyName }: Props) {
       <div className="w-full max-w-md">
         {/* Logo / Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-700 rounded-xl mb-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-green-700 rounded-xl mb-4">
             <span className="text-white font-bold text-2xl">M</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">FacilityPPM</h1>
@@ -77,7 +77,7 @@ export default function LoginForm({ slug, propertyName }: Props) {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 placeholder="you@example.com"
               />
             </div>
@@ -93,7 +93,7 @@ export default function LoginForm({ slug, propertyName }: Props) {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 placeholder="••••••••"
               />
             </div>
@@ -107,7 +107,7 @@ export default function LoginForm({ slug, propertyName }: Props) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
+              className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>

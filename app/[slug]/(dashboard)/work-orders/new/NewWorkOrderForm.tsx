@@ -101,7 +101,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
               required
               value={form.wo_number}
               onChange={(e) => set('wo_number', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
           <div>
@@ -109,7 +109,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
             <select
               value={form.type}
               onChange={(e) => set('type', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="ppm">PPM</option>
               <option value="reactive">Reactive</option>
@@ -123,7 +123,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
           <select
             value={form.schedule_id}
             onChange={(e) => set('schedule_id', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="">— Select schedule —</option>
             {schedules.map((s) => (
@@ -139,7 +139,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
           <select
             value={form.engineer_id}
             onChange={(e) => set('engineer_id', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="">— Unassigned —</option>
             {engineers.map((eng) => (
@@ -154,7 +154,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
             <select
               value={form.priority}
               onChange={(e) => set('priority', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -169,7 +169,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
               required
               value={form.scheduled_date}
               onChange={(e) => set('scheduled_date', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
         </div>
@@ -180,7 +180,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
             value={form.notes}
             onChange={(e) => set('notes', e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
             placeholder="Additional notes or instructions..."
           />
         </div>
@@ -195,7 +195,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
           >
             {loading ? 'Creating…' : 'Create Work Order'}
           </button>

@@ -43,7 +43,7 @@ export default function SuspendedClient({ propertyName, slug, isLoggedIn, otherP
 
         <a
           href="mailto:support@marajo.com.ph"
-          className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
         >
           Contact Support
         </a>

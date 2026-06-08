@@ -13,7 +13,7 @@ export default function WorkOrderTable({ workOrders, slug }: WorkOrderTableProps
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h2 className="font-semibold text-gray-900 text-sm">Recent Work Orders</h2>
-        <Link href={`/${slug}/work-orders`} className="text-xs text-blue-600 hover:underline">
+        <Link href={`/${slug}/work-orders`} className="text-xs text-green-600 hover:underline">
           View all
         </Link>
       </div>
@@ -41,7 +41,7 @@ export default function WorkOrderTable({ workOrders, slug }: WorkOrderTableProps
                   <td className="px-5 py-3">
                     <Link
                       href={`/${slug}/work-orders/${wo.id}`}
-                      className="font-medium text-blue-700 hover:underline"
+                      className="font-medium text-green-700 hover:underline"
                     >
                       {wo.wo_number}
                     </Link>

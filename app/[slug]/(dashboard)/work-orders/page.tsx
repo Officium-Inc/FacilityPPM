@@ -51,7 +51,7 @@ export default async function WorkOrdersPage({ params }: Props) {
         </div>
         <Link
           href={`/${slug}/work-orders/new`}
-          className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Work Order
@@ -83,7 +83,7 @@ export default async function WorkOrdersPage({ params }: Props) {
                     <td className="px-5 py-3">
                       <Link
                         href={`/${slug}/work-orders/${wo.id}`}
-                        className="font-medium text-blue-700 hover:underline"
+                        className="font-medium text-green-700 hover:underline"
                       >
                         {wo.wo_number}
                       </Link>

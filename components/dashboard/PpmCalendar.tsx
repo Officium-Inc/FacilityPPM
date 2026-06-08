@@ -74,8 +74,8 @@ export default function PpmCalendar({ dueDates }: PpmCalendarProps) {
               key={day.toISOString()}
               className={cn(
                 'text-center text-xs py-1.5 rounded-full mx-auto w-7 h-7 flex items-center justify-center transition-colors',
-                isToday && !hasDue && 'bg-blue-100 text-blue-700 font-semibold',
-                hasDue && 'bg-blue-600 text-white font-semibold',
+                isToday && !hasDue && 'bg-green-100 text-green-700 font-semibold',
+                hasDue && 'bg-green-600 text-white font-semibold',
                 !isToday && !hasDue && 'text-gray-600'
               )}
             >
@@ -87,7 +87,7 @@ export default function PpmCalendar({ dueDates }: PpmCalendarProps) {
 
       {hasDueDates(dueParsed, current) && (
         <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-600" />
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-600" />
           Days with scheduled PPM
         </p>
       )}

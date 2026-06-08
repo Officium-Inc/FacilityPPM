@@ -1,18 +1,15 @@
-import nodemailer from 'nodemailer'
+﻿import nodemailer from 'nodemailer'
 
-function createTransport() {
+function createTransporter() {
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  if (!user || !pass) throw new Error('GMAIL_USER or GMAIL_APP_PASSWORD env vars are not set')
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === 'true', // true for port 465, false for 587
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
+    service: 'gmail',
+    auth: { user, pass },
   })
 }
-
-const FROM = process.env.SMTP_FROM ?? process.env.RESEND_FROM_EMAIL ?? 'noreply@facilityppm.com'
 
 export async function sendSignOffEmail({
   tenantEmail,
@@ -28,18 +25,19 @@ export async function sendSignOffEmail({
   token: string
 }) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const signOffUrl = `${appUrl}/sign-off/${token}`
-  const transporter = createTransport()
 
+  const transporter = createTransporter()
   await transporter.sendMail({
-    from: FROM,
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: tenantEmail,
-    subject: `Action Required: Please sign off on ${woNumber} — ${propertyName}`,
+    subject: `Action Required: Please sign off on ${woNumber} â€” ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM — Maintenance Sign-Off</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Maintenance Sign-Off</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>Dear ${tenantName},</p>
@@ -47,14 +45,14 @@ export async function sendSignOffEmail({
           <p>Please review the completed work and provide your digital signature using the secure link below:</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${signOffUrl}" style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
-              Review & Sign Off
+              Review &amp; Sign Off
             </a>
           </div>
           <p style="color: #6b7280; font-size: 14px;">This link expires in 48 hours. If you have concerns about the work performed, you can raise them directly on the sign-off page.</p>
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this email, please contact Marajo Property Management immediately.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
         </div>
       </div>
     `,
@@ -75,19 +73,20 @@ export async function sendInviteEmail({
   invitedBy?: string
 }) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const inviteUrl = `${appUrl}/invite/${token}`
   const greeting = toName ? `Hi ${toName},` : 'Hi,'
-  const transporter = createTransport()
 
+  const transporter = createTransporter()
   await transporter.sendMail({
-    from: FROM,
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: toEmail,
     subject: `You've been invited to ${propertyName} on FacilityPPM`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM — Property Access Invitation</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Property Access Invitation</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
@@ -102,7 +101,7 @@ export async function sendInviteEmail({
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can safely ignore this email.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
         </div>
       </div>
     `,
@@ -133,17 +132,17 @@ export async function sendCostingApprovalEmail({
   await transporter.sendMail({
     from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: toEmail,
-    subject: `Cost Approval Required: ${woNumber} — ${propertyName}`,
+    subject: `Cost Approval Required: ${woNumber} â€” ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM — Cost Estimate Approval</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Cost Estimate Approval</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
           <p>A cost estimate has been prepared for work order <strong>${woNumber}</strong> at <strong>${propertyName}</strong>.</p>
-          <p>The total estimated cost is <strong>₱${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>. Please review the full breakdown and approve or reject using the link below.</p>
+          <p>The total estimated cost is <strong>â‚±${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>. Please review the full breakdown and approve or reject using the link below.</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${approvalUrl}" style="background: #16a34a; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Review Cost Estimate
@@ -153,7 +152,7 @@ export async function sendCostingApprovalEmail({
           <p style="color: #6b7280; font-size: 14px;">If you have questions, please contact Marajo Property Management directly.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
         </div>
       </div>
     `,
