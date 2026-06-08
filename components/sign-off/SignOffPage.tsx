@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -94,17 +94,17 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
             Work Order {workOrder.wo_number}
           </h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            <Detail label="Property" value={site?.name ?? 'â€”'} />
-            <Detail label="Address" value={site ? `${site.address}, ${site.city}` : 'â€”'} />
-            <Detail label="Asset" value={asset?.name ?? 'â€”'} />
-            <Detail label="Location" value={asset?.location ?? 'â€”'} />
-            <Detail label="Engineer" value={workOrder.engineers?.full_name ?? 'â€”'} />
+            <Detail label="Property" value={site?.name ?? '—'} />
+            <Detail label="Address" value={site ? `${site.address}, ${site.city}` : '—'} />
+            <Detail label="Asset" value={asset?.name ?? '—'} />
+            <Detail label="Location" value={asset?.location ?? '—'} />
+            <Detail label="Engineer" value={workOrder.engineers?.full_name ?? '—'} />
             <Detail
               label="Scheduled Date"
               value={
                 workOrder.scheduled_date
                   ? format(new Date(workOrder.scheduled_date), 'dd MMM yyyy')
-                  : 'â€”'
+                  : '—'
               }
             />
           </dl>
@@ -153,7 +153,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
             <textarea
               value={ratingComment}
               onChange={(e) => setRatingComment(e.target.value)}
-              placeholder="Leave a comment about the service (optional)â€¦"
+              placeholder="Leave a comment about the service (optional)…"
               rows={2}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
             />
@@ -173,7 +173,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -209,7 +209,7 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
             className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
           >
             <CheckCircle className="w-4 h-4" />
-            {loading ? 'Submittingâ€¦' : 'Approve & Sign Off'}
+            {loading ? 'Submitting…' : 'Approve & Sign Off'}
           </button>
         </div>
 
