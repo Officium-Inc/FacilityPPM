@@ -31,7 +31,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
   }
 
-  if (wo.status !== 'completed' && wo.status !== 'assigned' && wo.status !== 'in_progress') {
+  const VALID_STATUSES = ['completed', 'assigned', 'in_progress', 'svc_submitted']
+  if (!VALID_STATUSES.includes(wo.status)) {
     return NextResponse.json({ error: 'Work order is not in a valid state for sign-off' }, { status: 400 })
   }
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { error: updateErr } = await supabase
     .from('work_orders')
     .update({
-      status: 'completed',
+      status: wo.status === 'svc_submitted' ? 'svc_submitted' : 'completed',
       sign_off_token: token,
       sign_off_expires_at: expiresAt.toISOString(),
       updated_at: new Date().toISOString(),
