@@ -22,7 +22,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     .from('work_orders')
     .select(`
       *,
-      engineers(id, full_name, email, phone),
+      engineers!work_orders_engineer_id_fkey(id, full_name, email, phone),
       ppm_schedules(
         id, title, frequency,
         assets(
