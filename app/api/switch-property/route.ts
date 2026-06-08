@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { slug } = (await request.json()) as { slug?: string }
+  const { slug, propertyId: clientPropertyId } = (await request.json()) as { slug?: string; propertyId?: string }
 
   if (!slug) {
     return NextResponse.json({ error: 'slug is required' }, { status: 400 })
@@ -23,24 +23,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Access denied to this property' }, { status: 403 })
   }
 
-  // Look up the property to get its id
   const service = await createServiceClient()
-  const { data: property, error: propErr } = await service
-    .from('properties')
-    .select('id, slug')
-    .eq('slug', slug)
-    .single()
 
-  if (propErr || !property) {
-    return NextResponse.json({ error: 'Property not found' }, { status: 404 })
+  // If the client passed propertyId, verify it against app_metadata and skip the DB lookup
+  let propertyId: string | undefined
+  if (clientPropertyId) {
+    const userIds: string[] = (user.app_metadata?.property_ids as string[] | undefined) ??
+      (user.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])
+    if (!userIds.includes(clientPropertyId)) {
+      return NextResponse.json({ error: 'Access denied to this property' }, { status: 403 })
+    }
+    propertyId = clientPropertyId
+  } else {
+    // Fall back to DB lookup
+    const { data: property, error: propErr } = await service
+      .from('properties')
+      .select('id, slug')
+      .eq('slug', slug)
+      .single()
+    if (propErr || !property) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
+    }
+    propertyId = property.id
   }
 
   // Update the user's active property in app_metadata (service role bypasses RLS)
   const { error: updateErr } = await service.auth.admin.updateUserById(user.id, {
     app_metadata: {
       ...user.app_metadata,
-      property_id: property.id,
-      property_slug: property.slug,
+      property_id: propertyId,
+      property_slug: slug,
     },
   })
 
@@ -48,5 +60,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, slug: property.slug })
+  return NextResponse.json({ success: true, slug })
 }

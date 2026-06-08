@@ -66,7 +66,7 @@ export default function TopbarClient({
     router.refresh()
   }
 
-  async function handleSwitchProperty(targetSlug: string, targetName: string) {
+  async function handleSwitchProperty(targetSlug: string, targetId: string, targetName: string) {
     if (targetSlug === currentSlug || switching) return
     setSwitching(true)
     setSwitchingTo(targetName)
@@ -76,13 +76,12 @@ export default function TopbarClient({
       await fetch('/api/switch-property', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: targetSlug }),
+        body: JSON.stringify({ slug: targetSlug, propertyId: targetId }),
       })
       const supabase = createClient()
       await supabase.auth.refreshSession()
-      router.push(`/${targetSlug}`)
-      router.refresh()
-    } finally {
+      window.location.assign(`/${targetSlug}`)
+    } catch {
       setSwitching(false)
       setSwitchingTo(null)
     }
@@ -128,7 +127,7 @@ export default function TopbarClient({
                 {properties.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => handleSwitchProperty(p.slug, p.name)}
+                    onClick={() => handleSwitchProperty(p.slug, p.id, p.name)}
                     className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     <span className="truncate">{p.name}</span>
