@@ -199,7 +199,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
         <div className="space-y-2">
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">Awaiting tenant sign-off</div>
           {workOrder.sign_off_token && (
-            <a href={`${process.env.NEXT_PUBLIC_APP_URL}/sign-off/${workOrder.sign_off_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-green-600 hover:underline">
+            <a href={`${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')}/sign-off/${workOrder.sign_off_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-green-600 hover:underline">
               <ExternalLink className="w-3.5 h-3.5" /> Preview sign-off page
             </a>
           )}

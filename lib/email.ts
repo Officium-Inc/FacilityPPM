@@ -24,7 +24,7 @@ export async function sendSignOffEmail({
   propertyName: string
   token: string
 }) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const signOffUrl = `${appUrl}/sign-off/${token}`
 
@@ -72,7 +72,7 @@ export async function sendInviteEmail({
   token: string
   invitedBy?: string
 }) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const inviteUrl = `${appUrl}/invite/${token}`
   const greeting = toName ? `Hi ${toName},` : 'Hi,'
@@ -123,7 +123,7 @@ export async function sendCostingApprovalEmail({
   grandTotal: number
   token: string
 }) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const approvalUrl = `${appUrl}/costing-approval/${token}`
   const greeting = toName ? `Dear ${toName},` : 'Dear Tenant,'
