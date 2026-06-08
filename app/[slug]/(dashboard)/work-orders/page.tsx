@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import StatusBadge from '@/components/work-orders/StatusBadge'
+import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
 import { format } from 'date-fns'
 import type { WorkOrder, Priority } from '@/types'
 import { Plus } from 'lucide-react'
 
 interface Props {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ q?: string; status?: string; priority?: string; type?: string }>
 }
 
 function PriorityBadge({ priority }: { priority: Priority }) {
@@ -23,8 +25,9 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   )
 }
 
-export default async function WorkOrdersPage({ params }: Props) {
+export default async function WorkOrdersPage({ params, searchParams }: Props) {
   const { slug } = await params
+  const { q = '', status = '', priority = '', type = '' } = await searchParams
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -40,14 +43,28 @@ export default async function WorkOrdersPage({ params }: Props) {
     .eq('property_id', propertyId ?? '')
     .order('scheduled_date', { ascending: true })
 
-  const wos = (workOrders as WorkOrder[]) ?? []
+  const all = (workOrders as WorkOrder[]) ?? []
+
+  // Apply filters in-memory (avoids complex cross-table DB query for search)
+  const ql = q.toLowerCase()
+  const wos = all.filter((wo) => {
+    if (status && wo.status !== status) return false
+    if (priority && wo.priority !== priority) return false
+    if (type && wo.type !== type) return false
+    if (ql) {
+      const assetName = wo.ppm_schedules?.assets?.name?.toLowerCase() ?? ''
+      const woNum = wo.wo_number?.toLowerCase() ?? ''
+      if (!woNum.includes(ql) && !assetName.includes(ql)) return false
+    }
+    return true
+  })
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Work Orders</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{wos.length} total</p>
+          <p className="text-sm text-gray-500 mt-0.5">{all.length} total</p>
         </div>
         <Link
           href={`/${slug}/work-orders/new`}
@@ -57,6 +74,8 @@ export default async function WorkOrdersPage({ params }: Props) {
           New Work Order
         </Link>
       </div>
+
+      <WorkOrderFilters total={all.length} filtered={wos.length} />
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
