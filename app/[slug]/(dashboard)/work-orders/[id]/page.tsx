@@ -6,7 +6,7 @@ import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
 import WorkflowTimeline from '@/components/work-orders/WorkflowTimeline'
 import { format } from 'date-fns'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileText } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
@@ -84,6 +84,17 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             {workOrder.type} · {workOrder.priority} priority
           </p>
         </div>
+        {workOrder.pdf_url && (
+          <a
+            href={workOrder.pdf_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            Download PDF
+          </a>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

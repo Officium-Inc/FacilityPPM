@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
+import { generateRecordHash } from '@/lib/token'
+import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
+import type { WorkOrder } from '@/types'
+import React, { type ReactElement, type JSXElementConstructor } from 'react'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -57,10 +62,34 @@ export async function POST(request: NextRequest, { params }: Params) {
     reason: notes?.trim() ?? null,
   })
 
-  // Trigger PDF generation (fire-and-forget)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (appUrl) {
-    fetch(`${appUrl}/api/pdf/${id}`, { method: 'GET' }).catch(() => {})
+  // Generate and upload PDF inline
+  try {
+    const { data: fullWo } = await service
+      .from('work_orders')
+      .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name, email), ppm_schedules(id, title, assets(id, name, category, location, buildings(id, name, sites(id, name, address, city)))), checklist_items(*)`)
+      .eq('id', id)
+      .single()
+
+    if (fullWo && fullWo.signed_at) {
+      const recordHash = generateRecordHash({
+        wo_id: fullWo.id,
+        signed_by: fullWo.signed_by_name,
+        signed_at: fullWo.signed_at,
+        ip: fullWo.signed_by_ip,
+      })
+      const element = React.createElement(AcknowledgementReceipt, { workOrder: fullWo as WorkOrder, recordHash }) as ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>
+      const buffer = await renderToBuffer(element)
+      const fileName = `receipts/${fullWo.wo_number}-${fullWo.id}.pdf`
+      const { data: uploadData, error: uploadError } = await service.storage
+        .from('receipts')
+        .upload(fileName, buffer, { contentType: 'application/pdf', upsert: true })
+      if (!uploadError && uploadData) {
+        const { data: { publicUrl } } = service.storage.from('receipts').getPublicUrl(fileName)
+        await service.from('work_orders').update({ pdf_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', id)
+      }
+    }
+  } catch {
+    // PDF generation failure is non-fatal
   }
 
   return NextResponse.json({ success: true })
