@@ -10,6 +10,7 @@ export default function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const passwordReset = searchParams.get('reset') === '1'
+  const deactivated = searchParams.get('reason') === 'deactivated'
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -50,6 +51,20 @@ export default function LoginForm() {
     }
 
     const destination = (meta.property_slug as string | undefined) ?? userSlugs[0]
+
+    // Check if the user is active in the destination property
+    const activeCheck = await fetch('/api/engineers/active-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertySlug: destination }),
+    })
+    if (!activeCheck.ok) {
+      await supabase.auth.signOut()
+      setError('Your account has been deactivated. Contact your administrator.')
+      setLoading(false)
+      return
+    }
+
     router.push(`/${destination}`)
     router.refresh()
   }
@@ -96,6 +111,11 @@ export default function LoginForm() {
           {passwordReset && mode === 'login' && (
             <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 mb-5">
               Password updated successfully. You can now sign in.
+            </div>
+          )}
+          {deactivated && mode === 'login' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-5">
+              Your account has been deactivated. Contact your administrator.
             </div>
           )}
           {mode === 'login' ? (

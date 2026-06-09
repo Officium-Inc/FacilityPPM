@@ -27,6 +27,22 @@ export default async function DashboardLayout({
     redirect(`/${slug}/suspended`)
   }
 
+  // Check if the user is an active member of this property
+  // (skip for provider role — they're not in the engineers table)
+  if (user && user.app_metadata?.role !== 'provider') {
+    const { data: engineer } = await service
+      .from('engineers')
+      .select('is_active')
+      .eq('property_id', property.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    // If they have an engineer record and it's inactive, sign them out
+    if (engineer && engineer.is_active === false) {
+      redirect('/api/auth/sign-out?next=/login?reason=deactivated')
+    }
+  }
+
   // Auto-switch active property ONLY for active/trial properties, and only
   // when the user's current active slug differs from the one they navigated to.
   if (user && user.app_metadata?.property_slug !== slug) {
