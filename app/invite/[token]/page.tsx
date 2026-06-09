@@ -43,14 +43,34 @@ export default async function InvitePage({ params }: Props) {
     )
   }
 
-  // Check if email already has an account
-  const { data: existingList } = await service.auth.admin.listUsers()
-  const isExistingUser = existingList?.users?.some((u) => u.email === invite.email) ?? false
+  // Check if email already has a Supabase auth account.
+  // Strategy: check engineers table for a linked user_id (fastest + most reliable),
+  // then fall back to listing auth users.
+  let isExistingUser = false
+  const inviteEmail = (invite.email as string).toLowerCase()
+
+  // Check engineers table first — if any engineer record for this email already has a user_id,
+  // the person has an account.
+  const { data: existingEng } = await service
+    .from('engineers')
+    .select('user_id')
+    .eq('email', inviteEmail)
+    .not('user_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingEng?.user_id) {
+    isExistingUser = true
+  } else {
+    // Fall back to auth admin lookup (handles cases where user exists but has no engineer record yet)
+    const { data: userList } = await service.auth.admin.listUsers({ perPage: 1000 })
+    isExistingUser = userList?.users?.some((u) => u.email?.toLowerCase() === inviteEmail) ?? false
+  }
 
   return (
     <AcceptInviteForm
       token={token}
-      email={invite.email as string}
+      email={inviteEmail}
       propertyName={property.name}
       invitedName={invite.invited_name as string | null}
       isExistingUser={isExistingUser}
