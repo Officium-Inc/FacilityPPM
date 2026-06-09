@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck } from 'lucide-react'
+import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface WorkOrderActionsProps {
@@ -29,21 +29,38 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   const [materialsTotal, setMaterialsTotal] = useState(0)
   const [subcontractorTotal, setSubcontractorTotal] = useState(0)
   const [costingNotes, setCostingNotes] = useState('')
-  const [tenantEmail, setTenantEmail] = useState('')
-  const [tenantName, setTenantName] = useState('')
+  const [selectedCostingTenantId, setSelectedCostingTenantId] = useState('')
 
   const [assignEngineerId, setAssignEngineerId] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [assignInstructions, setAssignInstructions] = useState('')
 
   const [workDescription, setWorkDescription] = useState('')
-  const [hoursLogged, setHoursLogged] = useState(0)
-  const [evidenceTenantEmail, setEvidenceTenantEmail] = useState('')
-  const [evidenceTenantName, setEvidenceTenantName] = useState('')
+  const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<string[]>([])
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const [selectedEvidenceTenantId, setSelectedEvidenceTenantId] = useState('')
 
   const [verifyNotes, setVerifyNotes] = useState('')
 
   const { status } = workOrder
+  const tenants = engineers.filter(e => e.roles?.name?.toLowerCase() === 'tenant' && e.is_active)
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    setUploadLoading(true)
+    const urls: string[] = []
+    for (const file of files) {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/work-orders/${workOrder.id}/upload`, { method: 'POST', body: fd })
+      const data = await res.json()
+      if (res.ok && data.url) urls.push(data.url)
+    }
+    setUploadedPhotoUrls(prev => [...prev, ...urls])
+    setUploadLoading(false)
+    e.target.value = ''
+  }
 
   async function apiPost(path: string, body: Record<string, unknown>) {
     setLoading(true)
@@ -140,10 +157,21 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           </p>
           <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Additional notes…" rows={2} className={INPUT} />
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send approval to tenant</p>
-          <input type="email" value={tenantEmail} onChange={(e) => setTenantEmail(e.target.value)} placeholder="Tenant email" className={INPUT} />
-          <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)} placeholder="Tenant name (optional)" className={INPUT} />
+          {tenants.length === 0 ? (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+          ) : (
+            <select value={selectedCostingTenantId} onChange={(e) => setSelectedCostingTenantId(e.target.value)} className={INPUT}>
+              <option value="">— Select tenant —</option>
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.full_name} ({t.email})</option>
+              ))}
+            </select>
+          )}
           <ActionButton
-            onClick={() => apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, materialsTotal, subcontractorTotal, notes: costingNotes, tenantEmail, tenantName })}
+            onClick={() => {
+              const t = engineers.find(e => e.id === selectedCostingTenantId)
+              apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, materialsTotal, subcontractorTotal, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+            }}
             loading={loading} icon={Send} label="Send Cost Approval to Tenant"
           />
         </div>
@@ -184,12 +212,47 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Submit Completion Evidence</p>
           <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={3} className={INPUT} />
-          <input type="number" value={hoursLogged} onChange={(e) => setHoursLogged(Number(e.target.value))} placeholder="Hours logged" min={0} step={0.5} className={INPUT} />
+
+          {/* File / photo upload */}
+          <div>
+            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide block mb-1">Upload photos / files</label>
+            <label className={`inline-flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:text-green-600 transition-colors ${uploadLoading ? 'opacity-50 cursor-not-allowed' : 'text-gray-500'}`}>
+              <Paperclip className="w-4 h-4" />
+              {uploadLoading ? 'Uploading…' : 'Attach files'}
+              <input type="file" multiple accept="image/*,application/pdf" onChange={handleFileUpload} className="hidden" disabled={uploadLoading} />
+            </label>
+            {uploadedPhotoUrls.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {uploadedPhotoUrls.map((url, i) => (
+                  <div key={i} className="relative group">
+                    <img src={url} alt={`Upload ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() => setUploadedPhotoUrls(prev => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    ><X className="w-2.5 h-2.5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send sign-off to tenant</p>
-          <input type="email" value={evidenceTenantEmail} onChange={(e) => setEvidenceTenantEmail(e.target.value)} placeholder="Tenant email" className={INPUT} />
-          <input type="text" value={evidenceTenantName} onChange={(e) => setEvidenceTenantName(e.target.value)} placeholder="Tenant name (optional)" className={INPUT} />
+          {tenants.length === 0 ? (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+          ) : (
+            <select value={selectedEvidenceTenantId} onChange={(e) => setSelectedEvidenceTenantId(e.target.value)} className={INPUT}>
+              <option value="">— Select tenant —</option>
+              {tenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.full_name} ({t.email})</option>
+              ))}
+            </select>
+          )}
           <ActionButton
-            onClick={() => apiPost(`/api/work-orders/${workOrder.id}/complete-evidence`, { workDescription, hoursLogged, tenantEmail: evidenceTenantEmail, tenantName: evidenceTenantName })}
+            onClick={() => {
+              const t = engineers.find(e => e.id === selectedEvidenceTenantId)
+              apiPost(`/api/work-orders/${workOrder.id}/complete-evidence`, { workDescription, completionPhotoUrls: uploadedPhotoUrls, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+            }}
             loading={loading} icon={Send} label="Submit Evidence & Send Sign-Off Link"
           />
         </div>
