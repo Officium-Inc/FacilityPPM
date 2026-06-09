@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Pencil, Trash2 } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Mail } from 'lucide-react'
 
 const ROLE_OPTIONS = ['Admin', 'Engineer', 'Service Group', 'Tenant']
 
@@ -25,21 +25,22 @@ interface Props {
 
 type ConfirmRemove = { id: string; name: string } | null
 
-const EMPTY_FORM = { full_name: '', email: '', phone: '', role_name: '', certifications: '' }
+const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
 export default function EngineersClient({ slug: _slug, engineers, roles }: Props) {
   const router = useRouter()
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [invite, setInvite] = useState(EMPTY_INVITE)
   const [editForm, setEditForm] = useState<{ role_name: string; phone: string; certifications: string; is_active: boolean }>({ role_name: '', phone: '', certifications: '', is_active: true })
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<ConfirmRemove>(null)
   const [removeLoading, setRemoveLoading] = useState(false)
 
-  function set(field: string, value: string) {
-    setForm((f) => ({ ...f, [field]: value }))
+  function setInv(field: string, value: string) {
+    setInvite((f) => ({ ...f, [field]: value }))
   }
 
   function openEdit(eng: Engineer) {
@@ -53,27 +54,27 @@ export default function EngineersClient({ slug: _slug, engineers, roles }: Props
     setError(null)
   }
 
-  async function handleAdd(e: React.FormEvent) {
+  async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setSuccess(null)
 
-    const res = await fetch('/api/engineers', {
+    const res = await fetch('/api/engineers/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, role_name: form.role_name || undefined }),
+      body: JSON.stringify({ email: invite.email, name: invite.name || undefined, role_name: invite.role_name || undefined }),
     })
     const data = await res.json()
 
     if (!res.ok) {
-      setError(data.error ?? 'Failed to add engineer.')
+      setError(data.error ?? 'Failed to send invitation.')
       setLoading(false)
       return
     }
 
-    setForm(EMPTY_FORM)
-    setShowAdd(false)
-    router.refresh()
+    setSuccess(`Invitation sent to ${invite.email}`)
+    setInvite(EMPTY_INVITE)
     setLoading(false)
   }
 
@@ -129,56 +130,66 @@ export default function EngineersClient({ slug: _slug, engineers, roles }: Props
         </button>
       </div>
 
-      {/* Add Engineer Form */}
+      {/* Add Member / Invite Form */}
       {showAdd && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900 text-sm">Add New Member</h3>
-            <button onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600">
+            <div>
+              <h3 className="font-semibold text-gray-900 text-sm">Invite New Member</h3>
+              <p className="text-xs text-gray-500 mt-0.5">They&apos;ll receive an email to create their account.</p>
+            </div>
+            <button onClick={() => { setShowAdd(false); setError(null); setSuccess(null) }} className="text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           </div>
+
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">{error}</div>
           )}
-          <form onSubmit={handleAdd} className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Full Name *</label>
-              <input required value={form.full_name} onChange={(e) => set('full_name', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+          {success && (
+            <div className="mb-4 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-2 flex items-center gap-2">
+              <Mail className="w-4 h-4 shrink-0" />
+              {success}
             </div>
+          )}
+
+          <form onSubmit={handleInvite} className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
-              <input required type="email" value={form.email} onChange={(e) => set('email', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              <input
+                required type="email" value={invite.email}
+                onChange={(e) => setInv('email', e.target.value)}
+                placeholder="member@example.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
-              <input value={form.phone} onChange={(e) => set('phone', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              <label className="block text-xs font-medium text-gray-700 mb-1">Name (optional)</label>
+              <input
+                value={invite.name}
+                onChange={(e) => setInv('name', e.target.value)}
+                placeholder="Full name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
-              <select value={form.role_name} onChange={(e) => set('role_name', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+              <select
+                value={invite.role_name}
+                onChange={(e) => setInv('role_name', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
                 <option value="">— No role —</option>
                 {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Certifications</label>
-              <input value={form.certifications} onChange={(e) => set('certifications', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="e.g. HVAC Cert, First Aid" />
-            </div>
-            <div className="col-span-2 flex justify-end gap-3 pt-1">
-              <button type="button" onClick={() => setShowAdd(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                Cancel
-              </button>
-              <button type="submit" disabled={loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50">
-                {loading ? 'Adding…' : 'Add Member'}
+            <div className="flex items-end">
+              <button
+                type="submit" disabled={loading}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Mail className="w-4 h-4" />
+                {loading ? 'Sending…' : 'Send Invitation'}
               </button>
             </div>
           </form>

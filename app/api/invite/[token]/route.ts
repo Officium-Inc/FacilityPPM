@@ -27,13 +27,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const property = invite.properties as { id: string; name: string; slug: string }
   const email = invite.email as string
+  const inviteRoleName = (invite.role_name as string | null) ?? null
 
-  // Look up the admin role
+  // Resolve role: prefer invite's role_name, fall back to 'admin'
   const { data: role } = await service
     .from('roles')
     .select('id')
-    .eq('name', 'admin')
-    .single()
+    .ilike('name', inviteRoleName ?? 'admin')
+    .maybeSingle()
 
   // Check if user already exists
   const { data: existingList } = await service.auth.admin.listUsers()
