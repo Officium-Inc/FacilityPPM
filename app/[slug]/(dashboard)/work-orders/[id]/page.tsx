@@ -62,7 +62,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const costing = ((wo as Record<string, unknown>).work_order_costings as CostingRow[] | null) ?? []
   const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as EvidenceRow[] | null) ?? []
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
-  const engineers = (engineersList ?? []) as Engineer[]
+  const engineers = (engineersList ?? []) as unknown as Engineer[]
 
   return (
     <div className="space-y-6 max-w-5xl">
