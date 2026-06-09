@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import type { WorkOrder } from '@/types'
+import type { WorkOrder, WorkOrderCompletionEvidence } from '@/types'
 import SignOffPage from '@/components/sign-off/SignOffPage'
 
 interface Props {
@@ -9,7 +9,8 @@ interface Props {
 
 export default async function SignOffTokenPage({ params }: Props) {
   const { token } = await params
-  const supabase = await createClient()
+  // Use service client so joined tables (assets, sites, etc.) bypass RLS for this public page
+  const supabase = await createServiceClient()
 
   const { data: wo } = await supabase
     .from('work_orders')
@@ -23,7 +24,8 @@ export default async function SignOffTokenPage({ params }: Props) {
           buildings(id, name, sites(id, name, address, city))
         )
       ),
-      checklist_items(*)
+      checklist_items(*),
+      work_order_completion_evidence!work_order_completion_evidence_work_order_id_fkey(*)
     `)
     .eq('sign_off_token', token)
     .single()
@@ -31,6 +33,7 @@ export default async function SignOffTokenPage({ params }: Props) {
   if (!wo) notFound()
 
   const workOrder = wo as WorkOrder
+  const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as WorkOrderCompletionEvidence[] | null) ?? []
 
   // Validate: not expired
   if (workOrder.sign_off_expires_at && new Date(workOrder.sign_off_expires_at) < new Date()) {
@@ -62,5 +65,5 @@ export default async function SignOffTokenPage({ params }: Props) {
     )
   }
 
-  return <SignOffPage workOrder={workOrder} token={token} />
+  return <SignOffPage workOrder={workOrder} evidence={evidence} token={token} />
 }
