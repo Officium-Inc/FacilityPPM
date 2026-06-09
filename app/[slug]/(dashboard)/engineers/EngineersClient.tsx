@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Pencil, Trash2, Mail } from 'lucide-react'
+import { Plus, X, Pencil, Trash2, Mail, Clock, XCircle } from 'lucide-react'
 
 const ROLE_OPTIONS = ['Admin', 'Engineer', 'Service Group', 'Tenant']
 
@@ -16,18 +16,28 @@ interface Engineer {
   is_active: boolean
   roles?: { id: string; name: string } | null
 }
+interface Invitation {
+  id: string
+  email: string
+  invited_name: string | null
+  role_name: string | null
+  invited_by: string | null
+  created_at: string
+  expires_at: string
+}
 
 interface Props {
   slug: string
   engineers: Engineer[]
   roles: Role[]
+  invitations: Invitation[]
 }
 
 type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, roles }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, roles: _roles, invitations: initialInvitations }: Props) {
   const router = useRouter()
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -38,6 +48,8 @@ export default function EngineersClient({ slug: _slug, engineers, roles }: Props
   const [loading, setLoading] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<ConfirmRemove>(null)
   const [removeLoading, setRemoveLoading] = useState(false)
+  const [invitations, setInvitations] = useState<Invitation[]>(initialInvitations)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   function setInv(field: string, value: string) {
     setInvite((f) => ({ ...f, [field]: value }))
@@ -74,8 +86,30 @@ export default function EngineersClient({ slug: _slug, engineers, roles }: Props
     }
 
     setSuccess(`Invitation sent to ${invite.email}`)
+    // Optimistically add to local invitations list
+    setInvitations((prev) => [
+      ...prev,
+      {
+        id: `pending-${Date.now()}`,
+        email: invite.email,
+        invited_name: invite.name || null,
+        role_name: invite.role_name || null,
+        invited_by: null,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ])
     setInvite(EMPTY_INVITE)
     setLoading(false)
+  }
+
+  async function handleCancelInvite(inviteId: string) {
+    setCancellingId(inviteId)
+    const res = await fetch(`/api/engineers/invite/${inviteId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setInvitations((prev) => prev.filter((i) => i.id !== inviteId))
+    }
+    setCancellingId(null)
   }
 
   async function handleRemove(id: string) {
@@ -295,6 +329,47 @@ export default function EngineersClient({ slug: _slug, engineers, roles }: Props
           </table>
         </div>
       </div>
+
+      {/* Pending Invitations */}
+      {invitations.length > 0 && (
+        <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600" />
+            <h3 className="text-sm font-semibold text-amber-900">Pending Invitations ({invitations.length})</h3>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['Email', 'Name', 'Role', 'Invited', 'Expires', ''].map((h) => (
+                  <th key={h} className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {invitations.map((inv) => (
+                <tr key={inv.id} className="hover:bg-amber-50/50">
+                  <td className="px-5 py-3 text-gray-800 font-medium">{inv.email}</td>
+                  <td className="px-5 py-3 text-gray-600">{inv.invited_name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-600">{inv.role_name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">{new Date(inv.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">{new Date(inv.expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                  <td className="px-5 py-3">
+                    <button
+                      onClick={() => handleCancelInvite(inv.id)}
+                      disabled={cancellingId === inv.id || inv.id.startsWith('pending-')}
+                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-40 transition-colors"
+                      title="Cancel invitation"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      {cancellingId === inv.id ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Confirm Remove Modal */}
       {confirmRemove && (
