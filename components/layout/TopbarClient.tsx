@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Bell, ChevronDown, Check, ArrowLeftRight } from 'lucide-react'
+import { LogOut, Bell, ChevronDown, Check, ArrowLeftRight, AtSign, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { formatPHT } from '@/lib/utils'
 
 const switchOverlayStyles = `
 @keyframes fadeInOverlay {
@@ -29,18 +30,30 @@ interface PropertyOption {
   slug: string
 }
 
+interface Notification {
+  id: string
+  type: string
+  title: string
+  message: string
+  link: string | null
+  read: boolean
+  created_at: string
+}
+
 export default function TopbarClient({
   title,
   userEmail,
   signOutPath = '/provider/login',
   currentSlug,
   properties = [],
+  unreadNotifications = 0,
 }: {
   title?: string
   userEmail: string
   signOutPath?: string
   currentSlug?: string
   properties?: PropertyOption[]
+  unreadNotifications?: number
 }) {
   const router = useRouter()
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -48,16 +61,67 @@ export default function TopbarClient({
   const [switchingTo, setSwitchingTo] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown when clicking outside
+  // Notification state
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unread, setUnread] = useState(unreadNotifications)
+  const [notifLoading, setNotifLoading] = useState(false)
+  const notifRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false)
       }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true)
+    try {
+      const res = await fetch('/api/notifications')
+      if (res.ok) {
+        const data: Notification[] = await res.json()
+        setNotifications(data)
+        setUnread(data.filter((n) => !n.read).length)
+      }
+    } finally {
+      setNotifLoading(false)
+    }
+  }, [])
+
+  async function openNotifications() {
+    setNotifOpen((prev) => !prev)
+    if (!notifOpen) {
+      await fetchNotifications()
+    }
+  }
+
+  async function markAllRead() {
+    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    setUnread(0)
+  }
+
+  function handleNotifClick(n: Notification) {
+    if (!n.read) {
+      fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [n.id] }) })
+        .then(() => {
+          setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x))
+          setUnread((u) => Math.max(0, u - 1))
+        })
+    }
+    if (n.link) {
+      setNotifOpen(false)
+      router.push(n.link)
+    }
+  }
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -143,9 +207,79 @@ export default function TopbarClient({
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-          <Bell className="w-4 h-4" />
-        </button>
+        {/* Notification bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={openNotifications}
+            className="relative text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {unread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white leading-none">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            <div className="dropdown-enter absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <span className="text-sm font-semibold text-gray-900">Notifications</span>
+                {unread > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="text-xs text-green-600 hover:text-green-700 font-medium"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {/* List */}
+              <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+                {notifLoading ? (
+                  <div className="py-8 flex items-center justify-center">
+                    <div className="w-5 h-5 rounded-full border-2 border-green-200 border-t-green-600 animate-spin" />
+                  </div>
+                ) : notifications.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Bell className="w-6 h-6 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">No notifications yet</p>
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      onClick={() => handleNotifClick(n)}
+                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex gap-3 ${!n.read ? 'bg-blue-50/50' : ''}`}
+                    >
+                      <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5 ${n.type === 'mention' ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        {n.type === 'mention' ? (
+                          <AtSign className="w-3.5 h-3.5 text-blue-600" />
+                        ) : (
+                          <Bell className="w-3.5 h-3.5 text-gray-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
+                            {n.title}
+                          </p>
+                          {!n.read && <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-500 mt-1" />}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
+                        <p className="text-xs text-gray-400 mt-1">{formatPHT(n.created_at, true)}</p>
+                      </div>
+                      {n.link && <ExternalLink className="flex-shrink-0 w-3.5 h-3.5 text-gray-300 mt-1" />}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center">
             <span className="text-green-700 font-medium text-xs uppercase">
