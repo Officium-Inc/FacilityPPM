@@ -63,11 +63,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     assignment_instructions: instructions?.trim() ?? null,
     priority: priority ?? undefined,
     status: 'in_progress',
-    ...(newWoNumber ? { wo_number: newWoNumber, original_wo_number: wo.wo_number } : {}),
+    ...(newWoNumber ? { wo_number: newWoNumber } : {}),
     updated_at: new Date().toISOString(),
   }).eq('id', id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Store original WO number for audit trail — non-blocking, requires migration 009
+  if (newWoNumber) {
+    void service.from('work_orders')
+      .update({ original_wo_number: wo.wo_number } as Record<string, unknown>)
+      .eq('id', id)
+  }
 
   return NextResponse.json({ success: true })
 }
