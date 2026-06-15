@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Eye, EyeOff } from 'lucide-react'
 
 type Step = 'request' | 'verify'
 
@@ -16,6 +17,8 @@ export default function ResetPasswordForm() {
   const [otp, setOtp] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -120,7 +123,7 @@ export default function ResetPasswordForm() {
                   disabled={loading}
                   className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >
-                  {loading ? 'Sendingâ€¦' : 'Send verification code'}
+                  {loading ? 'Sending...' : 'Send verification code'}
                 </button>
                 <button
                   type="button"
@@ -135,7 +138,7 @@ export default function ResetPasswordForm() {
             <>
               <h2 className="text-lg font-semibold text-gray-900 mb-1">Enter verification code</h2>
               <p className="text-sm text-gray-500 mb-6">
-                We sent a 6-digit code to{' '}
+                We sent an 8-digit code to{' '}
                 <span className="font-medium text-gray-700">{email}</span>.
               </p>
               <form onSubmit={handleVerifyAndReset} className="space-y-4">
@@ -160,32 +163,50 @@ export default function ResetPasswordForm() {
                   <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 mb-1">
                     New password
                   </label>
-                  <input
-                    id="new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Min 8 characters"
-                  />
+                  <div className="relative">
+                    <input
+                      id="new-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Min 8 characters"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-1">
                     Confirm password
                   </label>
-                  <input
-                    id="confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    required
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                  />
+                  <div className="relative">
+                    <input
+                      id="confirm-password"
+                      type={showConfirm ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      required
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Repeat password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(!showConfirm)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
@@ -197,14 +218,14 @@ export default function ResetPasswordForm() {
                   disabled={loading || otp.length < 8}
                   className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >
-                  {loading ? 'Verifyingâ€¦' : 'Set new password'}
+                  {loading ? 'Verifying...' : 'Set new password'}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setStep('request'); setOtp(''); setError(null) }}
                   className="w-full text-sm text-gray-500 hover:text-gray-700 text-center"
                 >
-                  â† Resend code
+                  Resend code
                 </button>
               </form>
             </>
@@ -212,10 +233,9 @@ export default function ResetPasswordForm() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          FacilityPPM Â· For authorised users only
+          FacilityPPM &middot; For authorised users only
         </p>
       </div>
     </div>
   )
 }
-
