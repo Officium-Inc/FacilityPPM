@@ -25,7 +25,6 @@ export default async function SignOffTokenPage({ params }: Props) {
         )
       ),
       checklist_items(*),
-      work_order_completion_evidence!work_order_completion_evidence_work_order_id_fkey(*),
       work_order_reports(*)
     `)
     .eq('sign_off_token', token)
@@ -34,8 +33,16 @@ export default async function SignOffTokenPage({ params }: Props) {
   if (!wo) notFound()
 
   const workOrder = wo as WorkOrder
-  const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as WorkOrderCompletionEvidence[] | null) ?? []
   const reports = ((wo as Record<string, unknown>).work_order_reports as WorkOrderReport[] | null) ?? []
+
+  // Fetch completion evidence separately to avoid FK-hint ambiguity
+  const { data: evidenceRows } = await supabase
+    .from('work_order_completion_evidence')
+    .select('*')
+    .eq('work_order_id', workOrder.id)
+    .limit(1)
+
+  const evidence = (evidenceRows as WorkOrderCompletionEvidence[] | null) ?? []
 
   // Validate: not expired
   if (workOrder.sign_off_expires_at && new Date(workOrder.sign_off_expires_at) < new Date()) {
