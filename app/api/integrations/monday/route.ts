@@ -21,6 +21,27 @@ async function countByStatus(
   return count ?? 0
 }
 
+async function latestFailure(
+  service: Awaited<ReturnType<typeof import('@/lib/supabase/server').createServiceClient>>,
+  propertyId: string
+) {
+  const { data } = await service
+    .from('work_orders')
+    .select('wo_number, monday_sync_error, updated_at')
+    .eq('property_id', propertyId)
+    .eq('monday_sync_status', 'failed')
+    .not('monday_sync_error', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!data?.monday_sync_error) return null
+  return {
+    woNumber: data.wo_number as string,
+    error: data.monday_sync_error as string,
+  }
+}
+
 export async function GET() {
   const auth = await requireMondayPropertyAdmin()
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -28,17 +49,18 @@ export async function GET() {
   try {
     const { service, propertyId } = auth.context
     const row = await getMondayIntegrationRow(service, propertyId)
-    const [synced, failed, pending, skipped] = await Promise.all([
+    const [synced, failed, pending, skipped, latestError] = await Promise.all([
       countByStatus(service, propertyId, 'synced'),
       countByStatus(service, propertyId, 'failed'),
       countByStatus(service, propertyId, 'pending'),
       countByStatus(service, propertyId, 'skipped'),
+      latestFailure(service, propertyId),
     ])
 
     return NextResponse.json({
       integration: summarizeMondayIntegration(row),
       fields: MONDAY_FIELD_DEFINITIONS,
-      sync: { synced, failed, pending, skipped },
+      sync: { synced, failed, pending, skipped, latestError },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load Monday integration.'
