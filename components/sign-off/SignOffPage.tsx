@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { WorkOrder, WorkOrderCompletionEvidence } from '@/types'
+import type { WorkOrder } from '@/types'
 import SignaturePad from './SignaturePad'
 import RejectPanel from './RejectPanel'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
@@ -11,13 +11,15 @@ import { format } from 'date-fns'
 
 interface SignOffPageProps {
   workOrder: WorkOrder
-  evidence: WorkOrderCompletionEvidence[]
+  workDescription: string | null
+  allPhotos: string[]
+  allDocs: string[]
   token: string
 }
 
 type Step = 'sign' | 'rate'
 
-export default function SignOffPage({ workOrder, evidence, token }: SignOffPageProps) {
+export default function SignOffPage({ workOrder, workDescription, allPhotos, allDocs, token }: SignOffPageProps) {
   const router = useRouter()
   const [step, setStep] = useState<Step>('sign')
   const [signature, setSignature] = useState<string | null>(null)
@@ -33,14 +35,6 @@ export default function SignOffPage({ workOrder, evidence, token }: SignOffPageP
   )
   const asset = workOrder.ppm_schedules?.assets
   const site = asset?.buildings?.sites
-  const ev = evidence[0] ?? null
-
-  // Collect all attachment photos
-  const attachmentPhotos = [
-    ...(ev?.completion_photo_urls ?? []),
-    ...checklist.flatMap((item) => item.photo_urls ?? []),
-  ]
-  const supportingDocs = ev?.supporting_doc_urls ?? []
 
   function handleAdvanceToRating() {
     setError(null)
@@ -120,20 +114,20 @@ export default function SignOffPage({ workOrder, evidence, token }: SignOffPageP
         </div>
 
         {/* ── Work Done ── */}
-        {ev?.work_description && (
+        {workDescription && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 text-sm mb-2">Work Performed</h3>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{ev.work_description}</p>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{workDescription}</p>
           </div>
         )}
 
         {/* ── Attachments ── */}
-        {(attachmentPhotos.length > 0 || supportingDocs.length > 0) && (
+        {(allPhotos.length > 0 || allDocs.length > 0) && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 text-sm mb-3">Attachments</h3>
-            {attachmentPhotos.length > 0 && (
+            {allPhotos.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
-                {attachmentPhotos.map((url, i) => (
+                {allPhotos.map((url, i) => (
                   <a key={i} href={url} target="_blank" rel="noopener noreferrer">
                     <img
                       src={url}
@@ -144,9 +138,9 @@ export default function SignOffPage({ workOrder, evidence, token }: SignOffPageP
                 ))}
               </div>
             )}
-            {supportingDocs.length > 0 && (
+            {allDocs.length > 0 && (
               <ul className="space-y-1">
-                {supportingDocs.map((url, i) => (
+                {allDocs.map((url, i) => (
                   <li key={i}>
                     <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-green-700 hover:underline flex items-center gap-1.5">
                       <FileText className="w-3.5 h-3.5 shrink-0" />

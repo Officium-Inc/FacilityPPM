@@ -76,16 +76,14 @@ export default function LoginForm() {
     setInfo(null)
 
     const supabase = createClient()
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
 
     if (error) {
       setError(error.message)
+      setLoading(false)
     } else {
-      setInfo('Check your email for a password reset link.')
+      router.push(`/reset-password?email=${encodeURIComponent(email)}&step=verify`)
     }
-    setLoading(false)
   }
 
   function switchMode(next: Mode) {

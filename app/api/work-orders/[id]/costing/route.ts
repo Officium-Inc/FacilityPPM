@@ -61,22 +61,29 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq('property_id', wo.property_id)
     .maybeSingle()
 
-  // Upsert costing record (replace if re-submitted)
-  const { error: costingErr } = await service
-    .from('work_order_costings')
-    .upsert({
-      work_order_id: id,
-      labour_hours: labourHours,
-      labour_rate: labourRate,
-      materials_total: materialsTotal,
-      subcontractor_total: subcontractorTotal,
-      line_items: lineItems,
-      notes: notes?.trim() ?? null,
-      submitted_by_id: engineer?.id ?? null,
-      submitted_at: new Date().toISOString(),
-    }, { onConflict: 'work_order_id' })
+  const costingPayload = {
+    labour_hours: labourHours,
+    labour_rate: labourRate,
+    materials_total: materialsTotal,
+    subcontractor_total: subcontractorTotal,
+    line_items: lineItems,
+    notes: notes?.trim() ?? null,
+    submitted_by_id: engineer?.id ?? null,
+    submitted_at: new Date().toISOString(),
+  }
 
-  if (costingErr) return NextResponse.json({ error: costingErr.message }, { status: 500 })
+  // Try INSERT first; fall back to UPDATE if a record already exists
+  const { error: insertErr } = await service
+    .from('work_order_costings')
+    .insert({ work_order_id: id, ...costingPayload })
+
+  if (insertErr) {
+    const { error: updateErr } = await service
+      .from('work_order_costings')
+      .update(costingPayload)
+      .eq('work_order_id', id)
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+  }
 
   // Generate costing approval token (7 day expiry)
   const costingToken = crypto.randomUUID()
