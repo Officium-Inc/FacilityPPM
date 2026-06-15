@@ -80,10 +80,10 @@ export default function LoginForm() {
 
     if (error) {
       setError(error.message)
+      setLoading(false)
     } else {
-      setInfo('Check your email for a verification code, then visit the reset password page.')
+      router.push(`/reset-password?email=${encodeURIComponent(email)}&step=verify`)
     }
-    setLoading(false)
   }
 
   function switchMode(next: Mode) {

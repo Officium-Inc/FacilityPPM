@@ -1,15 +1,18 @@
 ﻿'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 type Step = 'request' | 'verify'
 
 export default function ResetPasswordForm() {
   const router = useRouter()
-  const [step, setStep] = useState<Step>('request')
-  const [email, setEmail] = useState('')
+  const searchParams = useSearchParams()
+  const [step, setStep] = useState<Step>(
+    searchParams.get('step') === 'verify' ? 'verify' : 'request'
+  )
+  const [email, setEmail] = useState(searchParams.get('email') ?? '')
   const [otp, setOtp] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -89,7 +92,7 @@ export default function ResetPasswordForm() {
             <>
               <h2 className="text-lg font-semibold text-gray-900 mb-1">Reset your password</h2>
               <p className="text-sm text-gray-500 mb-6">
-                Enter your email and we&apos;ll send you a 6-digit verification code.
+                Enter your email and we&apos;ll send you an 8-digit verification code.
               </p>
               <form onSubmit={handleRequestOtp} className="space-y-4">
                 <div>
@@ -146,11 +149,11 @@ export default function ResetPasswordForm() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     required
-                    maxLength={6}
+                    maxLength={8}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="000000"
+                    placeholder="00000000"
                   />
                 </div>
                 <div>
@@ -191,7 +194,7 @@ export default function ResetPasswordForm() {
                 )}
                 <button
                   type="submit"
-                  disabled={loading || otp.length < 6}
+                  disabled={loading || otp.length < 8}
                   className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >
                   {loading ? 'Verifyingâ€¦' : 'Set new password'}
