@@ -11,17 +11,42 @@ export default function ResetPasswordForm() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [ready, setReady] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Supabase sets the session from the URL hash automatically via the client.
-    // We just need to wait for the auth state to resolve.
+    // Check URL hash/search params for errors (e.g. expired OTP from Supabase redirect)
+    const hash = window.location.hash
+    const search = window.location.search
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : search)
+    const errCode = params.get('error_code') ?? new URLSearchParams(search).get('error_code')
+    const errDesc = params.get('error_description') ?? new URLSearchParams(search).get('error_description')
+
+    if (errCode) {
+      const message =
+        errCode === 'otp_expired'
+          ? 'This password reset link has expired. Please request a new one.'
+          : (errDesc?.replace(/\+/g, ' ') ?? 'Invalid or expired reset link.')
+      setLinkError(message)
+      return
+    }
+
+    // Wait for Supabase to fire PASSWORD_RECOVERY from the hash token
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setReady(true)
       }
     })
-    return () => subscription.unsubscribe()
+
+    // Fallback: if no event fires within 5s, show an error
+    const timeout = setTimeout(() => {
+      setLinkError('Could not validate reset link. Please request a new one.')
+    }, 5000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,8 +90,26 @@ export default function ResetPasswordForm() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-2">Set new password</h2>
 
-          {!ready ? (
-            <p className="text-sm text-gray-500 mt-4">Validating reset link…</p>
+          {linkError ? (
+            <div className="mt-4 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                {linkError}
+              </div>
+              <button
+                onClick={() => router.push('/login')}
+                className="w-full py-2.5 px-4 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors"
+              >
+                Back to Login
+              </button>
+            </div>
+          ) : !ready ? (
+            <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+              <svg className="w-4 h-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Validating reset link…
+            </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4 mt-6">
               <div>
