@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
 import { sendCostingApprovalConfirmationEmail } from '@/lib/email'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     void recordHash // used for future PDF hash
+    await syncTenant360WorkOrder(wo.id)
 
   } else {
     // Rejected — return to costing stage for revision

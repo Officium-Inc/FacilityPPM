@@ -5,6 +5,7 @@ import { generateRecordHash } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -91,6 +92,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch {
     // PDF generation failure is non-fatal
   }
+
+  await syncTenant360WorkOrder(id)
 
   return NextResponse.json({ success: true })
 }
