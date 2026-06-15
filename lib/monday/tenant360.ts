@@ -494,13 +494,14 @@ async function renameMondayItem(client: MondayClient, config: PropertyMondayConf
   itemId: string
   itemName: string
 }) {
-  const data = await client.graphql<{ change_item_name: MondayItemRef }>(
+  const data = await client.graphql<{ change_simple_column_value: MondayItemRef }>(
     `
       mutation RenamePropertyMondayItem($boardId: ID!, $itemId: ID!, $itemName: String!) {
-        change_item_name(
+        change_simple_column_value(
           board_id: $boardId,
           item_id: $itemId,
-          item_name: $itemName
+          column_id: "name",
+          value: $itemName
         ) {
           id
           name
@@ -515,7 +516,7 @@ async function renameMondayItem(client: MondayClient, config: PropertyMondayConf
       itemName: input.itemName,
     }
   )
-  return data.change_item_name
+  return data.change_simple_column_value
 }
 
 async function moveMondayItem(client: MondayClient, input: { itemId: string; groupId: string }) {
