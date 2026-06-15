@@ -6,7 +6,7 @@ const VERSION = 'v1'
 function encryptionKey() {
   const secret = process.env.MONDAY_CREDENTIAL_ENCRYPTION_KEY?.trim()
   if (!secret || secret.length < 32) {
-    throw new Error('Monday token encryption is not configured. Add MONDAY_CREDENTIAL_ENCRYPTION_KEY to .env.local with at least 32 characters, then restart the app.')
+    throw new Error('Monday token encryption is not configured. Set MONDAY_CREDENTIAL_ENCRYPTION_KEY in the server environment with at least 32 characters, then redeploy or restart the app.')
   }
   return crypto.createHash('sha256').update(secret).digest()
 }
