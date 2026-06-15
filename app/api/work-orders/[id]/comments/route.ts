@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { sendMentionEmail } from '@/lib/email'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -38,15 +39,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const service = await createServiceClient()
 
   // Resolve author name + role from engineer record
-  const { data: engineer } = await service
+  const { data: authorEngineer } = await service
     .from('engineers')
-    .select('full_name, roles(name)')
+    .select('id, full_name, roles(name)')
     .eq('user_id', user.id)
     .eq('property_id', propertyId)
     .maybeSingle()
 
-  const authorName = engineer?.full_name ?? (user.email ?? 'Unknown')
-  const rawRole = engineer?.roles
+  const authorName = authorEngineer?.full_name ?? (user.email ?? 'Unknown')
+  const rawRole = authorEngineer?.roles
   const roleName = Array.isArray(rawRole)
     ? (rawRole[0] as { name: string } | undefined)?.name ?? 'admin'
     : (rawRole as unknown as { name: string } | null)?.name ?? 'admin'
@@ -60,5 +61,77 @@ export async function POST(req: NextRequest, { params }: Params) {
   })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // ── Parse @mentions and fire notifications + emails ────────────────────────
+  // Extract @Name mentions (matches @FirstName or @First Last up to 40 chars)
+  const mentionPattern = /@([A-Za-z][A-Za-z0-9 ]{0,38}?)(?=[^A-Za-z0-9]|$)/g
+  const mentionedNames = [...new Set(
+    [...message.trim().matchAll(mentionPattern)].map((m) => m[1].trim().toLowerCase())
+  )]
+
+  if (mentionedNames.length > 0) {
+    // Fetch all active engineers in this property (excluding the author)
+    const { data: allEngineers } = await service
+      .from('engineers')
+      .select('id, full_name, email')
+      .eq('property_id', propertyId)
+      .eq('is_active', true)
+      .neq('id', authorEngineer?.id ?? '')
+
+    if (allEngineers && allEngineers.length > 0) {
+      // Fetch the WO to build a link
+      const { data: wo } = await service
+        .from('work_orders')
+        .select('wo_number, properties(slug)')
+        .eq('id', id)
+        .single()
+
+      const propertySlug = (wo?.properties as { slug: string } | { slug: string }[] | null)
+      const slug = Array.isArray(propertySlug) ? propertySlug[0]?.slug : propertySlug?.slug
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+      const woLink = slug ? `${appUrl}/${slug}/work-orders/${id}` : appUrl
+      const woNumber = wo?.wo_number ?? id
+
+      const mentionedEngineers = allEngineers.filter((e) =>
+        mentionedNames.some((mn) => e.full_name.toLowerCase().includes(mn))
+      )
+
+      // Fetch property name for email subject
+      const { data: prop } = await service
+        .from('properties')
+        .select('name')
+        .eq('id', propertyId)
+        .single()
+      const propertyName = prop?.name ?? 'Property'
+
+      // Create in-app notifications + send emails
+      const allTasks = mentionedEngineers.map(async (e) => {
+        await service.from('notifications').insert({
+          property_id: propertyId,
+          engineer_id: e.id,
+          type: 'mention',
+          title: `${authorName} mentioned you`,
+          message: `In ${woNumber}: ${message.trim().slice(0, 120)}${message.trim().length > 120 ? '…' : ''}`,
+          link: woLink,
+        })
+
+        if (e.email) {
+          await sendMentionEmail({
+            toEmail: e.email,
+            toName: e.full_name,
+            fromName: authorName,
+            woNumber,
+            propertyName,
+            message: message.trim(),
+            woLink,
+          }).catch(() => { /* non-fatal */ })
+        }
+      })
+
+      void Promise.allSettled(allTasks)
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
+

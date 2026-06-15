@@ -5,7 +5,7 @@ import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
 import WorkflowTimeline from '@/components/work-orders/WorkflowTimeline'
 import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
-import type { WoComment } from '@/components/work-orders/WoCommentsSection'
+import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
 import { ArrowLeft, FileText, Ban, FileDown, Image as ImageIcon } from 'lucide-react'
@@ -74,6 +74,10 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
   const engineers = (engineersList ?? []) as unknown as Engineer[]
   const comments = (rawComments ?? []) as WoComment[]
+  const mentionables: MentionableEngineer[] = (engineersList ?? []).map((e) => ({
+    id: e.id,
+    full_name: (e as { id: string; full_name: string }).full_name,
+  }))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -332,7 +336,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
           })()}
 
           {/* ── Comments ────────────────────────────────────────── */}
-          <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} />
+          <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} mentionables={mentionables} />
         </div>
 
         <div>

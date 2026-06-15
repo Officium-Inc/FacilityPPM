@@ -232,6 +232,55 @@ export async function sendCostingApprovalConfirmationEmail({
   })
 }
 
+export async function sendMentionEmail({
+  toEmail,
+  toName,
+  fromName,
+  woNumber,
+  propertyName,
+  message,
+  woLink,
+}: {
+  toEmail: string
+  toName: string
+  fromName: string
+  woNumber: string
+  propertyName: string
+  message: string
+  woLink: string
+}) {
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: `${fromName} mentioned you in ${woNumber} — ${propertyName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #1d4ed8; padding: 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM — You were mentioned</p>
+        </div>
+        <div style="padding: 32px 24px; background: #f9fafb;">
+          <p>Hi <strong>${toName}</strong>,</p>
+          <p><strong>${fromName}</strong> mentioned you in a comment on work order <strong>${woNumber}</strong> (${propertyName}):</p>
+          <div style="background: white; border-left: 4px solid #2563eb; padding: 12px 16px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+            <p style="margin: 0; color: #374151; font-size: 15px;">${message.replace(/\n/g, '<br>')}</p>
+          </div>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${woLink}" style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
+              View Work Order
+            </a>
+          </div>
+          <p style="color: #6b7280; font-size: 14px;">You can reply directly in the FacilityPPM portal.</p>
+        </div>
+        <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+        </div>
+      </div>
+    `,
+  })
+}
+
 export async function sendCostingApprovalEmail({
   toEmail,
   toName,
