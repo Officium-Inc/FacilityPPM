@@ -16,20 +16,30 @@ export default async function ServiceRequestsPage({ params }: Props) {
 
   const service = await createServiceClient()
 
-  // Fetch fault reports for this property joined through work_orders
-  const { data: reports } = await service
-    .from('work_order_reports')
-    .select(`
-      id,
-      fault_description,
-      location_notes,
-      reported_by_name,
-      urgency,
-      created_at,
-      work_orders!inner(id, wo_number, status, property_id)
-    `)
-    .eq('work_orders.property_id', propertyId ?? '')
-    .order('created_at', { ascending: false })
+  // Get all WO IDs for this property first, then fetch their fault reports
+  const { data: propertyWOs } = await service
+    .from('work_orders')
+    .select('id')
+    .eq('property_id', propertyId ?? '')
+
+  const woIds = (propertyWOs ?? []).map((w) => w.id)
+
+  const { data: reports } = woIds.length > 0
+    ? await service
+        .from('work_order_reports')
+        .select(`
+          id,
+          fault_description,
+          location_notes,
+          reported_by_name,
+          urgency,
+          created_at,
+          work_order_id,
+          work_orders(id, wo_number, status)
+        `)
+        .in('work_order_id', woIds)
+        .order('created_at', { ascending: false })
+    : { data: [] }
 
   const rows = ((reports ?? []) as unknown as Array<{
     id: string
@@ -38,8 +48,9 @@ export default async function ServiceRequestsPage({ params }: Props) {
     reported_by_name: string
     urgency: string
     created_at: string
-    work_orders: { id: string; wo_number: string; status: string; property_id: string }
-  }>)
+    work_order_id: string
+    work_orders: { id: string; wo_number: string; status: string } | null
+  }>).filter((r) => r.work_orders !== null)
 
   const urgencyColour: Record<string, string> = {
     critical: 'bg-red-100 text-red-700',
@@ -93,10 +104,10 @@ export default async function ServiceRequestsPage({ params }: Props) {
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3">
                       <Link
-                        href={`/${slug}/work-orders/${r.work_orders.id}`}
+                        href={`/${slug}/work-orders/${r.work_orders!.id}`}
                         className="font-medium text-green-700 hover:underline"
                       >
-                        {r.work_orders.wo_number}
+                        {r.work_orders!.wo_number}
                       </Link>
                     </td>
                     <td className="px-5 py-3 text-gray-700 max-w-xs truncate">{r.fault_description}</td>
@@ -108,7 +119,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <StatusBadge status={r.work_orders.status as Parameters<typeof StatusBadge>[0]['status']} />
+                      <StatusBadge status={r.work_orders!.status as Parameters<typeof StatusBadge>[0]['status']} />
                     </td>
                     <td className="px-5 py-3 text-gray-500">
                       {format(new Date(r.created_at), 'dd MMM yyyy')}

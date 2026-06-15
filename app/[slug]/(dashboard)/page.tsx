@@ -37,7 +37,7 @@ export default async function DashboardPage({ params }: Props) {
       .eq('status', 'active'),
     supabase
       .from('engineers')
-      .select('id, full_name, is_active')
+      .select('id, full_name, is_active, roles(name)')
       .eq('property_id', propertyId)
       .eq('is_active', true),
     supabase
@@ -61,6 +61,11 @@ export default async function DashboardPage({ params }: Props) {
       wo.status !== 'cancelled'
   ).length
 
+  const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: { name: string } | null }>
+  const serviceGroupEngineers = allEngineers.filter(
+    (e) => (e.roles as { name: string } | null)?.name?.toLowerCase() === 'service_group'
+  )
+
   const engineerWorkloadMap: Record<string, number> = {}
   wos.forEach((wo) => {
     if (wo.engineer_id && wo.engineers) {
@@ -69,7 +74,7 @@ export default async function DashboardPage({ params }: Props) {
     }
   })
   const maxWOs = Math.max(...Object.values(engineerWorkloadMap), 1)
-  const engineerWorkload = (engineers ?? []).map((eng) => ({
+  const engineerWorkload = serviceGroupEngineers.map((eng) => ({
     full_name: eng.full_name,
     workload: Math.round(((engineerWorkloadMap[eng.full_name] ?? 0) / maxWOs) * 100),
   }))
@@ -108,9 +113,9 @@ export default async function DashboardPage({ params }: Props) {
           color="yellow"
         />
         <KpiCard
-          title="Active Engineers"
-          value={engineers?.length ?? 0}
-          subtitle="On roster"
+          title="Active Service Team"
+          value={serviceGroupEngineers.length}
+          subtitle="Service group members"
           icon={Users}
           color="blue"
         />

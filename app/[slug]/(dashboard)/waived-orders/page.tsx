@@ -1,6 +1,9 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Ban } from 'lucide-react'
+import Link from 'next/link'
+import { format } from 'date-fns'
+import WaivedOrdersClient from './WaivedOrdersClient'
+import type { WorkOrder } from '@/types'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -34,27 +37,23 @@ export default async function WaivedOrdersPage({ params }: Props) {
     redirect(`/${slug}`)
   }
 
+  const service = await createServiceClient()
+
+  const { data: workOrders } = await service
+    .from('work_orders')
+    .select('id, wo_number, status, priority, type, created_at, is_cost_waived, cost_waived_at, cost_waived_by_name, cost_waived_reason, engineers!work_orders_engineer_id_fkey(full_name)')
+    .eq('property_id', propertyId ?? '')
+    .order('created_at', { ascending: false })
+
+  const wos = (workOrders ?? []) as unknown as Array<WorkOrder & { engineers: { full_name: string } | null }>
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Waived Orders</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Cost-waived work orders managed by Property Manager</p>
+        <p className="text-sm text-gray-500 mt-0.5">All work orders — Property Manager can waive associated costs</p>
       </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 mb-4">
-          <Ban className="w-7 h-7 text-amber-600" />
-        </div>
-        <h3 className="text-base font-semibold text-gray-900 mb-2">Under Development</h3>
-        <p className="text-sm text-gray-500 max-w-md mx-auto">
-          The Waived Orders module is coming soon. Property Managers will be able to select
-          work orders and waive associated costs, subject to approval workflow.
-        </p>
-        <span className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-          <Ban className="w-3 h-3" />
-          Coming Soon
-        </span>
-      </div>
+      <WaivedOrdersClient workOrders={wos} slug={slug} />
     </div>
   )
 }

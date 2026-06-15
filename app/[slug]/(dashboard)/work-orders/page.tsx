@@ -4,7 +4,7 @@ import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
 import { format } from 'date-fns'
 import type { WorkOrder, Priority } from '@/types'
-import { Plus } from 'lucide-react'
+import { Plus, Ban } from 'lucide-react'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -118,7 +118,14 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
                       <PriorityBadge priority={wo.priority} />
                     </td>
                     <td className="px-5 py-3">
-                      <StatusBadge status={wo.status} />
+                      <div className="flex flex-col gap-1">
+                        <StatusBadge status={wo.status} />
+                        {wo.is_cost_waived && (
+                          <span className="inline-flex items-center gap-1 text-xs text-purple-700 font-medium">
+                            <Ban className="w-3 h-3" /> Cost Waived
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-gray-600">
                       {wo.engineers?.full_name ?? '—'}

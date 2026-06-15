@@ -42,8 +42,11 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
 
   const [verifyNotes, setVerifyNotes] = useState('')
 
+  const [assignInspectionTeamId, setAssignInspectionTeamId] = useState('')
+
   const { status } = workOrder
   const tenants = engineers.filter(e => e.roles?.name?.toLowerCase() === 'tenant' && e.is_active)
+  const serviceGroup = engineers.filter(e => e.roles?.name?.toLowerCase() === 'service_group' && e.is_active)
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -110,7 +113,33 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       )}
 
       {status === 'new_report' && (
-        <ActionButton onClick={() => handleStatusChange('inspecting')} loading={loading} icon={RefreshCw} label="Start Inspection" />
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Assign Inspection Team</p>
+          {serviceGroup.length === 0 ? (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No service group members found. Add a member with the &ldquo;Service Group&rdquo; role first.</p>
+          ) : (
+            <select value={assignInspectionTeamId} onChange={(e) => setAssignInspectionTeamId(e.target.value)} className={INPUT}>
+              <option value="">Select service team member...</option>
+              {serviceGroup.map((eng) => (
+                <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+              ))}
+            </select>
+          )}
+          <ActionButton
+            onClick={async () => {
+              if (!assignInspectionTeamId) { setMessage({ type: 'error', text: 'Please select a service team member.' }); return }
+              setLoading(true); setMessage(null)
+              const supabase = createClient()
+              const { error } = await supabase.from('work_orders').update({ engineer_id: assignInspectionTeamId, status: 'inspecting', updated_at: new Date().toISOString() }).eq('id', workOrder.id)
+              if (error) setMessage({ type: 'error', text: error.message })
+              else router.refresh()
+              setLoading(false)
+            }}
+            loading={loading}
+            icon={UserCheck}
+            label="Assign & Start Inspection"
+          />
+        </div>
       )}
 
       {status === 'inspecting' && (
@@ -193,8 +222,11 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
             </div>
           )}
           <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className={INPUT}>
-            <option value="">Select engineer…</option>
-            {engineers.map((eng) => (
+            <option value="">Select service team member...</option>
+            {serviceGroup.length === 0 && (
+              <option disabled>No service group members found</option>
+            )}
+            {serviceGroup.map((eng) => (
               <option key={eng.id} value={eng.id}>{eng.full_name}</option>
             ))}
           </select>
