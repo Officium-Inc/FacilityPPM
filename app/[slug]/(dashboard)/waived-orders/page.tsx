@@ -39,10 +39,12 @@ export default async function WaivedOrdersPage({ params }: Props) {
 
   const service = await createServiceClient()
 
+  // Only mirror work orders where the tenant has approved the cost (costing_approved_at is set)
   const { data: workOrders } = await service
     .from('work_orders')
     .select('id, wo_number, status, priority, type, created_at, is_cost_waived, cost_waived_at, cost_waived_by_name, cost_waived_reason, engineers!work_orders_engineer_id_fkey(full_name)')
     .eq('property_id', propertyId ?? '')
+    .not('costing_approved_at', 'is', null)
     .order('created_at', { ascending: false })
 
   const wos = (workOrders ?? []) as unknown as Array<WorkOrder & { engineers: { full_name: string } | null }>
@@ -51,7 +53,7 @@ export default async function WaivedOrdersPage({ params }: Props) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Waived Orders</h2>
-        <p className="text-sm text-gray-500 mt-0.5">All work orders — Property Manager can waive associated costs</p>
+        <p className="text-sm text-gray-500 mt-0.5">Work orders with tenant-approved costs — Property Manager can waive associated costs</p>
       </div>
       <WaivedOrdersClient workOrders={wos} slug={slug} />
     </div>
