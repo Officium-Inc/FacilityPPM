@@ -288,7 +288,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
       const data = await fetch('/api/integrations/monday/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({ limit: 50, includeSynced: true }),
       }).then((res) => readJson<SyncRun>(res))
       const synced = data.results.filter((item) => item.status === 'synced').length
       const failed = data.results.filter((item) => item.status === 'failed').length

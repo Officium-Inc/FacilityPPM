@@ -128,7 +128,7 @@ export async function PUT(request: NextRequest) {
 
     const row = await getMondayIntegrationRow(service, propertyId)
     const sync = enabled
-      ? await syncMondayWorkOrdersForProperty(service, propertyId, { limit: 50, includeSynced: false })
+      ? await syncMondayWorkOrdersForProperty(service, propertyId, { limit: 50, includeSynced: true })
       : { count: 0, results: [] }
 
     return NextResponse.json({

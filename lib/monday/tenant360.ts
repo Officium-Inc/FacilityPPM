@@ -577,6 +577,44 @@ async function uploadMissingAttachments(client: MondayClient, input: {
   return assets
 }
 
+function isLikelyMissingMondayItem(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return [
+    'item not found',
+    'item_id',
+    'invalid item',
+    'resource not found',
+    'does not exist',
+    'not found',
+  ].some((text) => message.includes(text))
+}
+
+async function resolveMondayItem(client: MondayClient, config: PropertyMondayConfig, wo: WorkOrderSyncRow, input: {
+  groupId: string | null
+  columnValues: Record<string, unknown>
+  findExisting: boolean
+}) {
+  const foundByName = input.findExisting ? await findMondayItemByName(client, config.boardId, wo.wo_number) : null
+  const itemId = foundByName?.id ?? wo.monday_item_id
+
+  if (itemId) {
+    try {
+      return await updateMondayItem(client, config, {
+        itemId,
+        columnValues: input.columnValues,
+      })
+    } catch (error) {
+      if (foundByName || !isLikelyMissingMondayItem(error)) throw error
+    }
+  }
+
+  return createMondayItem(client, config, {
+    itemName: wo.wo_number,
+    groupId: input.groupId,
+    columnValues: input.columnValues,
+  })
+}
+
 export async function validateMondayToken(apiToken: string, apiVersion = DEFAULT_MONDAY_API_VERSION) {
   const client = new MondayClient({ apiToken, apiVersion })
   const data = await client.graphql<{ me: { id: string; name: string } }>(
@@ -671,33 +709,18 @@ export async function syncTenant360WorkOrder(workOrderId: string, options: { fin
     const groupId = isWaived ? config.waivedGroupId : config.billedGroupId
     const columnValues = buildColumnValues(wo, config.fieldMappings)
 
-    if (wo.monday_item_id) {
-      mondayItem = await updateMondayItem(client, config, {
-        itemId: wo.monday_item_id,
-        columnValues,
-      })
-    } else {
-      mondayItem = options.findExisting === false ? null : await findMondayItemByName(client, config.boardId, wo.wo_number)
-      if (mondayItem) {
-        mondayItem = await updateMondayItem(client, config, {
-          itemId: mondayItem.id,
-          columnValues,
-        })
-      } else {
-        mondayItem = await createMondayItem(client, config, {
-          itemName: wo.wo_number,
-          groupId,
-          columnValues,
-        })
-      }
-    }
+    mondayItem = await resolveMondayItem(client, config, wo, {
+      groupId,
+      columnValues,
+      findExisting: options.findExisting !== false,
+    })
 
     if (groupId && mondayItem.group?.id !== groupId) {
       await moveMondayItem(client, { itemId: mondayItem.id, groupId })
     }
 
     const fileMapping = filesMapping(config.fieldMappings)
-    let mondayFileAssets = wo.monday_file_assets ?? {}
+    let mondayFileAssets = mondayItem.id === wo.monday_item_id ? wo.monday_file_assets ?? {} : {}
     if (fileMapping?.columnId) {
       mondayFileAssets = await uploadMissingAttachments(client, {
         itemId: mondayItem.id,
