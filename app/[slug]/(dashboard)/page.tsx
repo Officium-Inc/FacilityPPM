@@ -68,7 +68,7 @@ export default async function DashboardPage({ params }: Props) {
     return (((roles as { name?: string })?.name) ?? '').toLowerCase()
   }
   const serviceGroupEngineers = allEngineers.filter(
-    (e) => getEngRoleName(e.roles) === 'service_group'
+    (e) => getEngRoleName(e.roles) === 'service group'
   )
 
   const engineerWorkloadMap: Record<string, number> = {}
