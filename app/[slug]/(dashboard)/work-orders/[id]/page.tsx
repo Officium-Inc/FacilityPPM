@@ -41,11 +41,18 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   if (woError) console.error('[WO detail] query error:', woError)
   if (!wo) notFound()
 
-  // Fetch approval trail + engineers list (service client for broader access)
-  const [{ data: trailData }, { data: engineersList }] = await Promise.all([
+  // Fetch approval trail, engineers list, and schedules (service client for broader access)
+  const [{ data: trailData }, { data: engineersList }, { data: rawSchedules }] = await Promise.all([
     service.from('approval_trail').select('*').eq('work_order_id', id).order('created_at'),
     service.from('engineers').select('id, full_name, email, is_active, roles(id, name)').eq('property_id', wo.property_id).eq('is_active', true),
+    service.from('ppm_schedules').select('id, title, assets(id, name)').eq('is_active', true).order('title'),
   ])
+
+  const schedules = (rawSchedules ?? []).map((s) => ({
+    id: s.id as string,
+    title: s.title as string,
+    assets: Array.isArray(s.assets) ? (s.assets[0] as { id: string; name: string } | undefined) ?? null : (s.assets as { id: string; name: string } | null),
+  }))
 
   const workOrder = wo as WorkOrder
   const asset = workOrder.ppm_schedules?.assets
@@ -254,7 +261,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
         </div>
 
         <div>
-          <WorkOrderActions workOrder={workOrder} engineers={engineers} slug={slug} />
+          <WorkOrderActions workOrder={workOrder} engineers={engineers} schedules={schedules} slug={slug} />
         </div>
       </div>
     </div>

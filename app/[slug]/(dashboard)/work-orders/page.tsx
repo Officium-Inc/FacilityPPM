@@ -1,10 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
 import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Priority } from '@/types'
-import { Plus, Ban } from 'lucide-react'
+import { Ban } from 'lucide-react'
+import NewWorkOrderModal from './NewWorkOrderModal'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -29,19 +30,39 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
   const { slug } = await params
   const { q = '', status = '', priority = '', type = '' } = await searchParams
   const supabase = await createClient()
+  const service = await createServiceClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   const propertyId = user?.app_metadata?.property_id as string | undefined
 
-  const { data: workOrders } = await supabase
-    .from('work_orders')
-    .select(`
-      *,
-      engineers!work_orders_engineer_id_fkey(id, full_name),
-      ppm_schedules(id, title, assets(id, name, buildings(id, name, sites(id, name))))
-    `)
-    .eq('property_id', propertyId ?? '')
-    .order('scheduled_date', { ascending: true })
+  const [{ data: workOrders }, { data: rawSchedules }, { data: engineersList }] = await Promise.all([
+    supabase
+      .from('work_orders')
+      .select(`
+        *,
+        engineers!work_orders_engineer_id_fkey(id, full_name),
+        ppm_schedules(id, title, assets(id, name, buildings(id, name, sites(id, name))))
+      `)
+      .eq('property_id', propertyId ?? '')
+      .order('scheduled_date', { ascending: true }),
+    service
+      .from('ppm_schedules')
+      .select('id, title, assets(id, name)')
+      .eq('is_active', true)
+      .order('title'),
+    service
+      .from('engineers')
+      .select('id, full_name')
+      .eq('property_id', propertyId ?? '')
+      .eq('is_active', true)
+      .order('full_name'),
+  ])
+
+  const schedules = (rawSchedules ?? []).map((s) => ({
+    id: s.id as string,
+    title: s.title as string,
+    assets: Array.isArray(s.assets) ? (s.assets[0] as { id: string; name: string } | undefined) ?? null : (s.assets as { id: string; name: string } | null),
+  }))
 
   const all = (workOrders as WorkOrder[]) ?? []
 
@@ -66,13 +87,7 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Work Orders</h2>
           <p className="text-sm text-gray-500 mt-0.5">{all.length} total</p>
         </div>
-        <Link
-          href={`/${slug}/work-orders/new`}
-          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Work Order
-        </Link>
+        <NewWorkOrderModal slug={slug} schedules={schedules} engineers={engineersList ?? []} />
       </div>
 
       <WorkOrderFilters total={all.length} filtered={wos.length} />
