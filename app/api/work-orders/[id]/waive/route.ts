@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  await syncTenant360WorkOrder(id)
+
   return NextResponse.json({ success: true })
 }
 
@@ -78,6 +81,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     .eq('id', id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await syncTenant360WorkOrder(id)
 
   return NextResponse.json({ success: true })
 }

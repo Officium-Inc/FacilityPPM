@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendSignOffEmail } from '@/lib/email'
 import { getSignOffExpiry } from '@/lib/token'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -113,6 +114,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch {
     // Non-fatal — token was saved, they can resend
   }
+
+  await syncTenant360WorkOrder(id)
 
   return NextResponse.json({ success: true })
 }

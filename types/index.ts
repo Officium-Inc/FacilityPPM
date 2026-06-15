@@ -123,6 +123,8 @@ export interface WorkOrder {
   scheduled_date: string | null
   completed_date: string | null
   notes: string | null
+  tenant_name: string | null
+  tenant_email: string | null
   priority: Priority
   sign_off_token: string | null
   sign_off_expires_at: string | null
@@ -155,6 +157,13 @@ export interface WorkOrder {
   cost_waived_reason: string | null
   // Audit fields
   original_wo_number: string | null
+  // Monday Tenant 360 sync fields
+  monday_item_id: string | null
+  monday_item_url: string | null
+  monday_synced_at: string | null
+  monday_sync_status: 'pending' | 'synced' | 'failed' | 'skipped'
+  monday_sync_error: string | null
+  monday_file_assets: Record<string, { assetId: string; name: string; url: string; uploadedAt: string }>
   created_at: string
   updated_at: string
   engineers?: Engineer | null

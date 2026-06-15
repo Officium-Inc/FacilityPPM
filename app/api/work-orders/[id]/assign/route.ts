@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -78,6 +79,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       .update({ original_wo_number: wo.wo_number } as Record<string, unknown>)
       .eq('id', id)
   }
+
+  await syncTenant360WorkOrder(id, { findExisting: true })
 
   return NextResponse.json({ success: true })
 }

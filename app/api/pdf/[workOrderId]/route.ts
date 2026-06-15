@@ -5,6 +5,7 @@ import { generateRecordHash } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ workOrderId: string }>
@@ -73,6 +74,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       .from('work_orders')
       .update({ pdf_url: publicUrl, updated_at: new Date().toISOString() })
       .eq('id', workOrderId)
+
+    await syncTenant360WorkOrder(workOrderId)
   }
 
   return new NextResponse(new Uint8Array(buffer), {

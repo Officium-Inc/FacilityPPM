@@ -1,14 +1,19 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import Link from 'next/link'
 import EngineersClient from '../engineers/EngineersClient'
+import ApiKeysClient from './ApiKeysClient'
 
 interface Props {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ tab?: string }>
 }
 
 const MANAGE_ROLES = ['admin', 'property_manager']
 
-export default async function SettingsPage({ params }: Props) {
+export default async function SettingsPage({ params, searchParams }: Props) {
   const { slug } = await params
+  const { tab = 'members' } = await searchParams
+  const activeTab = tab === 'api-keys' ? 'api-keys' : 'members'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const propertyId = user?.app_metadata?.property_id as string | undefined
@@ -30,7 +35,7 @@ export default async function SettingsPage({ params }: Props) {
     userRole = roleData?.name ?? 'viewer'
   }
 
-  const canManageMembers = MANAGE_ROLES.includes(userRole)
+  const canManageSettings = MANAGE_ROLES.includes(userRole)
 
   const [{ data: engineers }, { data: roles }, { data: pendingInvitations }] = await Promise.all([
     service
@@ -52,24 +57,45 @@ export default async function SettingsPage({ params }: Props) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Settings</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Manage property members and roles</p>
+        <p className="text-sm text-gray-500 mt-0.5">Manage property members and integrations</p>
       </div>
 
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex gap-6">
-          <span className="border-b-2 border-green-600 pb-3 text-sm font-medium text-green-700">
+          <Link
+            href={`/${slug}/settings`}
+            className={`pb-3 text-sm font-medium ${
+              activeTab === 'members'
+                ? 'border-b-2 border-green-600 text-green-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
             Members
-          </span>
+          </Link>
+          <Link
+            href={`/${slug}/settings?tab=api-keys`}
+            className={`pb-3 text-sm font-medium ${
+              activeTab === 'api-keys'
+                ? 'border-b-2 border-green-600 text-green-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            API Keys
+          </Link>
         </nav>
       </div>
 
-      <EngineersClient
-        slug={slug}
-        engineers={engineers ?? []}
-        roles={roles ?? []}
-        invitations={pendingInvitations ?? []}
-        canManageMembers={canManageMembers}
-      />
+      {activeTab === 'api-keys' ? (
+        <ApiKeysClient canManageIntegrations={canManageSettings} />
+      ) : (
+        <EngineersClient
+          slug={slug}
+          engineers={engineers ?? []}
+          roles={roles ?? []}
+          invitations={pendingInvitations ?? []}
+          canManageMembers={canManageSettings}
+        />
+      )}
     </div>
   )
 }
