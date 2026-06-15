@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { format } from 'date-fns'
 import { Ban, RotateCcw } from 'lucide-react'
 import StatusBadge from '@/components/work-orders/StatusBadge'
+import { formatPHT } from '@/lib/utils'
 import type { WorkOrderStatus } from '@/types'
 
 interface WoRow {
@@ -128,14 +128,14 @@ export default function WaivedOrdersClient({ workOrders, slug }: Props) {
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                           <Ban className="w-3 h-3" /> Waived
                         </span>
-                        {state.at && <p className="text-xs text-gray-400 mt-0.5">{format(new Date(state.at), 'dd MMM yyyy')}</p>}
+                        {state.at && <p className="text-xs text-gray-400 mt-0.5">{formatPHT(state.at)}</p>}
                         {state.reason && <p className="text-xs text-gray-500 italic">&ldquo;{state.reason}&rdquo;</p>}
                       </div>
                     ) : (
                       <span className="text-xs text-gray-400">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-gray-500">{format(new Date(wo.created_at), 'dd MMM yyyy')}</td>
+                  <td className="px-5 py-3 text-gray-500">{formatPHT(wo.created_at)}</td>
                   <td className="px-5 py-3">
                     {isWaived ? (
                       <button

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
+import { sendCostingApprovalConfirmationEmail } from '@/lib/email'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, wo_number, status, costing_token_expires_at, costing_approved_at, property_id, engineer_id')
+    .select('id, wo_number, status, costing_token_expires_at, costing_approved_at, property_id, engineer_id, tenant_email, tenant_name')
     .eq('costing_token', token)
     .single()
 
@@ -110,6 +111,32 @@ export async function POST(request: NextRequest, { params }: Params) {
       signature_data: signatureData ?? null,
       ip_address: ip,
     })
+
+    // Send confirmation email to tenant with cost breakdown
+    const tenantEmailAddr = (wo as { tenant_email?: string | null }).tenant_email
+    if (tenantEmailAddr) {
+      const { data: costingRows } = await service
+        .from('work_order_costings')
+        .select('labour_total, materials_total, subcontractor_total, grand_total, notes')
+        .eq('work_order_id', wo.id)
+        .limit(1)
+      const costing = costingRows?.[0] as { labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string | null } | undefined
+      const { data: prop } = await service.from('properties').select('name').eq('id', wo.property_id).single()
+      try {
+        await sendCostingApprovalConfirmationEmail({
+          toEmail: tenantEmailAddr,
+          toName: (wo as { tenant_name?: string | null }).tenant_name ?? tenantName!.trim(),
+          woNumber: wo.wo_number,
+          propertyName: (prop as { name?: string } | null)?.name ?? 'your property',
+          grandTotal: costing?.grand_total ?? 0,
+          labourTotal: costing?.labour_total ?? 0,
+          materialsTotal: costing?.materials_total ?? 0,
+          subcontractorTotal: costing?.subcontractor_total ?? 0,
+          notes: costing?.notes ?? null,
+          approvedAt: now,
+        })
+      } catch { /* non-blocking: don't fail approval if email fails */ }
+    }
 
     void recordHash // used for future PDF hash
 

@@ -4,18 +4,25 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X } from 'lucide-react'
-import { format } from 'date-fns'
+import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight } from 'lucide-react'
+import { formatPHT } from '@/lib/utils'
+
+interface Schedule {
+  id: string
+  title: string
+  assets: { id: string; name: string } | null
+}
 
 interface WorkOrderActionsProps {
   workOrder: WorkOrder
   engineers?: Engineer[]
+  schedules?: Schedule[]
   slug: string
 }
 
 const INPUT = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
 
-export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug }: WorkOrderActionsProps) {
+export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug }: WorkOrderActionsProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -43,6 +50,9 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   const [verifyNotes, setVerifyNotes] = useState('')
 
   const [assignInspectionTeamId, setAssignInspectionTeamId] = useState('')
+  const [assignModalOpen, setAssignModalOpen] = useState(false)
+  const [assignPriority, setAssignPriority] = useState<'critical' | 'high' | 'medium' | 'low'>(workOrder.priority ?? 'medium')
+  const [assignScheduleId, setAssignScheduleId] = useState(workOrder.schedule_id ?? '')
 
   const { status } = workOrder
   const getRoleName = (roles: unknown): string => {
@@ -51,7 +61,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
     return (((roles as { name?: string })?.name) ?? '').toLowerCase()
   }
   const tenants = engineers.filter(e => getRoleName(e.roles) === 'tenant' && e.is_active)
-  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service_group' && e.is_active)
+  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service group' && e.is_active)
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -218,31 +228,163 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       )}
 
       {status === 'assigned' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Assign Engineer</p>
-          {workOrder.costing_approved_by_name && (
-            <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
-              Cost approved by {workOrder.costing_approved_by_name}
-              {workOrder.costing_approved_at && ` on ${format(new Date(workOrder.costing_approved_at), 'dd MMM yyyy')}`}
+        <>
+          {/* Trigger button shown in the Actions card */}
+          <div className="space-y-3">
+            {workOrder.costing_approved_by_name && (
+              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+                Cost approved by {workOrder.costing_approved_by_name}
+                {workOrder.costing_approved_at && ` on ${formatPHT(workOrder.costing_approved_at)}`}
+              </div>
+            )}
+            <button
+              onClick={() => setAssignModalOpen(true)}
+              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+            >
+              <span className="flex items-center gap-2"><UserCheck className="w-4 h-4" /> Assign &amp; Start Work</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Modal */}
+          {assignModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!loading) setAssignModalOpen(false) }} />
+              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">Assign Work Order</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Fill in the details below to assign and start work.</p>
+                  </div>
+                  <button
+                    onClick={() => { if (!loading) setAssignModalOpen(false) }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Form body — mirrors New Work Order form layout */}
+                <div className="px-6 py-5 space-y-5">
+                  {message && (
+                    <div className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {message.text}
+                    </div>
+                  )}
+                  {workOrder.costing_approved_by_name && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+                      Cost approved by {workOrder.costing_approved_by_name}
+                      {workOrder.costing_approved_at && ` on ${formatPHT(workOrder.costing_approved_at)}`}
+                    </div>
+                  )}
+                  {workOrder.wo_number.startsWith('REPT-') && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                      On assignment this report will be converted to a Work Order with a new WO number. Original: <strong>{workOrder.wo_number}</strong>
+                    </div>
+                  )}
+
+                  {/* Row 1: WO Number + Type */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">WO Number</label>
+                      <input
+                        type="text"
+                        value={workOrder.wo_number}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                      <input
+                        type="text"
+                        value={workOrder.type}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 capitalize cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
+
+                  {/* PPM Schedule */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">PPM Schedule (optional)</label>
+                    <select value={assignScheduleId} onChange={(e) => setAssignScheduleId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <option value="">— Select schedule —</option>
+                      {schedules.map((s) => (
+                        <option key={s.id} value={s.id}>{s.title}{s.assets ? ` (${s.assets.name})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Assign Service Team Member */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Assign Service Team Member <span className="text-red-500">*</span></label>
+                    <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <option value="">— Select team member —</option>
+                      {serviceGroup.length === 0 && <option disabled>No service group members found</option>}
+                      {serviceGroup.map((eng) => (
+                        <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Row 2: Priority + Due Date */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                      <select value={assignPriority} onChange={(e) => setAssignPriority(e.target.value as 'critical' | 'high' | 'medium' | 'low')} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                  </div>
+
+                  {/* Assignment Instructions / Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Assignment Instructions</label>
+                    <textarea
+                      value={assignInstructions}
+                      onChange={(e) => setAssignInstructions(e.target.value)}
+                      placeholder="Additional notes or instructions..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setAssignModalOpen(false)}
+                      disabled={loading}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={async () => {
+                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority, scheduleId: assignScheduleId || undefined })
+                        if (ok) setAssignModalOpen(false)
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      {loading ? 'Assigning…' : 'Assign Work Order'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className={INPUT}>
-            <option value="">Select service team member...</option>
-            {serviceGroup.length === 0 && (
-              <option disabled>No service group members found</option>
-            )}
-            {serviceGroup.map((eng) => (
-              <option key={eng.id} value={eng.id}>{eng.full_name}</option>
-            ))}
-          </select>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={INPUT} />
-          <textarea value={assignInstructions} onChange={(e) => setAssignInstructions(e.target.value)} placeholder="Assignment instructions…" rows={2} className={INPUT} />
-          <ActionButton
-            onClick={() => apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions })}
-            loading={loading} icon={UserCheck} label="Confirm Assignment"
-          />
-          <ActionButton onClick={() => handleStatusChange('in_progress')} loading={loading} icon={RefreshCw} label="Skip ? Mark In Progress" variant="secondary" />
-        </div>
+        </>
       )}
 
       {status === 'in_progress' && (
@@ -312,7 +454,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-3 text-sm">
             <p className="font-medium text-teal-800">Signed by tenant</p>
             {workOrder.signed_by_name && <p className="text-teal-700 mt-0.5">{workOrder.signed_by_name}</p>}
-            {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{format(new Date(workOrder.signed_at), 'dd MMM yyyy HH:mm')}</p>}
+            {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{formatPHT(workOrder.signed_at, true)}</p>}
             {workOrder.rating && <p className="text-teal-700 text-xs mt-1">Rating: {'?'.repeat(workOrder.rating)}{'?'.repeat(5 - workOrder.rating)}</p>}
             {workOrder.rating_comment && <p className="text-teal-600 text-xs italic mt-0.5">&ldquo;{workOrder.rating_comment}&rdquo;</p>}
           </div>
@@ -326,7 +468,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
         <div className="space-y-3">
           <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-3 text-sm">
             <p className="font-medium text-green-800">{status === 'completed' ? 'Work Order Completed' : 'Verified by Head Engineer'}</p>
-            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{format(new Date(workOrder.head_engineer_verified_at), 'dd MMM yyyy HH:mm')}</p>}
+            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
           </div>
           {workOrder.pdf_url && (
             <a href={workOrder.pdf_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center">

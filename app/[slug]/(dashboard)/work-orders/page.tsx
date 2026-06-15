@@ -1,10 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
-import { format } from 'date-fns'
+import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Priority } from '@/types'
-import { Plus, Ban } from 'lucide-react'
+import { Ban } from 'lucide-react'
+import NewWorkOrderModal from './NewWorkOrderModal'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -29,19 +30,39 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
   const { slug } = await params
   const { q = '', status = '', priority = '', type = '' } = await searchParams
   const supabase = await createClient()
+  const service = await createServiceClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   const propertyId = user?.app_metadata?.property_id as string | undefined
 
-  const { data: workOrders } = await supabase
-    .from('work_orders')
-    .select(`
-      *,
-      engineers!work_orders_engineer_id_fkey(id, full_name),
-      ppm_schedules(id, title, assets(id, name, buildings(id, name, sites(id, name))))
-    `)
-    .eq('property_id', propertyId ?? '')
-    .order('scheduled_date', { ascending: true })
+  const [{ data: workOrders }, { data: rawSchedules }, { data: engineersList }] = await Promise.all([
+    supabase
+      .from('work_orders')
+      .select(`
+        *,
+        engineers!work_orders_engineer_id_fkey(id, full_name),
+        ppm_schedules(id, title, assets(id, name, buildings(id, name, sites(id, name))))
+      `)
+      .eq('property_id', propertyId ?? '')
+      .order('scheduled_date', { ascending: true }),
+    service
+      .from('ppm_schedules')
+      .select('id, title, assets(id, name)')
+      .eq('is_active', true)
+      .order('title'),
+    service
+      .from('engineers')
+      .select('id, full_name')
+      .eq('property_id', propertyId ?? '')
+      .eq('is_active', true)
+      .order('full_name'),
+  ])
+
+  const schedules = (rawSchedules ?? []).map((s) => ({
+    id: s.id as string,
+    title: s.title as string,
+    assets: Array.isArray(s.assets) ? (s.assets[0] as { id: string; name: string } | undefined) ?? null : (s.assets as { id: string; name: string } | null),
+  }))
 
   const all = (workOrders as WorkOrder[]) ?? []
 
@@ -66,13 +87,7 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Work Orders</h2>
           <p className="text-sm text-gray-500 mt-0.5">{all.length} total</p>
         </div>
-        <Link
-          href={`/${slug}/work-orders/new`}
-          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Work Order
-        </Link>
+        <NewWorkOrderModal slug={slug} schedules={schedules} engineers={engineersList ?? []} />
       </div>
 
       <WorkOrderFilters total={all.length} filtered={wos.length} />
@@ -118,11 +133,11 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
                       <PriorityBadge priority={wo.priority} />
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <StatusBadge status={wo.status} />
                         {wo.is_cost_waived && (
-                          <span className="inline-flex items-center gap-1 text-xs text-purple-700 font-medium">
-                            <Ban className="w-3 h-3" /> Cost Waived
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                            <Ban className="w-3 h-3" /> Waived
                           </span>
                         )}
                       </div>
@@ -131,9 +146,7 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
                       {wo.engineers?.full_name ?? '—'}
                     </td>
                     <td className="px-5 py-3 text-gray-600">
-                      {wo.scheduled_date
-                        ? format(new Date(wo.scheduled_date), 'dd MMM yyyy')
-                        : '—'}
+                      {formatPHT(wo.scheduled_date)}
                     </td>
                   </tr>
                 ))
