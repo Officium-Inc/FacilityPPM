@@ -3,23 +3,34 @@ import { format } from 'date-fns'
 import { Check, X, Clock } from 'lucide-react'
 
 const STAGES: { status: WorkOrderStatus; label: string; description: string }[] = [
-  { status: 'new_report',       label: 'Service Report',         description: 'Initial fault submitted' },
+  { status: 'new_report',       label: 'Service Report',       description: 'Initial fault submitted' },
   { status: 'inspecting',       label: 'Inspection',           description: 'Engineer on-site inspection' },
   { status: 'costing',          label: 'Costing',              description: 'Cost estimate prepared' },
   { status: 'pending_approval', label: 'Cost Approval',        description: 'Awaiting tenant sign-off on cost' },
   { status: 'assigned',         label: 'Assignment',           description: 'Engineer assigned to job' },
   { status: 'in_progress',      label: 'Work Execution',       description: 'Work being carried out' },
-  { status: 'svc_submitted',    label: 'Svc. Submitted',       description: 'Completion evidence submitted' },
   { status: 'signed',           label: 'Tenant Sign-Off',      description: 'Tenant approved & signed' },
   { status: 'verified',         label: 'Final Verification',   description: 'Head engineer approved' },
   { status: 'completed',        label: 'Completed',            description: 'WO closed, PDF generated' },
 ]
 
-const STATUS_ORDER: WorkOrderStatus[] = STAGES.map((s) => s.status)
+// Progress index per DB status — svc_submitted is hidden; maps to Tenant Sign-Off (index 6) as "pending"
+const STATUS_PROGRESS: Partial<Record<WorkOrderStatus, number>> = {
+  new_report:       0,
+  inspecting:       1,
+  costing:          2,
+  pending_approval: 3,
+  assigned:         4,
+  in_progress:      5,
+  svc_submitted:    6, // shows Tenant Sign-Off as current/pending (awaiting signature)
+  signed:           7, // Tenant Sign-Off done → Final Verification current
+  verified:         8, // Final Verification done → Completed current
+  completed:        8, // handled by isTerminalComplete
+}
 
 function getStageIndex(status: WorkOrderStatus): number {
-  const idx = STATUS_ORDER.indexOf(status)
-  return idx === -1 ? -1 : idx
+  const idx = STATUS_PROGRESS[status]
+  return idx !== undefined ? idx : -1
 }
 
 interface Props {

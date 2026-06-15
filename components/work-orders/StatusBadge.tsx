@@ -14,7 +14,7 @@ const statusConfig: Record<WorkOrderStatus, { label: string; classes: string }> 
   pending_approval: { label: 'Pending Approval',  classes: 'bg-amber-100 text-amber-700' },
   assigned:         { label: 'Assigned',          classes: 'bg-sky-100 text-sky-700' },
   in_progress:      { label: 'In Progress',       classes: 'bg-yellow-100 text-yellow-800' },
-  svc_submitted:    { label: 'Svc. Submitted',    classes: 'bg-cyan-100 text-cyan-700' },
+  svc_submitted:    { label: 'Pending Sign-Off',  classes: 'bg-cyan-100 text-cyan-700' },
   signed:           { label: 'Signed',            classes: 'bg-teal-100 text-teal-700' },
   verified:         { label: 'Verified',          classes: 'bg-green-100 text-green-700' },
   completed:        { label: 'Completed',         classes: 'bg-green-200 text-green-800' },
