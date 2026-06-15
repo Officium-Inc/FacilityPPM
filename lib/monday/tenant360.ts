@@ -490,6 +490,34 @@ async function updateMondayItem(client: MondayClient, config: PropertyMondayConf
   return data.change_multiple_column_values
 }
 
+async function renameMondayItem(client: MondayClient, config: PropertyMondayConfig, input: {
+  itemId: string
+  itemName: string
+}) {
+  const data = await client.graphql<{ change_item_name: MondayItemRef }>(
+    `
+      mutation RenamePropertyMondayItem($boardId: ID!, $itemId: ID!, $itemName: String!) {
+        change_item_name(
+          board_id: $boardId,
+          item_id: $itemId,
+          item_name: $itemName
+        ) {
+          id
+          name
+          url
+          group { id }
+        }
+      }
+    `,
+    {
+      boardId: config.boardId,
+      itemId: input.itemId,
+      itemName: input.itemName,
+    }
+  )
+  return data.change_item_name
+}
+
 async function moveMondayItem(client: MondayClient, input: { itemId: string; groupId: string }) {
   await client.graphql<{ move_item_to_group: MondayItemRef }>(
     `
@@ -715,6 +743,13 @@ export async function syncTenant360WorkOrder(workOrderId: string, options: { fin
       columnValues,
       findExisting: options.findExisting !== false,
     })
+
+    if (mondayItem.name && mondayItem.name !== wo.wo_number) {
+      mondayItem = await renameMondayItem(client, config, {
+        itemId: mondayItem.id,
+        itemName: wo.wo_number,
+      })
+    }
 
     if (groupId && mondayItem.group?.id !== groupId) {
       await moveMondayItem(client, { itemId: mondayItem.id, groupId })

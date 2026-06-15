@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Rename REPT- number to proper WO- number on first assignment
   const isReactiveReport = (wo.wo_number as string).startsWith('REPT-')
   const newWoNumber = isReactiveReport
-    ? `WO-${Date.now().toString(36).toUpperCase()}`
+    ? (wo.wo_number as string).replace(/^REPT-/, 'WO-')
     : undefined
 
   const { error } = await service.from('work_orders').update({
