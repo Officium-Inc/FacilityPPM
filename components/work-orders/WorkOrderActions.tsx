@@ -45,8 +45,13 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   const [assignInspectionTeamId, setAssignInspectionTeamId] = useState('')
 
   const { status } = workOrder
-  const tenants = engineers.filter(e => e.roles?.name?.toLowerCase() === 'tenant' && e.is_active)
-  const serviceGroup = engineers.filter(e => e.roles?.name?.toLowerCase() === 'service_group' && e.is_active)
+  const getRoleName = (roles: unknown): string => {
+    if (!roles) return ''
+    if (Array.isArray(roles)) return ((roles as Array<{ name?: string }>)[0]?.name ?? '').toLowerCase()
+    return (((roles as { name?: string })?.name) ?? '').toLowerCase()
+  }
+  const tenants = engineers.filter(e => getRoleName(e.roles) === 'tenant' && e.is_active)
+  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service_group' && e.is_active)
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])

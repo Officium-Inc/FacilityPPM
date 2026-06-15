@@ -61,9 +61,14 @@ export default async function DashboardPage({ params }: Props) {
       wo.status !== 'cancelled'
   ).length
 
-  const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: { name: string } | null }>
+  const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: unknown }>
+  const getEngRoleName = (roles: unknown): string => {
+    if (!roles) return ''
+    if (Array.isArray(roles)) return ((roles as Array<{ name?: string }>)[0]?.name ?? '').toLowerCase()
+    return (((roles as { name?: string })?.name) ?? '').toLowerCase()
+  }
   const serviceGroupEngineers = allEngineers.filter(
-    (e) => (e.roles as { name: string } | null)?.name?.toLowerCase() === 'service_group'
+    (e) => getEngRoleName(e.roles) === 'service_group'
   )
 
   const engineerWorkloadMap: Record<string, number> = {}
