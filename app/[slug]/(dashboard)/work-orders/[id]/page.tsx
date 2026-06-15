@@ -4,9 +4,11 @@ import StatusBadge from '@/components/work-orders/StatusBadge'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
 import WorkflowTimeline from '@/components/work-orders/WorkflowTimeline'
+import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
+import type { WoComment } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
-import { ArrowLeft, FileText, Ban } from 'lucide-react'
+import { ArrowLeft, FileText, Ban, FileDown, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
@@ -41,11 +43,12 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   if (woError) console.error('[WO detail] query error:', woError)
   if (!wo) notFound()
 
-  // Fetch approval trail, engineers list, and schedules (service client for broader access)
-  const [{ data: trailData }, { data: engineersList }, { data: rawSchedules }] = await Promise.all([
+  // Fetch approval trail, engineers list, schedules, and comments
+  const [{ data: trailData }, { data: engineersList }, { data: rawSchedules }, { data: rawComments }] = await Promise.all([
     service.from('approval_trail').select('*').eq('work_order_id', id).order('created_at'),
     service.from('engineers').select('id, full_name, email, is_active, roles(id, name)').eq('property_id', wo.property_id).eq('is_active', true),
     service.from('ppm_schedules').select('id, title, assets(id, name)').eq('is_active', true).order('title'),
+    service.from('work_order_comments').select('id, author_name, author_role, message, created_at').eq('work_order_id', id).order('created_at', { ascending: true }),
   ])
 
   const schedules = (rawSchedules ?? []).map((s) => ({
@@ -70,6 +73,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as EvidenceRow[] | null) ?? []
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
   const engineers = (engineersList ?? []) as unknown as Engineer[]
+  const comments = (rawComments ?? []) as WoComment[]
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -96,17 +100,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             {workOrder.type} · {workOrder.priority} priority
           </p>
         </div>
-        {workOrder.status === 'completed' && (
-          <a
-            href={workOrder.pdf_url ?? `/api/pdf/${workOrder.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            Download PDF
-          </a>
-        )}
+
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -211,53 +205,134 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             </div>
           )}
 
-          {/* Attachments: collate all uploaded photos and docs across all steps */}
+          {/* ── Collated Attachments ────────────────────────────── */}
           {(() => {
             const photos = [
-              ...(report[0]?.photo_urls ?? []),
-              ...(report[0]?.inspection_photo_urls ?? []),
-              ...(evidence[0]?.completion_photo_urls ?? []),
-              ...checklist.flatMap(item => item.photo_urls ?? []),
+              ...(report[0]?.photo_urls?.map((u: string) => ({ url: u, label: 'Service Report' })) ?? []),
+              ...(report[0]?.inspection_photo_urls?.map((u: string) => ({ url: u, label: 'Inspection' })) ?? []),
+              ...(evidence[0]?.completion_photo_urls?.map((u: string) => ({ url: u, label: 'Completion' })) ?? []),
+              ...checklist.flatMap(item =>
+                (item.photo_urls ?? []).map((u: string) => ({ url: u, label: 'Checklist' }))
+              ),
             ]
-            const docs = evidence[0]?.supporting_doc_urls ?? []
-            if (photos.length === 0 && docs.length === 0) return null
+            const supportingDocs = evidence[0]?.supporting_doc_urls ?? []
+            const hasReport = report.length > 0
+            const hasCosting = costing.length > 0
+            const hasReceipt = !!(workOrder.pdf_url || workOrder.signed_at)
+
+            if (!hasReport && !hasCosting && !hasReceipt && photos.length === 0 && supportingDocs.length === 0) return null
+
             return (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="font-semibold text-gray-900 text-sm mb-4">Attachments</h3>
-                {photos.length > 0 && (
-                  <>
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Photos</p>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {photos.map((url, i) => (
-                        <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                          <img
-                            src={url}
-                            alt={`Attachment ${i + 1}`}
-                            className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
-                          />
+              <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
+                <h3 className="font-semibold text-gray-900 text-sm">Attachments</h3>
+
+                {/* PDF Documents */}
+                {(hasReport || hasCosting || hasReceipt) && (
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2.5">Documents</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {hasReport && (
+                        <a
+                          href={`/api/pdf/${workOrder.id}/report`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <FileDown className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {report[0].inspection_notes ? 'Inspection Report' : 'Service Report'}
+                            </p>
+                            <p className="text-xs text-gray-400">PDF · Click to open</p>
+                          </div>
+                        </a>
+                      )}
+                      {hasCosting && (
+                        <a
+                          href={`/api/pdf/${workOrder.id}/costing`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                            <FileDown className="w-4 h-4 text-green-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">Cost Estimate</p>
+                            <p className="text-xs text-gray-400">
+                              {workOrder.costing_approved_at ? 'Approved · PDF' : 'PDF · Click to open'}
+                            </p>
+                          </div>
+                        </a>
+                      )}
+                      {hasReceipt && (
+                        <a
+                          href={workOrder.pdf_url ?? `/api/pdf/${workOrder.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-4 h-4 text-purple-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">Signed Receipt</p>
+                            <p className="text-xs text-gray-400">PDF · Tenant acknowledgement</p>
+                          </div>
+                        </a>
+                      )}
+                      {supportingDocs.map((url: string, i: number) => (
+                        <a
+                          key={i}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-4 h-4 text-gray-500" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">Supporting Doc {i + 1}</p>
+                            <p className="text-xs text-gray-400">PDF · Click to open</p>
+                          </div>
                         </a>
                       ))}
                     </div>
-                  </>
+                  </div>
                 )}
-                {docs.length > 0 && (
-                  <>
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Documents</p>
-                    <ul className="space-y-1">
-                      {docs.map((url, i) => (
-                        <li key={i}>
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-green-600 hover:underline flex items-center gap-1.5">
-                            <FileText className="w-3.5 h-3.5" />
-                            Document {i + 1}
-                          </a>
-                        </li>
+
+                {/* Photos */}
+                {photos.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      Photos ({photos.length})
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {photos.map((p, i) => (
+                        <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="relative group">
+                          <img
+                            src={p.url}
+                            alt={`${p.label} photo ${i + 1}`}
+                            className="w-24 h-24 object-cover rounded-lg border border-gray-200 group-hover:opacity-80 transition-opacity"
+                          />
+                          <span className="absolute bottom-1 left-1 text-[9px] font-medium bg-black/50 text-white rounded px-1 py-0.5">
+                            {p.label}
+                          </span>
+                        </a>
                       ))}
-                    </ul>
-                  </>
+                    </div>
+                  </div>
                 )}
               </div>
             )
           })()}
+
+          {/* ── Comments ────────────────────────────────────────── */}
+          <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} />
         </div>
 
         <div>
