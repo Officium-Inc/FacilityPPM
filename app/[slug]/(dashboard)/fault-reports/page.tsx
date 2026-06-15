@@ -1,7 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Plus, AlertTriangle } from 'lucide-react'
-import { format } from 'date-fns'
+import { formatPHT } from '@/lib/utils'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 
 interface Props {
@@ -16,41 +16,41 @@ export default async function ServiceRequestsPage({ params }: Props) {
 
   const service = await createServiceClient()
 
-  // Get all WO IDs for this property first, then fetch their fault reports
-  const { data: propertyWOs } = await service
+  // Query reactive work orders directly, embed fault reports as children
+  const { data: reactiveWOs } = await service
     .from('work_orders')
-    .select('id')
+    .select(`
+      id,
+      wo_number,
+      status,
+      priority,
+      created_at,
+      work_order_reports!work_order_reports_work_order_id_fkey(
+        id, fault_description, location_notes, reported_by_name, urgency, created_at
+      )
+    `)
     .eq('property_id', propertyId ?? '')
+    .eq('type', 'reactive')
+    .order('created_at', { ascending: false })
 
-  const woIds = (propertyWOs ?? []).map((w) => w.id)
-
-  const { data: reports } = woIds.length > 0
-    ? await service
-        .from('work_order_reports')
-        .select(`
-          id,
-          fault_description,
-          location_notes,
-          reported_by_name,
-          urgency,
-          created_at,
-          work_order_id,
-          work_orders(id, wo_number, status)
-        `)
-        .in('work_order_id', woIds)
-        .order('created_at', { ascending: false })
-    : { data: [] }
-
-  const rows = ((reports ?? []) as unknown as Array<{
+  type ReportRow = {
     id: string
     fault_description: string
     location_notes: string | null
     reported_by_name: string
     urgency: string
     created_at: string
-    work_order_id: string
-    work_orders: { id: string; wo_number: string; status: string } | null
-  }>).filter((r) => r.work_orders !== null)
+  }
+  type WoRow = {
+    id: string
+    wo_number: string
+    status: string
+    priority: string
+    created_at: string
+    work_order_reports: ReportRow[]
+  }
+
+  const rows = (reactiveWOs ?? []) as unknown as WoRow[]
 
   const urgencyColour: Record<string, string> = {
     critical: 'bg-red-100 text-red-700',
@@ -100,32 +100,35 @@ export default async function ServiceRequestsPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-3">
-                      <Link
-                        href={`/${slug}/work-orders/${r.work_orders!.id}`}
-                        className="font-medium text-green-700 hover:underline"
-                      >
-                        {r.work_orders!.wo_number}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3 text-gray-700 max-w-xs truncate">{r.fault_description}</td>
-                    <td className="px-5 py-3 text-gray-600">{r.location_notes ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-600">{r.reported_by_name}</td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${urgencyColour[r.urgency] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {r.urgency}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <StatusBadge status={r.work_orders!.status as Parameters<typeof StatusBadge>[0]['status']} />
-                    </td>
-                    <td className="px-5 py-3 text-gray-500">
-                      {format(new Date(r.created_at), 'dd MMM yyyy')}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((wo) => {
+                  const r = wo.work_order_reports?.[0]
+                  return (
+                    <tr key={wo.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/${slug}/work-orders/${wo.id}`}
+                          className="font-medium text-green-700 hover:underline"
+                        >
+                          {wo.wo_number}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3 text-gray-700 max-w-xs truncate">{r?.fault_description ?? '—'}</td>
+                      <td className="px-5 py-3 text-gray-600">{r?.location_notes ?? '—'}</td>
+                      <td className="px-5 py-3 text-gray-600">{r?.reported_by_name ?? '—'}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${urgencyColour[r?.urgency ?? ''] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {r?.urgency ?? '—'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <StatusBadge status={wo.status as Parameters<typeof StatusBadge>[0]['status']} />
+                      </td>
+                      <td className="px-5 py-3 text-gray-500">
+                        {formatPHT(wo.created_at)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

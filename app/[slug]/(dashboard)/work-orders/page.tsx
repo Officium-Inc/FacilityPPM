@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
-import { format } from 'date-fns'
+import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Priority } from '@/types'
 import { Plus, Ban } from 'lucide-react'
 
@@ -118,11 +118,11 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
                       <PriorityBadge priority={wo.priority} />
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <StatusBadge status={wo.status} />
                         {wo.is_cost_waived && (
-                          <span className="inline-flex items-center gap-1 text-xs text-purple-700 font-medium">
-                            <Ban className="w-3 h-3" /> Cost Waived
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                            <Ban className="w-3 h-3" /> Waived
                           </span>
                         )}
                       </div>
@@ -131,9 +131,7 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
                       {wo.engineers?.full_name ?? '—'}
                     </td>
                     <td className="px-5 py-3 text-gray-600">
-                      {wo.scheduled_date
-                        ? format(new Date(wo.scheduled_date), 'dd MMM yyyy')
-                        : '—'}
+                      {formatPHT(wo.scheduled_date)}
                     </td>
                   </tr>
                 ))

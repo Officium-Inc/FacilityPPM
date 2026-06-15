@@ -153,6 +153,85 @@ export async function sendInviteEmail({
   })
 }
 
+export async function sendCostingApprovalConfirmationEmail({
+  toEmail,
+  toName,
+  woNumber,
+  propertyName,
+  grandTotal,
+  labourTotal,
+  materialsTotal,
+  subcontractorTotal,
+  notes,
+  approvedAt,
+}: {
+  toEmail: string
+  toName?: string
+  woNumber: string
+  propertyName: string
+  grandTotal: number
+  labourTotal: number
+  materialsTotal: number
+  subcontractorTotal: number
+  notes?: string | null
+  approvedAt: string
+}) {
+  const greeting = toName ? `Dear ${toName},` : 'Dear Tenant,'
+  const fmt = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+  const dateStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(approvedAt))
+
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: `Cost Estimate Approved: ${woNumber} — ${propertyName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #15803d; padding: 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
+          <p style="color: #bbf7d0; margin: 4px 0 0;">FacilityPPM — Cost Estimate Approved</p>
+        </div>
+        <div style="padding: 32px 24px; background: #f9fafb;">
+          <p>${greeting}</p>
+          <p>You have approved the cost estimate for work order <strong>${woNumber}</strong> at <strong>${propertyName}</strong> on <strong>${dateStr} (PHT)</strong>.</p>
+          <p>Below is your approved cost breakdown for your records:</p>
+          <table style="width:100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
+            <tr style="background: #f3f4f6;">
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">Labour</td>
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">${fmt(labourTotal)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">Materials</td>
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">${fmt(materialsTotal)}</td>
+            </tr>
+            <tr style="background: #f3f4f6;">
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">Subcontractor</td>
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">${fmt(subcontractorTotal)}</td>
+            </tr>
+            <tr style="font-weight: bold;">
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb; background: #f0fdf4;">Total</td>
+              <td style="padding: 10px 12px; border: 1px solid #e5e7eb; background: #f0fdf4; text-align: right; color: #15803d;">${fmt(grandTotal)}</td>
+            </tr>
+          </table>
+          ${notes ? `<p style="color: #6b7280; font-size: 14px;"><em>Notes: ${notes}</em></p>` : ''}
+          <p style="color: #6b7280; font-size: 14px;">Work on your request will now proceed. You will be notified again when the work is complete and requires your sign-off.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you have any questions, please contact Marajo Property Management directly.</p>
+        </div>
+        <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+        </div>
+      </div>
+    `,
+  })
+}
+
 export async function sendCostingApprovalEmail({
   toEmail,
   toName,

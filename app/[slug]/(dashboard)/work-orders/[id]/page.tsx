@@ -4,9 +4,9 @@ import StatusBadge from '@/components/work-orders/StatusBadge'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
 import WorkflowTimeline from '@/components/work-orders/WorkflowTimeline'
-import { format } from 'date-fns'
+import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, Ban } from 'lucide-react'
 import Link from 'next/link'
 
 interface Props {
@@ -18,7 +18,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const supabase = await createClient()
   const service = await createServiceClient()
 
-  const { data: wo, error: woError } = await supabase
+  const { data: wo, error: woError } = await service
     .from('work_orders')
     .select(`
       *,
@@ -54,7 +54,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     (a, b) => a.sort_order - b.sort_order
   )
 
-  type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; urgency?: string; inspection_notes?: string; root_cause?: string; scope_of_work?: string }
+  type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; urgency?: string; inspection_notes?: string; root_cause?: string; scope_of_work?: string; photo_urls?: string[] | null; inspection_photo_urls?: string[] | null }
   type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string }
   type EvidenceRow = { work_description?: string; completion_photo_urls?: string[] | null; supporting_doc_urls?: string[] | null }
 
@@ -79,6 +79,11 @@ export default async function WorkOrderDetailPage({ params }: Props) {
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-bold text-gray-900">{workOrder.wo_number}</h2>
             <StatusBadge status={workOrder.status} />
+            {workOrder.is_cost_waived && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                <Ban className="w-3 h-3" /> Cost Waived
+              </span>
+            )}
           </div>
           <p className="text-sm text-gray-500 mt-1 capitalize">
             {workOrder.type} · {workOrder.priority} priority
@@ -137,7 +142,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                 <Detail label="Grand Total" value={`₱${Number(costing[0].grand_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
                 {costing[0].notes ? <Detail label="Notes" value={costing[0].notes} /> : null}
                 {workOrder.costing_approved_by_name && (
-                  <Detail label="Approved By" value={`${workOrder.costing_approved_by_name}${workOrder.costing_approved_at ? ` on ${format(new Date(workOrder.costing_approved_at), 'dd MMM yyyy')}` : ''}`} />
+                  <Detail label="Approved By" value={`${workOrder.costing_approved_by_name}${workOrder.costing_approved_at ? ` on ${formatPHT(workOrder.costing_approved_at)}` : ''}`} />
                 )}
               </dl>
             </div>
@@ -166,17 +171,16 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               <Detail label="Location" value={asset?.location ?? '—'} />
               <Detail label="Schedule" value={workOrder.ppm_schedules?.title ?? '—'} />
               <Detail label="Engineer" value={workOrder.engineers?.full_name ?? 'Unassigned'} />
+              {workOrder.original_wo_number && (
+                <Detail label="Original Report No." value={workOrder.original_wo_number} />
+              )}
               <Detail
                 label="Scheduled Date"
-                value={
-                  workOrder.scheduled_date
-                    ? format(new Date(workOrder.scheduled_date), 'dd MMM yyyy')
-                    : '—'
-                }
+                value={formatPHT(workOrder.scheduled_date)}
               />
-              {workOrder.due_date && <Detail label="Due Date" value={format(new Date(workOrder.due_date), 'dd MMM yyyy')} />}
+              {workOrder.due_date && <Detail label="Due Date" value={formatPHT(workOrder.due_date)} />}
               {workOrder.completed_date && (
-                <Detail label="Completed Date" value={format(new Date(workOrder.completed_date), 'dd MMM yyyy HH:mm')} />
+                <Detail label="Completed Date" value={formatPHT(workOrder.completed_date, true)} />
               )}
               {workOrder.notes && <Detail label="Notes" value={workOrder.notes} />}
             </dl>
@@ -200,9 +204,11 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             </div>
           )}
 
-          {/* Attachments: collate all uploaded photos and docs */}
+          {/* Attachments: collate all uploaded photos and docs across all steps */}
           {(() => {
             const photos = [
+              ...(report[0]?.photo_urls ?? []),
+              ...(report[0]?.inspection_photo_urls ?? []),
               ...(evidence[0]?.completion_photo_urls ?? []),
               ...checklist.flatMap(item => item.photo_urls ?? []),
             ]

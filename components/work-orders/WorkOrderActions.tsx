@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X } from 'lucide-react'
-import { format } from 'date-fns'
+import { formatPHT } from '@/lib/utils'
 
 interface WorkOrderActionsProps {
   workOrder: WorkOrder
@@ -219,29 +219,42 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
 
       {status === 'assigned' && (
         <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Assign Engineer</p>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Assign &amp; Start Work</p>
           {workOrder.costing_approved_by_name && (
             <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
               Cost approved by {workOrder.costing_approved_by_name}
-              {workOrder.costing_approved_at && ` on ${format(new Date(workOrder.costing_approved_at), 'dd MMM yyyy')}`}
+              {workOrder.costing_approved_at && ` on ${formatPHT(workOrder.costing_approved_at)}`}
             </div>
           )}
-          <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className={INPUT}>
-            <option value="">Select service team member...</option>
-            {serviceGroup.length === 0 && (
-              <option disabled>No service group members found</option>
-            )}
-            {serviceGroup.map((eng) => (
-              <option key={eng.id} value={eng.id}>{eng.full_name}</option>
-            ))}
-          </select>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={INPUT} />
-          <textarea value={assignInstructions} onChange={(e) => setAssignInstructions(e.target.value)} placeholder="Assignment instructions…" rows={2} className={INPUT} />
+          {workOrder.wo_number.startsWith('REPT-') && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+              On assignment, this report will be converted to a Work Order with a new WO number. Original: <strong>{workOrder.wo_number}</strong>
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Assign Service Team Member <span className="text-red-500">*</span></label>
+            <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className={INPUT}>
+              <option value="">Select service team member...</option>
+              {serviceGroup.length === 0 && (
+                <option disabled>No service group members found</option>
+              )}
+              {serviceGroup.map((eng) => (
+                <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Due Date</label>
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={INPUT} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Assignment Instructions</label>
+            <textarea value={assignInstructions} onChange={(e) => setAssignInstructions(e.target.value)} placeholder="Describe the work to be done, tools required, access instructions…" rows={3} className={INPUT} />
+          </div>
           <ActionButton
             onClick={() => apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions })}
-            loading={loading} icon={UserCheck} label="Confirm Assignment"
+            loading={loading} icon={UserCheck} label="Confirm Assignment &amp; Start Work"
           />
-          <ActionButton onClick={() => handleStatusChange('in_progress')} loading={loading} icon={RefreshCw} label="Skip ? Mark In Progress" variant="secondary" />
         </div>
       )}
 
@@ -312,7 +325,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-3 text-sm">
             <p className="font-medium text-teal-800">Signed by tenant</p>
             {workOrder.signed_by_name && <p className="text-teal-700 mt-0.5">{workOrder.signed_by_name}</p>}
-            {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{format(new Date(workOrder.signed_at), 'dd MMM yyyy HH:mm')}</p>}
+            {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{formatPHT(workOrder.signed_at, true)}</p>}
             {workOrder.rating && <p className="text-teal-700 text-xs mt-1">Rating: {'?'.repeat(workOrder.rating)}{'?'.repeat(5 - workOrder.rating)}</p>}
             {workOrder.rating_comment && <p className="text-teal-600 text-xs italic mt-0.5">&ldquo;{workOrder.rating_comment}&rdquo;</p>}
           </div>
@@ -326,7 +339,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
         <div className="space-y-3">
           <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-3 text-sm">
             <p className="font-medium text-green-800">{status === 'completed' ? 'Work Order Completed' : 'Verified by Head Engineer'}</p>
-            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{format(new Date(workOrder.head_engineer_verified_at), 'dd MMM yyyy HH:mm')}</p>}
+            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
           </div>
           {workOrder.pdf_url && (
             <a href={workOrder.pdf_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center">

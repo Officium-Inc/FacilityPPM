@@ -94,6 +94,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     status: 'pending_approval',
     costing_token: costingToken,
     costing_token_expires_at: expiresAt.toISOString(),
+    tenant_email: tenantEmail.trim(),
+    tenant_name: tenantName?.trim() ?? null,
     updated_at: new Date().toISOString(),
   }).eq('id', id)
 

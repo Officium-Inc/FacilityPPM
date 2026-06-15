@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, property_id')
+    .select('id, status, property_id, wo_number')
     .eq('id', id)
     .single()
 
@@ -50,12 +50,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq('property_id', wo.property_id)
     .maybeSingle()
 
+  // Rename REPT- number to proper WO- number on first assignment
+  const isReactiveReport = (wo.wo_number as string).startsWith('REPT-')
+  const newWoNumber = isReactiveReport
+    ? `WO-${Date.now().toString(36).toUpperCase()}`
+    : undefined
+
   const { error } = await service.from('work_orders').update({
     engineer_id: engineerId,
     head_engineer_id: headEngineer?.id ?? null,
     due_date: dueDate ?? null,
     assignment_instructions: instructions?.trim() ?? null,
     priority: priority ?? undefined,
+    status: 'in_progress',
+    ...(newWoNumber ? { wo_number: newWoNumber, original_wo_number: wo.wo_number } : {}),
     updated_at: new Date().toISOString(),
   }).eq('id', id)
 

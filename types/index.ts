@@ -153,6 +153,8 @@ export interface WorkOrder {
   cost_waived_at: string | null
   cost_waived_by_name: string | null
   cost_waived_reason: string | null
+  // Audit fields
+  original_wo_number: string | null
   created_at: string
   updated_at: string
   engineers?: Engineer | null
