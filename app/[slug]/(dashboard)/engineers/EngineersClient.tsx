@@ -31,13 +31,14 @@ interface Props {
   engineers: Engineer[]
   roles: Role[]
   invitations: Invitation[]
+  canManageMembers: boolean
 }
 
 type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, roles: _roles, invitations: initialInvitations }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, roles: _roles, invitations: initialInvitations, canManageMembers }: Props) {
   const router = useRouter()
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -155,17 +156,19 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
           <h2 className="text-xl font-bold text-gray-900">Members</h2>
           <p className="text-sm text-gray-500 mt-0.5">{engineers.filter((e) => e.is_active).length} active</p>
         </div>
-        <button
-          onClick={() => { setShowAdd(true); setError(null) }}
-          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Member
-        </button>
+        {canManageMembers && (
+          <button
+            onClick={() => { setShowAdd(true); setError(null) }}
+            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Member
+          </button>
+        )}
       </div>
 
       {/* Add Member / Invite Form */}
-      {showAdd && (
+      {canManageMembers && showAdd && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -261,14 +264,18 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        <button onClick={() => openEdit(eng)} className="text-gray-400 hover:text-green-600 transition-colors" title="Edit">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {canManageMembers && (
+                          <button onClick={() => openEdit(eng)} className="text-gray-400 hover:text-green-600 transition-colors" title="Edit">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                       <td className="px-5 py-3">
-                        <button onClick={() => setConfirmRemove({ id: eng.id, name: eng.full_name })} className="text-gray-400 hover:text-red-600 transition-colors" title="Remove">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canManageMembers && (
+                          <button onClick={() => setConfirmRemove({ id: eng.id, name: eng.full_name })} className="text-gray-400 hover:text-red-600 transition-colors" title="Remove">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                     {editId === eng.id && (

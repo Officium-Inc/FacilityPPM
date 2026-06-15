@@ -69,7 +69,7 @@ export interface Asset {
 
 export interface Role {
   id: string
-  name: 'admin' | 'supervisor' | 'engineer' | 'viewer'
+  name: 'admin' | 'head_engineer' | 'property_manager' | 'viewer' | 'tenant' | string
   permissions: Record<string, unknown>
 }
 
@@ -148,6 +148,11 @@ export interface WorkOrder {
   hours_logged: number | null
   rating: number | null
   rating_comment: string | null
+  // Waived order fields
+  is_cost_waived: boolean
+  cost_waived_at: string | null
+  cost_waived_by_name: string | null
+  cost_waived_reason: string | null
   created_at: string
   updated_at: string
   engineers?: Engineer | null

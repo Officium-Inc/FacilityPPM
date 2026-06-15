@@ -27,12 +27,15 @@ export default async function DashboardLayout({
     redirect(`/${slug}/suspended`)
   }
 
-  // Check if the user is an active member of this property
+  // Check if the user is an active member of this property and get their role
   // (skip for provider role — they're not in the engineers table)
-  if (user && user.app_metadata?.role !== 'provider') {
+  let userRole = 'viewer'
+  if (user && user.app_metadata?.role === 'provider') {
+    userRole = 'admin'
+  } else if (user) {
     const { data: engineer } = await service
       .from('engineers')
-      .select('is_active')
+      .select('is_active, roles(name)')
       .eq('property_id', property.id)
       .eq('user_id', user.id)
       .maybeSingle()
@@ -40,6 +43,10 @@ export default async function DashboardLayout({
     // If they have an engineer record and it's inactive, sign them out
     if (engineer && engineer.is_active === false) {
       redirect('/api/auth/sign-out?next=/login?reason=deactivated')
+    }
+    if (engineer) {
+      const roleData = (engineer.roles as unknown as { name: string } | null)
+      userRole = roleData?.name ?? 'viewer'
     }
   }
 
@@ -65,7 +72,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar slug={slug} />
+      <Sidebar slug={slug} userRole={userRole} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Topbar
           title={property.name}
