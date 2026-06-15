@@ -583,6 +583,8 @@ function isLikelyMissingMondayItem(error: unknown) {
     'item not found',
     'item_id',
     'invalid item',
+    'inactive item',
+    'inactive items',
     'resource not found',
     'does not exist',
     'not found',
