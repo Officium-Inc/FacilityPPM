@@ -457,8 +457,7 @@ async function createMondayItem(client: MondayClient, config: PropertyMondayConf
       groupId: input.groupId,
       itemName: input.itemName,
       columnValues: JSON.stringify(input.columnValues),
-    },
-    `property-monday-create-${config.propertyId}-${input.itemName}`
+    }
   )
   return data.create_item
 }
@@ -606,7 +605,7 @@ async function resolveMondayItem(client: MondayClient, config: PropertyMondayCon
         columnValues: input.columnValues,
       })
     } catch (error) {
-      if (foundByName || !isLikelyMissingMondayItem(error)) throw error
+      if (!isLikelyMissingMondayItem(error)) throw error
     }
   }
 
