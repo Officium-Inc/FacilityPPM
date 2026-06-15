@@ -44,7 +44,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   // Fetch approval trail + engineers list (service client for broader access)
   const [{ data: trailData }, { data: engineersList }] = await Promise.all([
     service.from('approval_trail').select('*').eq('work_order_id', id).order('created_at'),
-    service.from('engineers').select('id, full_name, email, is_active').eq('property_id', wo.property_id).eq('is_active', true),
+    service.from('engineers').select('id, full_name, email, is_active, roles(id, name)').eq('property_id', wo.property_id).eq('is_active', true),
   ])
 
   const workOrder = wo as WorkOrder
@@ -56,13 +56,13 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
   type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; urgency?: string; inspection_notes?: string; root_cause?: string; scope_of_work?: string }
   type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string }
-  type EvidenceRow = { work_description?: string }
+  type EvidenceRow = { work_description?: string; completion_photo_urls?: string[] | null; supporting_doc_urls?: string[] | null }
 
   const report = ((wo as Record<string, unknown>).work_order_reports as ReportRow[] | null) ?? []
   const costing = ((wo as Record<string, unknown>).work_order_costings as CostingRow[] | null) ?? []
   const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as EvidenceRow[] | null) ?? []
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
-  const engineers = (engineersList ?? []) as Engineer[]
+  const engineers = (engineersList ?? []) as unknown as Engineer[]
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -199,6 +199,52 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               ))}
             </div>
           )}
+
+          {/* Attachments: collate all uploaded photos and docs */}
+          {(() => {
+            const photos = [
+              ...(evidence[0]?.completion_photo_urls ?? []),
+              ...checklist.flatMap(item => item.photo_urls ?? []),
+            ]
+            const docs = evidence[0]?.supporting_doc_urls ?? []
+            if (photos.length === 0 && docs.length === 0) return null
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 className="font-semibold text-gray-900 text-sm mb-4">Attachments</h3>
+                {photos.length > 0 && (
+                  <>
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Photos</p>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {photos.map((url, i) => (
+                        <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={url}
+                            alt={`Attachment ${i + 1}`}
+                            className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {docs.length > 0 && (
+                  <>
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Documents</p>
+                    <ul className="space-y-1">
+                      {docs.map((url, i) => (
+                        <li key={i}>
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-green-600 hover:underline flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5" />
+                            Document {i + 1}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         <div>

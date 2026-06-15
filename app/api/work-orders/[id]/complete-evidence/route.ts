@@ -58,15 +58,31 @@ export async function POST(request: NextRequest, { params }: Params) {
     .eq('property_id', wo.property_id)
     .maybeSingle()
 
-  // Save completion evidence
-  await service.from('work_order_completion_evidence').upsert({
-    work_order_id: id,
+  // Save completion evidence — try INSERT first, fall back to UPDATE on conflict
+  const evidencePayload = {
     work_description: workDescription.trim(),
     completion_photo_urls: completionPhotoUrls,
     supporting_doc_urls: supportingDocUrls,
     submitted_by_id: engineer?.id ?? null,
     submitted_at: new Date().toISOString(),
-  }, { onConflict: 'work_order_id' })
+  }
+
+  const { error: insertErr } = await service
+    .from('work_order_completion_evidence')
+    .insert({ work_order_id: id, ...evidencePayload })
+
+  if (insertErr) {
+    // If a record already exists, update it
+    const { error: updateErr } = await service
+      .from('work_order_completion_evidence')
+      .update(evidencePayload)
+      .eq('work_order_id', id)
+
+    if (updateErr) {
+      console.error('[complete-evidence] failed to save evidence:', updateErr)
+      return NextResponse.json({ error: 'Failed to save completion evidence.' }, { status: 500 })
+    }
+  }
 
   // Generate sign-off token
   const signOffToken = crypto.randomUUID()

@@ -2,20 +2,24 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { WorkOrder } from '@/types'
+import type { WorkOrder, WorkOrderCompletionEvidence } from '@/types'
 import SignaturePad from './SignaturePad'
 import RejectPanel from './RejectPanel'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
-import { CheckCircle, Shield, Star } from 'lucide-react'
+import { CheckCircle, Shield, Star, FileText, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface SignOffPageProps {
   workOrder: WorkOrder
+  evidence: WorkOrderCompletionEvidence[]
   token: string
 }
 
-export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
+type Step = 'sign' | 'rate'
+
+export default function SignOffPage({ workOrder, evidence, token }: SignOffPageProps) {
   const router = useRouter()
+  const [step, setStep] = useState<Step>('sign')
   const [signature, setSignature] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [name, setName] = useState('')
@@ -29,21 +33,24 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
   )
   const asset = workOrder.ppm_schedules?.assets
   const site = asset?.buildings?.sites
+  const ev = evidence[0] ?? null
 
-  async function handleApprove() {
-    if (!signature) {
-      setError('Please draw your signature before submitting.')
-      return
-    }
-    if (!confirmed) {
-      setError('Please tick the confirmation checkbox.')
-      return
-    }
-    if (!name.trim()) {
-      setError('Please enter your full name.')
-      return
-    }
+  // Collect all attachment photos
+  const attachmentPhotos = [
+    ...(ev?.completion_photo_urls ?? []),
+    ...checklist.flatMap((item) => item.photo_urls ?? []),
+  ]
+  const supportingDocs = ev?.supporting_doc_urls ?? []
 
+  function handleAdvanceToRating() {
+    setError(null)
+    if (!name.trim()) { setError('Please enter your full name.'); return }
+    if (!signature) { setError('Please draw your signature before submitting.'); return }
+    if (!confirmed) { setError('Please tick the confirmation checkbox.'); return }
+    setStep('rate')
+  }
+
+  async function handleSubmit() {
     setLoading(true)
     setError(null)
 
@@ -74,43 +81,85 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-green-800 text-white py-5 px-6">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-bold text-base leading-tight">Marajo Property Management</p>
-              <p className="text-green-200 text-xs">Maintenance Sign-Off</p>
-            </div>
+        <div className="max-w-2xl mx-auto flex items-center gap-3">
+          <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+            <Shield className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="font-bold text-base leading-tight">Marajo Property Management</p>
+            <p className="text-green-200 text-xs">Maintenance Sign-Off</p>
           </div>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        {/* Work order summary */}
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
+
+        {/* ── Work Order Details ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="font-bold text-gray-900 text-lg mb-4">
-            Work Order {workOrder.wo_number}
-          </h2>
+          <h2 className="font-bold text-gray-900 text-lg mb-1">Work Order {workOrder.wo_number}</h2>
+          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-4 capitalize">
+            {workOrder.type} · {workOrder.priority} priority
+          </p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <Detail label="Property" value={site?.name ?? '—'} />
             <Detail label="Address" value={site ? `${site.address}, ${site.city}` : '—'} />
+            <Detail label="Building" value={asset?.buildings?.name ?? '—'} />
             <Detail label="Asset" value={asset?.name ?? '—'} />
+            <Detail label="Category" value={asset?.category ?? '—'} />
             <Detail label="Location" value={asset?.location ?? '—'} />
+            <Detail label="Schedule" value={workOrder.ppm_schedules?.title ?? '—'} />
             <Detail label="Engineer" value={workOrder.engineers?.full_name ?? '—'} />
             <Detail
               label="Scheduled Date"
-              value={
-                workOrder.scheduled_date
-                  ? format(new Date(workOrder.scheduled_date), 'dd MMM yyyy')
-                  : '—'
-              }
+              value={workOrder.scheduled_date ? format(new Date(workOrder.scheduled_date), 'dd MMM yyyy') : '—'}
             />
+            {workOrder.due_date && (
+              <Detail label="Due Date" value={format(new Date(workOrder.due_date), 'dd MMM yyyy')} />
+            )}
           </dl>
         </div>
 
-        {/* Checklist */}
+        {/* ── Work Done ── */}
+        {ev?.work_description && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-2">Work Performed</h3>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{ev.work_description}</p>
+          </div>
+        )}
+
+        {/* ── Attachments ── */}
+        {(attachmentPhotos.length > 0 || supportingDocs.length > 0) && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-3">Attachments</h3>
+            {attachmentPhotos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {attachmentPhotos.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={url}
+                      alt={`Photo ${i + 1}`}
+                      className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+            {supportingDocs.length > 0 && (
+              <ul className="space-y-1">
+                {supportingDocs.map((url, i) => (
+                  <li key={i}>
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-green-700 hover:underline flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      Document {i + 1}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ── Checklist ── */}
         {checklist.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 text-sm mb-2">
@@ -128,95 +177,134 @@ export default function SignOffPage({ workOrder, token }: SignOffPageProps) {
           </div>
         )}
 
-        {/* Rating */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <h3 className="font-semibold text-gray-900 text-sm">Rate the Service (optional)</h3>
-          <div className="flex gap-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                onClick={() => setRating(rating === star ? null : star)}
-                className="p-1 transition-transform hover:scale-110"
-                type="button"
-              >
-                <Star
-                  className={`w-8 h-8 transition-colors ${
-                    rating !== null && star <= rating
-                      ? 'text-yellow-400 fill-yellow-400'
-                      : 'text-gray-300'
-                  }`}
-                />
-              </button>
-            ))}
-          </div>
-          {rating !== null && (
-            <textarea
-              value={ratingComment}
-              onChange={(e) => setRatingComment(e.target.value)}
-              placeholder="Leave a comment about the service (optional)…"
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-            />
-          )}
-        </div>
+        {/* ── Step 1: Sign-off form ── */}
+        {step === 'sign' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
+            <h3 className="font-semibold text-gray-900 text-sm">Your Signature</h3>
 
-        {/* Sign-off form */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
-          <h3 className="font-semibold text-gray-900 text-sm">Your Signature</h3>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Full name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your full name"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Signature <span className="text-red-500">*</span>
-            </label>
-            <SignaturePad onSignature={setSignature} />
-          </div>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-              className="mt-0.5 w-4 h-4"
-            />
-            <span className="text-sm text-gray-700">
-              I confirm that the maintenance services described above were completed to my
-              satisfaction and I approve this work order.
-            </span>
-          </label>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
-              {error}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Full name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your full name"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
             </div>
-          )}
 
-          <button
-            onClick={handleApprove}
-            disabled={loading || !signature || !confirmed || !name.trim()}
-            className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
-          >
-            <CheckCircle className="w-4 h-4" />
-            {loading ? 'Submitting…' : 'Approve & Sign Off'}
-          </button>
-        </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Signature <span className="text-red-500">*</span>
+              </label>
+              <SignaturePad onSignature={setSignature} />
+            </div>
 
-        {/* Reject */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <RejectPanel token={token} checklist={checklist} />
-        </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-0.5 w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">
+                I confirm that the maintenance services described above were completed to my
+                satisfaction and I approve this work order.
+              </span>
+            </label>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleAdvanceToRating}
+              disabled={!signature || !confirmed || !name.trim()}
+              className="w-full bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Approve &amp; Sign Off
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 2: Rating (after approval) ── */}
+        {step === 'rate' && (
+          <div className="bg-white rounded-xl border border-green-200 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-green-700 mb-1">
+              <CheckCircle className="w-5 h-5" />
+              <span className="font-semibold text-sm">Signature accepted — one last step</span>
+            </div>
+
+            <h3 className="font-semibold text-gray-900">Rate the Service <span className="text-gray-400 font-normal text-sm">(optional)</span></h3>
+
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRating(rating === star ? null : star)}
+                  className="p-1 transition-transform hover:scale-110"
+                  type="button"
+                >
+                  <Star
+                    className={`w-9 h-9 transition-colors ${
+                      rating !== null && star <= rating
+                        ? 'text-yellow-400 fill-yellow-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {rating !== null && (
+              <textarea
+                value={ratingComment}
+                onChange={(e) => setRatingComment(e.target.value)}
+                placeholder="Leave a comment about the service (optional)…"
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              />
+            )}
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="flex-1 bg-green-700 hover:bg-green-800 disabled:bg-green-300 text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {loading ? 'Submitting…' : rating ? 'Submit with Rating' : 'Submit Sign-Off'}
+              </button>
+              {!loading && (
+                <button
+                  onClick={handleSubmit}
+                  className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Reject ── */}
+        {step === 'sign' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <RejectPanel token={token} checklist={checklist} />
+          </div>
+        )}
 
         <p className="text-xs text-gray-400 text-center">
           This sign-off is legally binding. Your IP address and device will be recorded for

@@ -3,7 +3,7 @@ import { format } from 'date-fns'
 import { Check, X, Clock } from 'lucide-react'
 
 const STAGES: { status: WorkOrderStatus; label: string; description: string }[] = [
-  { status: 'new_report',       label: 'Fault Report',         description: 'Initial fault submitted' },
+  { status: 'new_report',       label: 'Service Report',         description: 'Initial fault submitted' },
   { status: 'inspecting',       label: 'Inspection',           description: 'Engineer on-site inspection' },
   { status: 'costing',          label: 'Costing',              description: 'Cost estimate prepared' },
   { status: 'pending_approval', label: 'Cost Approval',        description: 'Awaiting tenant sign-off on cost' },
@@ -39,9 +39,10 @@ export default function WorkflowTimeline({ workOrder, approvalTrail }: Props) {
 
       <ol className="relative">
         {STAGES.map((stage, i) => {
-          const done = i < currentIndex
-          const active = i === currentIndex
-          const future = i > currentIndex
+          const isTerminalComplete = workOrder.status === 'completed' && i === STAGES.length - 1
+          const done = i < currentIndex || isTerminalComplete
+          const active = i === currentIndex && !isTerminalComplete
+          const future = i > currentIndex && !isTerminalComplete
 
           // Find an approval trail entry for this stage
           const trailEntry = approvalTrail.find((t) => {

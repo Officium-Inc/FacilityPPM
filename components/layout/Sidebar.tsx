@@ -6,27 +6,47 @@ import {
   LayoutDashboard,
   ClipboardList,
   Package,
-  Users,
   CalendarClock,
   BarChart3,
+  AlertTriangle,
+  Ban,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-function buildNav(slug: string) {
-  return [
-    { href: `/${slug}`, label: 'Dashboard', icon: LayoutDashboard },
-    { href: `/${slug}/work-orders`, label: 'Work Orders', icon: ClipboardList },
-    { href: `/${slug}/assets`, label: 'Assets', icon: Package },
-    { href: `/${slug}/engineers`, label: 'Members', icon: Users },
-    { href: `/${slug}/schedules`, label: 'Schedules', icon: CalendarClock },
-    { href: `/${slug}/reports`, label: 'Reports', icon: BarChart3 },
+type NavItem = { href: string; label: string; icon: React.ElementType }
+
+const WORK_ORDER_ROLES = ['admin', 'head_engineer']
+const WAIVED_ORDER_ROLES = ['admin', 'property_manager']
+const MEMBERS_MANAGE_ROLES = ['admin', 'property_manager']
+
+function buildNav(slug: string, userRole: string): NavItem[] {
+  const base = `/${slug}`
+  const nav: NavItem[] = [
+    { href: base, label: 'Dashboard', icon: LayoutDashboard },
   ]
+
+  if (WORK_ORDER_ROLES.includes(userRole)) {
+    nav.push({ href: `${base}/work-orders`, label: 'Work Orders', icon: ClipboardList })
+    nav.push({ href: `${base}/assets`, label: 'Assets', icon: Package })
+  }
+
+  if (WAIVED_ORDER_ROLES.includes(userRole)) {
+    nav.push({ href: `${base}/waived-orders`, label: 'Waived Orders', icon: Ban })
+  }
+
+  nav.push({ href: `${base}/fault-reports`, label: 'Service Request', icon: AlertTriangle })
+  nav.push({ href: `${base}/schedules`, label: 'Schedules', icon: CalendarClock })
+  nav.push({ href: `${base}/reports`, label: 'Reports', icon: BarChart3 })
+  nav.push({ href: `${base}/settings`, label: 'Settings', icon: Settings })
+
+  return nav
 }
 
-export default function Sidebar({ slug }: { slug: string }) {
+export default function Sidebar({ slug, userRole }: { slug: string; userRole: string }) {
   const pathname = usePathname()
-  const nav = buildNav(slug)
   const base = `/${slug}`
+  const nav = buildNav(slug, userRole)
 
   return (
     <aside className="hidden md:flex flex-col w-60 bg-gray-900 min-h-screen shrink-0">
@@ -71,3 +91,4 @@ export default function Sidebar({ slug }: { slug: string }) {
     </aside>
   )
 }
+
