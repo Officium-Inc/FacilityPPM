@@ -65,6 +65,7 @@ interface SyncSummary {
   failed: number
   pending: number
   skipped: number
+  latestError?: { woNumber: string; error: string } | null
 }
 
 interface SyncRun {
@@ -163,6 +164,9 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
       setIntegration(data.integration)
       setFields(data.fields)
       setSync(data.sync)
+      if (data.sync.latestError) {
+        setError(`${data.sync.latestError.woNumber}: ${data.sync.latestError.error}`)
+      }
       setSelectedBoardId(data.integration.boardId ?? '')
       setBilledGroupId(data.integration.billedGroupId ?? '')
       setWaivedGroupId(data.integration.waivedGroupId ?? '')
@@ -254,9 +258,12 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
       const synced = data.sync?.results.filter((item) => item.status === 'synced').length ?? 0
       const failed = data.sync?.results.filter((item) => item.status === 'failed').length ?? 0
       const firstError = data.sync?.results.find((item) => item.error)?.error
-      setSuccess(`Monday configuration saved. Synced ${synced}, failed ${failed}.`)
-      if (firstError) setError(firstError)
       await loadSummary()
+      if (failed > 0) {
+        setError(firstError ?? `Monday configuration saved, but ${failed} sync attempt${failed === 1 ? '' : 's'} failed.`)
+      } else {
+        setSuccess(`Monday configuration saved. Synced ${synced}, failed 0.`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Monday configuration.')
     } finally {
@@ -293,9 +300,12 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
       const synced = data.results.filter((item) => item.status === 'synced').length
       const failed = data.results.filter((item) => item.status === 'failed').length
       const firstError = data.results.find((item) => item.error)?.error
-      setSuccess(`Processed ${data.count} work order${data.count === 1 ? '' : 's'} for Monday sync. Synced ${synced}, failed ${failed}.`)
-      if (firstError) setError(firstError)
       await loadSummary()
+      if (failed > 0) {
+        setError(firstError ?? `Processed ${data.count} work order${data.count === 1 ? '' : 's'} for Monday sync. Synced ${synced}, failed ${failed}.`)
+      } else {
+        setSuccess(`Processed ${data.count} work order${data.count === 1 ? '' : 's'} for Monday sync. Synced ${synced}, failed 0.`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync Monday work orders.')
     } finally {
