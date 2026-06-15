@@ -77,12 +77,12 @@ export async function sendSignOffEmail({
   await transporter.sendMail({
     from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: tenantEmail,
-    subject: `Action Required: Please sign off on ${woNumber} â€” ${propertyName}`,
+    subject: `Action Required: Please sign off on ${woNumber} ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Maintenance Sign-Off</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Maintenance Sign-Off</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>Dear ${tenantName},</p>
@@ -97,7 +97,7 @@ export async function sendSignOffEmail({
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this email, please contact Marajo Property Management immediately.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
         </div>
       </div>
     `,
@@ -131,7 +131,7 @@ export async function sendInviteEmail({
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Property Access Invitation</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Property Access Invitation</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
@@ -146,7 +146,7 @@ export async function sendInviteEmail({
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can safely ignore this email.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
         </div>
       </div>
     `,
@@ -177,17 +177,17 @@ export async function sendCostingApprovalEmail({
   await transporter.sendMail({
     from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
     to: toEmail,
-    subject: `Cost Approval Required: ${woNumber} â€” ${propertyName}`,
+    subject: `Cost Approval Required: ${woNumber}  ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM â€” Cost Estimate Approval</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Cost Estimate Approval</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
           <p>A cost estimate has been prepared for work order <strong>${woNumber}</strong> at <strong>${propertyName}</strong>.</p>
-          <p>The total estimated cost is <strong>â‚±${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>. Please review the full breakdown and approve or reject using the link below.</p>
+          <p>The total estimated cost is <strong>‚${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong>. Please review the full breakdown and approve or reject using the link below.</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${approvalUrl}" style="background: #16a34a; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Review Cost Estimate
@@ -197,7 +197,7 @@ export async function sendCostingApprovalEmail({
           <p style="color: #6b7280; font-size: 14px;">If you have questions, please contact Marajo Property Management directly.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">Â© ${new Date().getFullYear()} Marajo Property Management Â· FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
         </div>
       </div>
     `,
