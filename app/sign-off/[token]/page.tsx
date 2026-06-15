@@ -1,6 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import type { WorkOrder, WorkOrderCompletionEvidence, WorkOrderReport } from '@/types'
+import type { WorkOrder } from '@/types'
 import SignOffPage from '@/components/sign-off/SignOffPage'
 
 interface Props {
@@ -24,8 +24,7 @@ export default async function SignOffTokenPage({ params }: Props) {
           buildings(id, name, sites(id, name, address, city))
         )
       ),
-      checklist_items(*),
-      work_order_reports(*)
+      checklist_items(*)
     `)
     .eq('sign_off_token', token)
     .single()
@@ -33,16 +32,41 @@ export default async function SignOffTokenPage({ params }: Props) {
   if (!wo) notFound()
 
   const workOrder = wo as WorkOrder
-  const reports = ((wo as Record<string, unknown>).work_order_reports as WorkOrderReport[] | null) ?? []
 
-  // Fetch completion evidence separately to avoid FK-hint ambiguity
-  const { data: evidenceRows } = await supabase
-    .from('work_order_completion_evidence')
-    .select('*')
-    .eq('work_order_id', workOrder.id)
-    .limit(1)
+  // Fetch completion evidence + fault report separately to avoid FK-hint ambiguity
+  const [{ data: evidenceRows }, { data: reportRows }] = await Promise.all([
+    supabase
+      .from('work_order_completion_evidence')
+      .select('work_description, completion_photo_urls, supporting_doc_urls')
+      .eq('work_order_id', workOrder.id)
+      .limit(1),
+    supabase
+      .from('work_order_reports')
+      .select('fault_description, scope_of_work, photo_urls, inspection_photo_urls')
+      .eq('work_order_id', workOrder.id)
+      .limit(1),
+  ])
 
-  const evidence = (evidenceRows as WorkOrderCompletionEvidence[] | null) ?? []
+  const ev   = (evidenceRows ?? [])[0] as { work_description?: string; completion_photo_urls?: string[]; supporting_doc_urls?: string[] } | undefined
+  const rep  = (reportRows  ?? [])[0] as { fault_description?: string; scope_of_work?: string; photo_urls?: string[]; inspection_photo_urls?: string[] } | undefined
+
+  // Collate description: best available source
+  const workDescription =
+    ev?.work_description ||
+    rep?.scope_of_work ||
+    rep?.fault_description ||
+    null
+
+  // Collate ALL photos from every stage of the workflow
+  const checklist = (workOrder.checklist_items ?? []) as Array<{ photo_urls?: string[] }>
+  const allPhotos: string[] = [
+    ...(rep?.photo_urls              ?? []),
+    ...(rep?.inspection_photo_urls   ?? []),
+    ...(ev?.completion_photo_urls    ?? []),
+    ...checklist.flatMap((item) => item.photo_urls ?? []),
+  ].filter(Boolean)
+
+  const allDocs: string[] = (ev?.supporting_doc_urls ?? []).filter(Boolean)
 
   // Validate: not expired
   if (workOrder.sign_off_expires_at && new Date(workOrder.sign_off_expires_at) < new Date()) {
@@ -74,5 +98,5 @@ export default async function SignOffTokenPage({ params }: Props) {
     )
   }
 
-  return <SignOffPage workOrder={workOrder} evidence={evidence} report={reports[0] ?? null} token={token} />
+  return <SignOffPage workOrder={workOrder} workDescription={workDescription} allPhotos={allPhotos} allDocs={allDocs} token={token} />
 }
