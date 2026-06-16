@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LicenseBadge from '@/components/provider/LicenseBadge'
+import { formatRoleName } from '@/lib/roles'
 import type { Property, Engineer, Role, LicenseStatus } from '@/types'
 import {
   Shield, Users, Trash2, UserPlus, Mail, Pencil, Check, X,
@@ -408,11 +409,11 @@ export default function PropertyManageClient({ property, engineers, roles, stats
                           >
                             <option value="">— No role —</option>
                             {roles.map((r) => (
-                              <option key={r.id} value={r.id}>{r.name}</option>
+                              <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
                             ))}
                           </select>
                         ) : (
-                          <span className="capitalize text-gray-700">{member.roles?.name ?? '—'}</span>
+                          <span className="text-gray-700">{formatRoleName(member.roles?.name, '—')}</span>
                         )}
                       </td>
                       <td className="px-5 py-3">

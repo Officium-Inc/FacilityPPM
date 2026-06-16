@@ -1,4 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
 import Link from 'next/link'
 import EngineersClient from '../engineers/EngineersClient'
 import ApiKeysClient from './ApiKeysClient'
@@ -32,7 +33,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       .eq('user_id', user.id)
       .maybeSingle()
     const roleData = (eng?.roles as unknown as { name: string } | null)
-    userRole = roleData?.name ?? 'viewer'
+    userRole = normalizeRoleName(roleData?.name) || 'viewer'
   }
 
   const canManageSettings = MANAGE_ROLES.includes(userRole)

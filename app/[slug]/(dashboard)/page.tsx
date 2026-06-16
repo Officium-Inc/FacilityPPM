@@ -4,6 +4,7 @@ import WorkOrderTable from '@/components/dashboard/WorkOrderTable'
 import EngineerWorkload from '@/components/dashboard/EngineerWorkload'
 import PpmCalendar from '@/components/dashboard/PpmCalendar'
 import { CheckCircle, ClipboardList, Package, Users } from 'lucide-react'
+import { normalizeRoleName } from '@/lib/roles'
 import type { WorkOrder } from '@/types'
 
 interface Props {
@@ -64,8 +65,8 @@ export default async function DashboardPage({ params }: Props) {
   const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: unknown }>
   const getEngRoleName = (roles: unknown): string => {
     if (!roles) return ''
-    if (Array.isArray(roles)) return ((roles as Array<{ name?: string }>)[0]?.name ?? '').toLowerCase()
-    return (((roles as { name?: string })?.name) ?? '').toLowerCase()
+    if (Array.isArray(roles)) return normalizeRoleName((roles as Array<{ name?: string }>)[0]?.name)
+    return normalizeRoleName((roles as { name?: string })?.name)
   }
   const serviceGroupEngineers = allEngineers.filter(
     (e) => getEngRoleName(e.roles) === 'service group'

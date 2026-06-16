@@ -69,7 +69,7 @@ export interface Asset {
 
 export interface Role {
   id: string
-  name: 'admin' | 'head_engineer' | 'property_manager' | 'viewer' | 'tenant' | string
+  name: 'admin' | 'head_engineer' | 'property_manager' | 'service group' | 'viewer' | 'tenant' | string
   permissions: Record<string, unknown>
 }
 

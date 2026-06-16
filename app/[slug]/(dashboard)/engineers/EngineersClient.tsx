@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Pencil, Trash2, Mail, Clock, XCircle } from 'lucide-react'
-
-const ROLE_OPTIONS = ['Admin', 'Engineer', 'Service Group', 'Tenant']
+import { formatRoleName, getRoleOptions, normalizeRoleName } from '@/lib/roles'
 
 interface Role { id: string; name: string }
 interface Engineer {
@@ -38,8 +37,9 @@ type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, roles: _roles, invitations: initialInvitations, canManageMembers }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, roles, invitations: initialInvitations, canManageMembers }: Props) {
   const router = useRouter()
+  const roleOptions = getRoleOptions(roles)
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [invite, setInvite] = useState(EMPTY_INVITE)
@@ -59,7 +59,7 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
   function openEdit(eng: Engineer) {
     setEditId(eng.id)
     setEditForm({
-      role_name: eng.roles?.name ?? '',
+      role_name: normalizeRoleName(eng.roles?.name),
       phone: eng.phone ?? '',
       certifications: eng.certifications ?? '',
       is_active: eng.is_active,
@@ -217,7 +217,7 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="">— No role —</option>
-                {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
               </select>
             </div>
             <div className="flex items-end">
@@ -256,7 +256,7 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
                       <td className="px-5 py-3 font-medium text-gray-900">{eng.full_name}</td>
                       <td className="px-5 py-3 text-gray-600">{eng.email}</td>
                       <td className="px-5 py-3 text-gray-600">{eng.phone ?? '—'}</td>
-                      <td className="px-5 py-3 text-gray-600 capitalize">{eng.roles?.name ?? '—'}</td>
+                      <td className="px-5 py-3 text-gray-600">{formatRoleName(eng.roles?.name, '—')}</td>
                       <td className="px-5 py-3 text-gray-600">{eng.certifications ?? '—'}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${eng.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -291,7 +291,7 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
                                 onChange={(e) => setEditForm((f) => ({ ...f, role_name: e.target.value }))}
                                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                                 <option value="">— No role —</option>
-                                {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                                {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                               </select>
                             </div>
                             <div>
@@ -357,7 +357,7 @@ export default function EngineersClient({ slug: _slug, engineers, roles: _roles,
                 <tr key={inv.id} className="hover:bg-amber-50/50">
                   <td className="px-5 py-3 text-gray-800 font-medium">{inv.email}</td>
                   <td className="px-5 py-3 text-gray-600">{inv.invited_name ?? '—'}</td>
-                  <td className="px-5 py-3 text-gray-600">{inv.role_name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-600">{formatRoleName(inv.role_name, '—')}</td>
                   <td className="px-5 py-3 text-gray-500 text-xs">{new Date(inv.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                   <td className="px-5 py-3 text-gray-500 text-xs">{new Date(inv.expires_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                   <td className="px-5 py-3">

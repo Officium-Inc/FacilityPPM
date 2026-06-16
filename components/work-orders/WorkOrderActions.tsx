@@ -6,6 +6,7 @@ import type { WorkOrder, Engineer } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
+import { normalizeRoleName } from '@/lib/roles'
 
 interface Schedule {
   id: string
@@ -57,8 +58,8 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
   const { status } = workOrder
   const getRoleName = (roles: unknown): string => {
     if (!roles) return ''
-    if (Array.isArray(roles)) return ((roles as Array<{ name?: string }>)[0]?.name ?? '').toLowerCase()
-    return (((roles as { name?: string })?.name) ?? '').toLowerCase()
+    if (Array.isArray(roles)) return normalizeRoleName((roles as Array<{ name?: string }>)[0]?.name)
+    return normalizeRoleName((roles as { name?: string })?.name)
   }
   const tenants = engineers.filter(e => getRoleName(e.roles) === 'tenant' && e.is_active)
   const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service group' && e.is_active)

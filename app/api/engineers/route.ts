@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** Resolve a role name to a role_id, creating the role if it doesn't exist */
 async function resolveRoleId(service: SupabaseClient, roleName: string): Promise<string | null> {
-  if (!roleName) return null
+  const normalizedRoleName = normalizeRoleName(roleName)
+  if (!normalizedRoleName) return null
   const { data: existing } = await service
     .from('roles')
     .select('id')
-    .ilike('name', roleName)
-    .single()
+    .ilike('name', normalizedRoleName)
+    .limit(1)
+    .maybeSingle()
   if (existing) return existing.id
   const { data: created } = await service
     .from('roles')
-    .insert({ name: roleName })
+    .insert({ name: normalizedRoleName })
     .select('id')
     .single()
   return created?.id ?? null

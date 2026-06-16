@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, MessageSquare } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
+import { formatRoleName, normalizeRoleName } from '@/lib/roles'
 
 export interface WoComment {
   id: string
@@ -33,7 +34,8 @@ const ROLE_STYLES: Record<string, { bg: string; text: string; label: string }> =
 }
 
 function getRoleStyle(role: string) {
-  return ROLE_STYLES[role.toLowerCase()] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: role }
+  const normalized = normalizeRoleName(role)
+  return ROLE_STYLES[normalized] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: formatRoleName(normalized) }
 }
 
 /** Render a comment body with @mentions highlighted in blue */

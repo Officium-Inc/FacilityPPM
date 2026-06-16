@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendMentionEmail } from '@/lib/email'
+import { normalizeRoleName } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     work_order_id: id,
     property_id: propertyId,
     author_name: authorName,
-    author_role: roleName.toLowerCase(),
+    author_role: normalizeRoleName(roleName) || 'admin',
     message: message.trim(),
   })
 

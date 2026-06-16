@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 interface Params {
   params: Promise<{ token: string }>
+}
+
+async function resolveRoleId(service: SupabaseClient, roleName: string): Promise<string | null> {
+  const normalizedRoleName = normalizeRoleName(roleName)
+  if (!normalizedRoleName) return null
+
+  const { data: existing } = await service
+    .from('roles')
+    .select('id')
+    .ilike('name', normalizedRoleName)
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) return existing.id
+
+  const { data: created } = await service
+    .from('roles')
+    .insert({ name: normalizedRoleName })
+    .select('id')
+    .single()
+
+  return created?.id ?? null
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -28,13 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const property = invite.properties as { id: string; name: string; slug: string }
   const email = invite.email as string
   const inviteRoleName = (invite.role_name as string | null) ?? null
-
-  // Resolve role: prefer invite's role_name, fall back to 'admin'
-  const { data: role } = await service
-    .from('roles')
-    .select('id')
-    .ilike('name', inviteRoleName ?? 'admin')
-    .maybeSingle()
+  const roleId = await resolveRoleId(service, inviteRoleName ?? 'admin')
 
   // Check if user already exists
   const { data: existingList } = await service.auth.admin.listUsers()
@@ -66,7 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         await service.from('engineers').insert({
           property_id: property.id,
           user_id: existingUser.id,
-          role_id: role?.id ?? null,
+          role_id: roleId,
           full_name: (full_name?.trim()) || (existingUser.user_metadata?.full_name as string) || email,
           email: email.toLowerCase(),
           is_active: true,
@@ -100,7 +118,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { error: engErr } = await service.from('engineers').insert({
       property_id: property.id,
       user_id: authData.user.id,
-      role_id: role?.id ?? null,
+      role_id: roleId,
       full_name: displayName,
       email: email.toLowerCase(),
       is_active: true,
