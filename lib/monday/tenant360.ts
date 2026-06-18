@@ -81,16 +81,22 @@ interface WorkOrderSyncRow {
   monday_file_assets: StoredMondayFileAssets | null
   properties?: { name?: string | null; slug?: string | null } | { name?: string | null; slug?: string | null }[] | null
   engineers?: { full_name?: string | null } | { full_name?: string | null }[] | null
-  work_order_costings?: Array<{ grand_total?: number | string | null }> | null
-  work_order_reports?: Array<{
+  work_order_costings?: { grand_total?: number | string | null } | Array<{ grand_total?: number | string | null }> | null
+  work_order_reports?: {
+    photo_urls?: string[] | null
+    inspection_photo_urls?: string[] | null
+  } | Array<{
     photo_urls?: string[] | null
     inspection_photo_urls?: string[] | null
   }> | null
-  work_order_completion_evidence?: Array<{
+  work_order_completion_evidence?: {
+    completion_photo_urls?: string[] | null
+    supporting_doc_urls?: string[] | null
+  } | Array<{
     completion_photo_urls?: string[] | null
     supporting_doc_urls?: string[] | null
   }> | null
-  checklist_items?: Array<{ photo_urls?: string[] | null }> | null
+  checklist_items?: { photo_urls?: string[] | null } | Array<{ photo_urls?: string[] | null }> | null
   ppm_schedules?: {
     assets?: {
       name?: string | null
@@ -151,6 +157,11 @@ function single<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null
 }
 
+function rowsOf<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
 function appUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 }
@@ -185,6 +196,10 @@ function extensionFromContentType(contentType: string) {
     'image/webp': 'webp',
     'image/gif': 'gif',
     'image/avif': 'avif',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/quicktime': 'mov',
+    'video/mpeg': 'mpeg',
   }
   return map[type] ?? null
 }
@@ -215,46 +230,47 @@ function arrayUrls(value: unknown): string[] {
 function collectAttachments(wo: WorkOrderSyncRow): AttachmentRef[] {
   const attachments: AttachmentRef[] = []
   const baseUrl = appUrl()
-  const report = wo.work_order_reports?.[0]
-  const evidence = wo.work_order_completion_evidence?.[0]
+  const reports = rowsOf(wo.work_order_reports)
+  const evidenceRows = rowsOf(wo.work_order_completion_evidence)
 
-  if (report) {
+  reports.forEach((report, reportIndex) => {
     arrayUrls(report.photo_urls).forEach((url, index) => {
-      const item = attachment(url, `${wo.wo_number}-report-photo-${index + 1}`)
+      const item = attachment(url, `${wo.wo_number}-report-${reportIndex + 1}-photo-${index + 1}`)
       if (item) attachments.push(item)
     })
     arrayUrls(report.inspection_photo_urls).forEach((url, index) => {
-      const item = attachment(url, `${wo.wo_number}-inspection-photo-${index + 1}`)
+      const item = attachment(url, `${wo.wo_number}-inspection-${reportIndex + 1}-photo-${index + 1}`)
       if (item) attachments.push(item)
     })
-    if (baseUrl) {
-      attachments.push({
-        key: fileKey(`${baseUrl}/api/pdf/${wo.id}/report`),
-        url: `${baseUrl}/api/pdf/${wo.id}/report`,
-        name: `${wo.wo_number}-service-report.pdf`,
-      })
-    }
-  }
+  })
 
-  if (evidence) {
+  evidenceRows.forEach((evidence, evidenceIndex) => {
     arrayUrls(evidence.completion_photo_urls).forEach((url, index) => {
-      const item = attachment(url, `${wo.wo_number}-completion-photo-${index + 1}`)
+      const item = attachment(url, `${wo.wo_number}-completion-${evidenceIndex + 1}-photo-${index + 1}`)
       if (item) attachments.push(item)
     })
     arrayUrls(evidence.supporting_doc_urls).forEach((url, index) => {
-      const item = attachment(url, `${wo.wo_number}-supporting-doc-${index + 1}`)
+      const item = attachment(url, `${wo.wo_number}-supporting-${evidenceIndex + 1}-doc-${index + 1}`)
       if (item) attachments.push(item)
     })
-  }
+  })
 
-  wo.checklist_items?.forEach((item, itemIndex) => {
+  rowsOf(wo.checklist_items).forEach((item, itemIndex) => {
     arrayUrls(item.photo_urls).forEach((url, photoIndex) => {
       const ref = attachment(url, `${wo.wo_number}-checklist-${itemIndex + 1}-photo-${photoIndex + 1}`)
       if (ref) attachments.push(ref)
     })
   })
 
-  if (wo.work_order_costings?.length && baseUrl) {
+  if (reports.length > 0 && baseUrl) {
+    attachments.push({
+      key: fileKey(`${baseUrl}/api/pdf/${wo.id}/report`),
+      url: `${baseUrl}/api/pdf/${wo.id}/report`,
+      name: `${wo.wo_number}-service-report.pdf`,
+    })
+  }
+
+  if (rowsOf(wo.work_order_costings).length && baseUrl) {
     attachments.push({
       key: fileKey(`${baseUrl}/api/pdf/${wo.id}/costing`),
       url: `${baseUrl}/api/pdf/${wo.id}/costing`,
@@ -282,7 +298,7 @@ function fieldValue(wo: WorkOrderSyncRow, field: MondayFieldDefinition): FieldVa
   const isWaived = wo.is_cost_waived === true
   const property = single(wo.properties)
   const engineer = single(wo.engineers)
-  const costing = wo.work_order_costings?.[0]
+  const costing = rowsOf(wo.work_order_costings)[0]
   const { asset, building, site } = assetInfo(wo)
   const baseUrl = appUrl()
   const linkUrl = baseUrl && property?.slug ? `${baseUrl}/${property.slug}/work-orders/${wo.id}` : null

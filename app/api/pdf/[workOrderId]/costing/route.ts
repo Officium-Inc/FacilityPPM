@@ -8,6 +8,21 @@ interface Params {
   params: Promise<{ workOrderId: string }>
 }
 
+type CostingPdfRow = {
+  labour_hours?: number
+  labour_rate?: number
+  labour_total?: number
+  materials_total?: number
+  subcontractor_total?: number
+  grand_total?: number
+  notes?: string | null
+}
+
+function rowsOf<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workOrderId } = await params
   const service = await createServiceClient()
@@ -30,15 +45,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
   }
 
-  const costings = wo.work_order_costings as {
-    labour_hours?: number
-    labour_rate?: number
-    labour_total?: number
-    materials_total?: number
-    subcontractor_total?: number
-    grand_total?: number
-    notes?: string | null
-  }[] | null
+  const costings = rowsOf(wo.work_order_costings as CostingPdfRow | CostingPdfRow[] | null)
 
   if (!costings || costings.length === 0) {
     return NextResponse.json({ error: 'No costing found for this work order' }, { status: 404 })

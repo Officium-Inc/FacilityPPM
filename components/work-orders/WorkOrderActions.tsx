@@ -22,6 +22,18 @@ interface WorkOrderActionsProps {
 }
 
 const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
+const IMAGE_URL_PATTERN = /\.(avif|gif|jpe?g|png|webp)(?:[?#]|$)/i
+
+function isImageUrl(url: string) {
+  return IMAGE_URL_PATTERN.test(url)
+}
+
+function uploadKindLabel(url: string) {
+  if (isImageUrl(url)) return 'Image'
+  if (/\.pdf(?:[?#]|$)/i.test(url)) return 'PDF'
+  if (/\.(mov|mp4|mpeg|webm)(?:[?#]|$)/i.test(url)) return 'Video'
+  return 'File'
+}
 
 export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug }: WorkOrderActionsProps) {
   const router = useRouter()
@@ -399,13 +411,20 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
             <label className={`inline-flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:text-green-600 transition-colors ${uploadLoading ? 'opacity-50 cursor-not-allowed' : 'text-gray-500'}`}>
               <Paperclip className="w-4 h-4" />
               {uploadLoading ? 'Uploading…' : 'Attach files'}
-              <input type="file" multiple accept="image/*,application/pdf" onChange={handleFileUpload} className="hidden" disabled={uploadLoading} />
+              <input type="file" multiple accept="image/*,video/*,application/pdf" onChange={handleFileUpload} className="hidden" disabled={uploadLoading} />
             </label>
             {uploadedPhotoUrls.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {uploadedPhotoUrls.map((url, i) => (
                   <div key={i} className="relative group">
-                    <img src={url} alt={`Upload ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                    {isImageUrl(url) ? (
+                      <img src={url} alt={`Upload ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                    ) : (
+                      <div className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-1 text-center text-[10px] font-medium text-gray-500">
+                        <Paperclip className="h-4 w-4" />
+                        <span className="truncate">{uploadKindLabel(url)}</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => setUploadedPhotoUrls(prev => prev.filter((_, j) => j !== i))}
@@ -431,7 +450,13 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
           <ActionButton
             onClick={() => {
               const t = engineers.find(e => e.id === selectedEvidenceTenantId)
-              apiPost(`/api/work-orders/${workOrder.id}/complete-evidence`, { workDescription, completionPhotoUrls: uploadedPhotoUrls, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+              apiPost(`/api/work-orders/${workOrder.id}/complete-evidence`, {
+                workDescription,
+                completionPhotoUrls: uploadedPhotoUrls.filter(isImageUrl),
+                supportingDocUrls: uploadedPhotoUrls.filter((url) => !isImageUrl(url)),
+                tenantEmail: t?.email ?? '',
+                tenantName: t?.full_name ?? '',
+              })
             }}
             loading={loading} icon={Send} label="Submit Evidence & Send Sign-Off Link"
           />

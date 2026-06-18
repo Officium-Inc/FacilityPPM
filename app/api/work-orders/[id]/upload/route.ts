@@ -7,7 +7,8 @@ interface Params {
 }
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']
-const ALLOWED_TYPES = [...IMAGE_TYPES, 'application/pdf']
+const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg']
+const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES, 'application/pdf']
 const MAX_SIZE = 20 * 1024 * 1024 // 20 MB raw input limit
 const BUCKET = 'receipts'
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (!ALLOWED_TYPES.includes(file.type)) {
     return NextResponse.json(
-      { error: 'File type not allowed. Upload images (JPEG, PNG, WebP, GIF, AVIF) or PDF only.' },
+      { error: 'File type not allowed. Upload images, videos, or PDF only.' },
       { status: 400 }
     )
   }
@@ -57,10 +58,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     contentType = 'image/webp'
     ext = 'webp'
   } else {
-    // PDF — store as-is
+    // PDF/video: store as-is.
     uploadBuffer = raw
-    contentType = 'application/pdf'
-    ext = 'pdf'
+    contentType = file.type
+    ext = file.type === 'application/pdf'
+      ? 'pdf'
+      : file.type === 'video/quicktime'
+      ? 'mov'
+      : file.type.split('/')[1] ?? 'bin'
   }
 
   const fileName = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
@@ -79,5 +84,5 @@ export async function POST(request: NextRequest, { params }: Params) {
     data: { publicUrl },
   } = service.storage.from(BUCKET).getPublicUrl(fileName)
 
-  return NextResponse.json({ url: publicUrl }, { status: 201 })
+  return NextResponse.json({ url: publicUrl, contentType }, { status: 201 })
 }
