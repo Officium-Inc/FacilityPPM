@@ -1,3 +1,5 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 export const ROLE_ORDER = [
   'admin',
   'property_manager',
@@ -12,6 +14,11 @@ export type CanonicalRoleName = (typeof ROLE_ORDER)[number]
 export interface RoleOption {
   value: string
   label: string
+}
+
+export interface RoleRow {
+  id: string
+  name: string
 }
 
 const ROLE_LABELS: Record<CanonicalRoleName, string> = {
@@ -59,31 +66,66 @@ export function normalizeRoleName(roleName?: string | null) {
   return ROLE_ALIASES[roleKey(trimmed)] ?? trimmed
 }
 
+export function isCanonicalRoleName(roleName?: string | null): roleName is CanonicalRoleName {
+  return ROLE_ORDER.includes(roleName as CanonicalRoleName)
+}
+
 export function formatRoleName(roleName?: string | null, fallback = '-') {
   if (!roleName?.trim()) return fallback
   const normalized = normalizeRoleName(roleName)
   return ROLE_LABELS[normalized as CanonicalRoleName] ?? toTitleCase(normalized)
 }
 
-export function getRoleOptions(roles: Array<{ name: string }> = []): RoleOption[] {
-  const options = new Set<string>(ROLE_ORDER)
+export function getRoleOptions(_roles: Array<{ name: string }> = []): RoleOption[] {
+  return ROLE_ORDER.map((value) => ({ value, label: formatRoleName(value) }))
+}
+
+export function getCanonicalRoleRows<T extends RoleRow>(roles: T[]) {
+  const byName = new Map<CanonicalRoleName, T>()
 
   for (const role of roles) {
     const normalized = normalizeRoleName(role.name)
-    if (normalized) options.add(normalized)
+    if (!isCanonicalRoleName(normalized)) continue
+
+    const current = byName.get(normalized)
+    if (!current || role.name === normalized) {
+      byName.set(normalized, role)
+    }
   }
 
-  return Array.from(options)
-    .sort((a, b) => {
-      const aIndex = ROLE_ORDER.indexOf(a as CanonicalRoleName)
-      const bIndex = ROLE_ORDER.indexOf(b as CanonicalRoleName)
+  return ROLE_ORDER
+    .map((roleName) => byName.get(roleName))
+    .filter((role): role is T => Boolean(role))
+}
 
-      if (aIndex !== -1 || bIndex !== -1) {
-        return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) -
-          (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex)
-      }
+export async function resolveCanonicalRoleId(
+  service: SupabaseClient,
+  roleName?: string | null
+): Promise<string | null> {
+  const normalizedRoleName = normalizeRoleName(roleName)
+  if (!isCanonicalRoleName(normalizedRoleName)) return null
 
-      return formatRoleName(a).localeCompare(formatRoleName(b))
-    })
-    .map((value) => ({ value, label: formatRoleName(value) }))
+  const { data: existing } = await service
+    .from('roles')
+    .select('id')
+    .eq('name', normalizedRoleName)
+    .maybeSingle()
+
+  if (existing) return existing.id
+
+  const { data: created, error } = await service
+    .from('roles')
+    .insert({ name: normalizedRoleName })
+    .select('id')
+    .single()
+
+  if (!error) return created?.id ?? null
+
+  const { data: racedExisting } = await service
+    .from('roles')
+    .select('id')
+    .eq('name', normalizedRoleName)
+    .maybeSingle()
+
+  return racedExisting?.id ?? null
 }

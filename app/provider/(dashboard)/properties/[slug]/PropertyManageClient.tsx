@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LicenseBadge from '@/components/provider/LicenseBadge'
-import { formatRoleName } from '@/lib/roles'
+import { formatRoleName, getCanonicalRoleRows } from '@/lib/roles'
 import type { Property, Engineer, Role, LicenseStatus } from '@/types'
 import {
   Shield, Users, Trash2, UserPlus, Mail, Pencil, Check, X,
@@ -44,6 +44,7 @@ function Msg({ msg }: { msg: { type: 'success' | 'error'; text: string } }) {
 export default function PropertyManageClient({ property, engineers, roles, stats, invitations: initInvites }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('overview')
+  const roleRows = getCanonicalRoleRows(roles)
 
   // ── Overview state ──────────────────────────────────────────────
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(property.license_status)
@@ -219,7 +220,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
       setMemberList((prev) =>
         prev.map((m) =>
           m.id === memberId
-            ? { ...m, role_id: editRoleId || null, is_active: editActive, roles: roles.find((r) => r.id === editRoleId) }
+            ? { ...m, role_id: editRoleId || null, is_active: editActive, roles: roleRows.find((r) => r.id === editRoleId) }
             : m
         )
       )
@@ -408,7 +409,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
                             className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                           >
                             <option value="">— No role —</option>
-                            {roles.map((r) => (
+                            {roleRows.map((r) => (
                               <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
                             ))}
                           </select>

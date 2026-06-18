@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ slug: string; engineerId: string }>
@@ -22,15 +23,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = await request.json()
   const { role_id, is_active } = body as { role_id?: string; is_active?: boolean }
 
+  const service = await createServiceClient()
   const updates: Record<string, unknown> = {}
-  if (role_id !== undefined) updates.role_id = role_id
+  if (role_id !== undefined) {
+    if (role_id) {
+      const { data: role } = await service
+        .from('roles')
+        .select('name')
+        .eq('id', role_id)
+        .maybeSingle()
+      updates.role_id = await resolveCanonicalRoleId(service, role?.name)
+    } else {
+      updates.role_id = null
+    }
+  }
   if (is_active !== undefined) updates.is_active = is_active
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
   const { error } = await service.from('engineers').update(updates).eq('id', engineerId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })

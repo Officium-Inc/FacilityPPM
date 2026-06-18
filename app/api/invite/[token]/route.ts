@@ -1,32 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { normalizeRoleName } from '@/lib/roles'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ token: string }>
-}
-
-async function resolveRoleId(service: SupabaseClient, roleName: string): Promise<string | null> {
-  const normalizedRoleName = normalizeRoleName(roleName)
-  if (!normalizedRoleName) return null
-
-  const { data: existing } = await service
-    .from('roles')
-    .select('id')
-    .ilike('name', normalizedRoleName)
-    .limit(1)
-    .maybeSingle()
-
-  if (existing) return existing.id
-
-  const { data: created } = await service
-    .from('roles')
-    .insert({ name: normalizedRoleName })
-    .select('id')
-    .single()
-
-  return created?.id ?? null
 }
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -52,7 +29,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const property = invite.properties as { id: string; name: string; slug: string }
   const email = invite.email as string
   const inviteRoleName = (invite.role_name as string | null) ?? null
-  const roleId = await resolveRoleId(service, inviteRoleName ?? 'admin')
+  const roleId = await resolveCanonicalRoleId(service, inviteRoleName ?? 'admin')
 
   // Check if user already exists
   const { data: existingList } = await service.auth.admin.listUsers()

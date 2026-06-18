@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { normalizeRoleName } from '@/lib/roles'
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-/** Resolve a role name to a role_id, creating the role if it doesn't exist */
-async function resolveRoleId(service: SupabaseClient, roleName: string): Promise<string | null> {
-  const normalizedRoleName = normalizeRoleName(roleName)
-  if (!normalizedRoleName) return null
-  const { data: existing } = await service
-    .from('roles')
-    .select('id')
-    .ilike('name', normalizedRoleName)
-    .limit(1)
-    .maybeSingle()
-  if (existing) return existing.id
-  const { data: created } = await service
-    .from('roles')
-    .insert({ name: normalizedRoleName })
-    .select('id')
-    .single()
-  return created?.id ?? null
-}
+import { resolveCanonicalRoleId } from '@/lib/roles'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -60,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'An engineer with this email already exists in this property.' }, { status: 409 })
   }
 
-  const roleId = body.role_name ? await resolveRoleId(service, body.role_name) : null
+  const roleId = body.role_name ? await resolveCanonicalRoleId(service, body.role_name) : null
 
   const { data, error } = await service.from('engineers').insert({
     property_id: propertyId,
@@ -112,7 +92,7 @@ export async function PATCH(request: NextRequest) {
 
   const updates: Record<string, unknown> = {}
   if (body.role_name !== undefined) {
-    updates.role_id = body.role_name ? await resolveRoleId(service, body.role_name) : null
+    updates.role_id = body.role_name ? await resolveCanonicalRoleId(service, body.role_name) : null
   }
   if (body.is_active !== undefined) updates.is_active = body.is_active
   if (body.phone !== undefined) updates.phone = body.phone?.trim() || null

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -44,12 +45,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
   }
 
-  // Look up the admin role id
-  const { data: role } = await service
-    .from('roles')
-    .select('id')
-    .eq('name', 'admin')
-    .single()
+  const roleId = await resolveCanonicalRoleId(service, 'admin')
 
   // Try creating a new auth user first
   const { data: authData, error: authErr } = await service.auth.admin.createUser({
@@ -71,7 +67,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (authErr) {
     // User already exists — add them to this property instead
     if (authErr.message?.includes('already registered')) {
-      return addExistingUserToProperty({ service, role, property, full_name, email })
+      return addExistingUserToProperty({ service, roleId, property, full_name, email })
     }
     return NextResponse.json({ error: authErr.message }, { status: 500 })
   }
@@ -80,7 +76,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { error: engErr } = await service.from('engineers').insert({
     property_id: property.id,
     user_id: authData.user.id,
-    role_id: role?.id ?? null,
+    role_id: roleId,
     full_name: full_name.trim(),
     email: email.trim().toLowerCase(),
     is_active: true,
@@ -97,13 +93,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 
 async function addExistingUserToProperty({
   service,
-  role,
+  roleId,
   property,
   full_name,
   email,
 }: {
   service: Awaited<ReturnType<typeof createServiceClient>>
-  role: { id: string } | null
+  roleId: string | null
   property: { id: string; slug: string; name: string }
   full_name: string
   email: string
@@ -166,7 +162,7 @@ async function addExistingUserToProperty({
   const { error: engErr } = await service.from('engineers').insert({
     property_id: property.id,
     user_id: existingEngineer.user_id,
-    role_id: role?.id ?? null,
+    role_id: roleId,
     full_name: full_name.trim(),
     email: normalizedEmail,
     is_active: true,
