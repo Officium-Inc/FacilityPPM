@@ -24,26 +24,26 @@ export default function ChecklistItem({
   const cfg = result ? resultConfig[result] : null
 
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-gray-100 last:border-0">
+    <div className="flex items-start gap-2.5 py-2 border-b border-gray-100 last:border-0">
       <div className="mt-0.5">
         {cfg ? (
-          <cfg.icon className={`w-5 h-5 ${cfg.color}`} />
+          <cfg.icon className={`w-4 h-4 ${cfg.color}`} />
         ) : (
-          <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
+          <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
         )}
       </div>
       <div className="flex-1">
         <p className="text-sm text-gray-800 font-medium">{description}</p>
         {remarks && <p className="text-xs text-gray-500 mt-0.5">{remarks}</p>}
         {photoUrls.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
+          <div className="flex flex-wrap gap-2 mt-1.5">
             {photoUrls.map((url, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
                 src={url}
                 alt={`Photo ${i + 1}`}
-                className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                className="w-14 h-14 object-cover rounded-lg border border-gray-200"
               />
             ))}
           </div>

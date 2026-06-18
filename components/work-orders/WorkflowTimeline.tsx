@@ -1,31 +1,31 @@
 import type { WorkOrder, ApprovalTrailEntry, WorkOrderStatus } from '@/types'
+import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
-import { Check, X, Clock } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 
 const STAGES: { status: WorkOrderStatus; label: string; description: string }[] = [
-  { status: 'new_report',       label: 'Service Report',       description: 'Initial fault submitted' },
-  { status: 'inspecting',       label: 'Inspection',           description: 'Engineer on-site inspection' },
-  { status: 'costing',          label: 'Costing',              description: 'Cost estimate prepared' },
-  { status: 'pending_approval', label: 'Cost Approval',        description: 'Awaiting tenant sign-off on cost' },
-  { status: 'assigned',         label: 'Assignment',           description: 'Engineer assigned to job' },
-  { status: 'in_progress',      label: 'Work Execution',       description: 'Work being carried out' },
-  { status: 'signed',           label: 'Tenant Sign-Off',      description: 'Tenant approved & signed' },
-  { status: 'verified',         label: 'Final Verification',   description: 'Head engineer approved' },
-  { status: 'completed',        label: 'Completed',            description: 'WO closed, PDF generated' },
+  { status: 'new_report', label: 'Service Report', description: 'Initial fault submitted' },
+  { status: 'inspecting', label: 'Inspection', description: 'Engineer on-site inspection' },
+  { status: 'costing', label: 'Costing', description: 'Cost estimate prepared' },
+  { status: 'pending_approval', label: 'Cost Approval', description: 'Awaiting tenant sign-off on cost' },
+  { status: 'assigned', label: 'Assignment', description: 'Engineer assigned to job' },
+  { status: 'in_progress', label: 'Work Execution', description: 'Work being carried out' },
+  { status: 'signed', label: 'Tenant Sign-Off', description: 'Tenant approved and signed' },
+  { status: 'verified', label: 'Final Verification', description: 'Head engineer approved' },
+  { status: 'completed', label: 'Completed', description: 'WO closed, PDF generated' },
 ]
 
-// Progress index per DB status — svc_submitted is hidden; maps to Tenant Sign-Off (index 6) as "pending"
 const STATUS_PROGRESS: Partial<Record<WorkOrderStatus, number>> = {
-  new_report:       0,
-  inspecting:       1,
-  costing:          2,
+  new_report: 0,
+  inspecting: 1,
+  costing: 2,
   pending_approval: 3,
-  assigned:         4,
-  in_progress:      5,
-  svc_submitted:    6, // shows Tenant Sign-Off as current/pending (awaiting signature)
-  signed:           7, // Tenant Sign-Off done → Final Verification current
-  verified:         8, // Final Verification done → Completed current
-  completed:        8, // handled by isTerminalComplete
+  assigned: 4,
+  in_progress: 5,
+  svc_submitted: 6,
+  signed: 7,
+  verified: 8,
+  completed: 8,
 }
 
 function getStageIndex(status: WorkOrderStatus): number {
@@ -36,108 +36,158 @@ function getStageIndex(status: WorkOrderStatus): number {
 interface Props {
   workOrder: WorkOrder
   approvalTrail: ApprovalTrailEntry[]
+  compact?: boolean
 }
 
-export default function WorkflowTimeline({ workOrder, approvalTrail }: Props) {
+export default function WorkflowTimeline({ workOrder, approvalTrail, compact = false }: Props) {
   const currentIndex = getStageIndex(workOrder.status)
-
-  // Legacy / non-workflow statuses — don't show timeline
   if (currentIndex === -1) return null
 
+  const currentStage = STAGES[currentIndex] ?? STAGES[0]
+  const isComplete = workOrder.status === 'completed'
+  const progressPercent = isComplete
+    ? 100
+    : Math.max(0, Math.min(100, (currentIndex / (STAGES.length - 1)) * 100))
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <h3 className="font-semibold text-gray-900 text-sm mb-5">Workflow Progress</h3>
+    <div
+      className={cn(
+        'rounded-lg border border-gray-200 bg-white transition-all duration-200',
+        compact ? 'px-3 py-2 shadow-sm' : 'px-4 py-3'
+      )}
+    >
+      <div className={cn('flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between', compact ? 'mb-2' : 'mb-4')}>
+        <h3 className={cn('font-semibold text-gray-900', compact ? 'text-xs' : 'text-sm')}>
+          Workflow Progress
+        </h3>
+        <span className="w-fit max-w-full truncate rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+          Current: {currentStage.label}
+        </span>
+      </div>
 
-      <ol className="relative">
-        {STAGES.map((stage, i) => {
-          const isTerminalComplete = workOrder.status === 'completed' && i === STAGES.length - 1
-          const done = i < currentIndex || isTerminalComplete
-          const active = i === currentIndex && !isTerminalComplete
-          const future = i > currentIndex && !isTerminalComplete
+      <div className="md:hidden">
+        <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-lime-500 to-sky-500 transition-all"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <div className="mt-2 flex items-start justify-between gap-3 text-xs">
+          <div className="min-w-0">
+            <p className="font-medium text-sky-700">{currentStage.label}</p>
+            {!compact && <p className="mt-0.5 text-gray-400">{currentStage.description}</p>}
+          </div>
+          <span className="shrink-0 text-gray-400">
+            Step {currentIndex + 1} of {STAGES.length}
+          </span>
+        </div>
+      </div>
 
-          // Find an approval trail entry for this stage
-          const trailEntry = approvalTrail.find((t) => {
-            if (stage.status === 'pending_approval') return t.stage === 'costing_approval'
-            if (stage.status === 'signed') return t.stage === 'sign_off'
-            if (stage.status === 'verified') return t.stage === 'final_verification'
-            return false
-          })
+      <div className={cn('hidden overflow-x-auto md:block', compact ? 'pb-0' : 'pb-1')}>
+        <ol
+          className={cn(
+            'relative flex justify-between px-2 pt-1',
+            compact ? 'min-w-[42rem] lg:min-w-[48rem] xl:min-w-0' : 'min-w-[48rem] lg:min-w-[54rem] xl:min-w-0'
+          )}
+        >
+          <div
+            className={cn(
+              'absolute rounded-full bg-gray-200',
+              compact ? 'left-7 right-7 top-3 h-1' : 'left-8 right-8 top-4 h-1.5'
+            )}
+          />
+          <div
+            className={cn(
+              'absolute rounded-full bg-gradient-to-r from-lime-500 to-sky-500 transition-all',
+              compact ? 'left-7 top-3 h-1' : 'left-8 top-4 h-1.5'
+            )}
+            style={{ width: `calc((100% - ${compact ? '3.5rem' : '4rem'}) * ${progressPercent / 100})` }}
+          />
 
-          return (
-            <li key={stage.status} className={`flex gap-4 pb-6 last:pb-0 ${future ? 'opacity-40' : ''}`}>
-              {/* Connector line */}
-              <div className="flex flex-col items-center">
+          {STAGES.map((stage, i) => {
+            const done = i < currentIndex || isComplete
+            const active = i === currentIndex && !isComplete
+            const trailEntry = approvalTrail.find((t) => {
+              if (stage.status === 'pending_approval') return t.stage === 'costing_approval'
+              if (stage.status === 'signed') return t.stage === 'sign_off'
+              if (stage.status === 'verified') return t.stage === 'final_verification'
+              return false
+            })
+            const rejected = trailEntry?.decision === 'rejected'
+
+            return (
+              <li
+                key={stage.status}
+                className={cn(
+                  'relative z-10 flex flex-col items-center text-center',
+                  compact ? 'w-16 lg:w-20' : 'w-20 lg:w-24'
+                )}
+              >
                 <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10 ${
-                    done
-                      ? 'bg-green-600 text-white'
+                  className={cn(
+                    'flex items-center justify-center rounded-full font-semibold shadow-sm transition-all',
+                    compact ? 'h-6 w-6 text-xs' : 'h-8 w-8 text-sm',
+                    rejected
+                      ? 'bg-red-500 text-white'
+                      : done
+                      ? 'bg-lime-500 text-white'
                       : active
-                      ? 'bg-green-100 border-2 border-green-600 text-green-700'
+                      ? 'bg-sky-600 text-white'
                       : 'bg-gray-100 text-gray-400'
-                  }`}
+                  )}
                 >
-                  {done ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : active ? (
-                    <Clock className="w-3.5 h-3.5" />
+                  {rejected ? (
+                    <X className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
+                  ) : done ? (
+                    <Check className={cn(compact ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
                   ) : (
-                    <span className="text-xs font-medium">{i + 1}</span>
+                    i + 1
                   )}
                 </div>
-                {i < STAGES.length - 1 && (
-                  <div className={`w-0.5 flex-1 mt-1 ${done ? 'bg-green-300' : 'bg-gray-200'}`} />
-                )}
-              </div>
-
-              {/* Stage content */}
-              <div className="pt-0.5 pb-2 min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className={`text-sm font-medium ${active ? 'text-green-700' : done ? 'text-gray-900' : 'text-gray-400'}`}>
+                <div className={cn(compact ? 'mt-1 min-h-8' : 'mt-2 min-h-12')}>
+                  <p
+                    className={cn(
+                      'font-medium leading-tight',
+                      compact ? 'text-[11px]' : 'text-xs',
+                      rejected
+                        ? 'text-red-600'
+                        : done
+                        ? 'text-lime-700'
+                        : active
+                        ? 'text-sky-700'
+                        : 'text-gray-400'
+                    )}
+                  >
                     {stage.label}
                   </p>
-                  {active && (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                      Current
-                    </span>
+                  {active && !compact && (
+                    <p className="mt-0.5 text-[11px] text-gray-400">{stage.description}</p>
                   )}
-                  {trailEntry && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      trailEntry.decision === 'approved'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {trailEntry.decision === 'approved' ? <><Check className="w-2.5 h-2.5 inline mr-0.5" />Approved</> : <><X className="w-2.5 h-2.5 inline mr-0.5" />Rejected</>}
-                    </span>
+                  {trailEntry && !compact && (
+                    <p className={cn('mt-0.5 text-[11px]', rejected ? 'text-red-500' : 'text-gray-400')}>
+                      {trailEntry.decision === 'approved' ? 'Approved' : 'Rejected'}
+                    </p>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">{stage.description}</p>
-                {trailEntry && (
-                  <div className="mt-1 text-xs text-gray-500">
-                    <span className="font-medium">{trailEntry.actor_name}</span>
-                    {' · '}
-                    {format(new Date(trailEntry.created_at), 'dd MMM yyyy HH:mm')}
-                    {trailEntry.reason && (
-                      <p className="text-red-500 mt-0.5 italic">&ldquo;{trailEntry.reason}&rdquo;</p>
+
+                {(trailEntry || (stage.status === 'signed' && workOrder.signed_by_name)) && (
+                  <div className="sr-only">
+                    {trailEntry && (
+                      <>
+                        {trailEntry.actor_name}
+                        {' '}
+                        {format(new Date(trailEntry.created_at), 'dd MMM yyyy HH:mm')}
+                        {trailEntry.reason ? ` ${trailEntry.reason}` : ''}
+                      </>
                     )}
+                    {stage.status === 'signed' && workOrder.signed_by_name && ` Signed by ${workOrder.signed_by_name}`}
                   </div>
                 )}
-                {/* Tenant sign-off info */}
-                {stage.status === 'signed' && workOrder.signed_by_name && (
-                  <div className="mt-1 text-xs text-gray-500">
-                    <span className="font-medium">{workOrder.signed_by_name}</span>
-                    {workOrder.signed_at && ` · ${format(new Date(workOrder.signed_at), 'dd MMM yyyy HH:mm')}`}
-                    {workOrder.rating && (
-                      <span className="ml-1 text-yellow-500">
-                        {'★'.repeat(workOrder.rating)}{'☆'.repeat(5 - workOrder.rating)}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ol>
+              </li>
+            )
+          })}
+        </ol>
+      </div>
     </div>
   )
 }
