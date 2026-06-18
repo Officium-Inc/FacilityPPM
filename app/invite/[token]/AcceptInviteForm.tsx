@@ -67,11 +67,11 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-700 rounded-xl mb-4">
-            <span className="text-white font-bold text-2xl">M</span>
+            <span className="text-white font-bold text-2xl">T</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">You&apos;re invited</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Join <strong>{propertyName}</strong> on FacilityPPM
+            Join <strong>{propertyName}</strong> on Tenant360
           </p>
         </div>
 
@@ -83,7 +83,7 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
           {isExistingUser ? (
             <div>
               <p className="text-sm text-gray-600 mb-6">
-                You already have a FacilityPPM account. Click below to add <strong>{propertyName}</strong> to your account.
+                You already have a Tenant360 account. Click below to add <strong>{propertyName}</strong> to your account.
               </p>
               <form onSubmit={handleSubmit}>
                 {error && (
@@ -140,7 +140,7 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
             </form>
           )}
         </div>
-        <p className="text-center text-xs text-gray-400 mt-6">FacilityPPM · For authorised users only</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Tenant360 · For authorised users only</p>
       </div>
     </div>
   )

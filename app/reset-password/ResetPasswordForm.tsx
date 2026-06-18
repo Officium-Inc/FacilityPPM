@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -84,10 +84,10 @@ export default function ResetPasswordForm() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-700 rounded-xl mb-4">
-            <span className="text-white font-bold text-2xl">M</span>
+            <span className="text-white font-bold text-2xl">T</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">FacilityPPM</h1>
-          <p className="text-gray-500 text-sm mt-1">Marajo Property Management</p>
+          <h1 className="text-2xl font-bold text-gray-900">Tenant360</h1>
+          <p className="text-gray-500 text-sm mt-1">Tenant and property maintenance</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
@@ -233,7 +233,7 @@ export default function ResetPasswordForm() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          FacilityPPM &middot; For authorised users only
+          Tenant360 &middot; For authorised users only
         </p>
       </div>
     </div>

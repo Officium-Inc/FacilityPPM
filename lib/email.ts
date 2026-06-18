@@ -1,4 +1,4 @@
-﻿import nodemailer from 'nodemailer'
+import nodemailer from 'nodemailer'
 
 function createTransporter() {
   const user = process.env.GMAIL_USER
@@ -26,23 +26,23 @@ export async function sendReceiptEmail({
 }) {
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: tenantEmail,
     subject: `Signed Receipt: ${woNumber} — ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #15803d; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bbf7d0; margin: 4px 0 0;">FacilityPPM — Signed Acknowledgement Receipt</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bbf7d0; margin: 4px 0 0;">Tenant360 — Signed Acknowledgement Receipt</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>Dear ${tenantName},</p>
           <p>Thank you for signing off on work order <strong>${woNumber}</strong> for <strong>${propertyName}</strong>.</p>
           <p>Please find your tamper-evident acknowledgement receipt attached to this email as a PDF. Keep it for your records.</p>
-          <p style="color: #6b7280; font-size: 14px;">If you have any questions or concerns, please contact Marajo Property Management directly.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you have any questions or concerns, please contact Tenant360 directly.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,
@@ -75,14 +75,14 @@ export async function sendSignOffEmail({
 
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: tenantEmail,
     subject: `Action Required: Please sign off on ${woNumber} ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Maintenance Sign-Off</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">Tenant360  Maintenance Sign-Off</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>Dear ${tenantName},</p>
@@ -94,10 +94,10 @@ export async function sendSignOffEmail({
             </a>
           </div>
           <p style="color: #6b7280; font-size: 14px;">This link expires in 48 hours. If you have concerns about the work performed, you can raise them directly on the sign-off page.</p>
-          <p style="color: #6b7280; font-size: 14px;">If you did not expect this email, please contact Marajo Property Management immediately.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you did not expect this email, please contact Tenant360 immediately.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,
@@ -124,29 +124,29 @@ export async function sendInviteEmail({
 
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: toEmail,
-    subject: `You've been invited to ${propertyName} on FacilityPPM`,
+    subject: `You've been invited to ${propertyName} on Tenant360`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Property Access Invitation</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">Tenant360  Property Access Invitation</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
-          <p>${invitedBy ? `<strong>${invitedBy}</strong> has` : 'You have been'} invited you to join <strong>${propertyName}</strong> on FacilityPPM.</p>
+          <p>${invitedBy ? `<strong>${invitedBy}</strong> has` : 'You have been'} invited you to join <strong>${propertyName}</strong> on Tenant360.</p>
           <p>Click the button below to accept your invitation and set up your account. This link expires in <strong>7 days</strong>.</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${inviteUrl}" style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Accept Invitation
             </a>
           </div>
-          <p style="color: #6b7280; font-size: 14px;">If you already have a FacilityPPM account, you will be added to this property automatically.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you already have a Tenant360 account, you will be added to this property automatically.</p>
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can safely ignore this email.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,
@@ -189,14 +189,14 @@ export async function sendCostingApprovalConfirmationEmail({
 
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: toEmail,
     subject: `Cost Estimate Approved: ${woNumber} — ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #15803d; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bbf7d0; margin: 4px 0 0;">FacilityPPM — Cost Estimate Approved</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bbf7d0; margin: 4px 0 0;">Tenant360 — Cost Estimate Approved</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
@@ -222,10 +222,10 @@ export async function sendCostingApprovalConfirmationEmail({
           </table>
           ${notes ? `<p style="color: #6b7280; font-size: 14px;"><em>Notes: ${notes}</em></p>` : ''}
           <p style="color: #6b7280; font-size: 14px;">Work on your request will now proceed. You will be notified again when the work is complete and requires your sign-off.</p>
-          <p style="color: #6b7280; font-size: 14px;">If you have any questions, please contact Marajo Property Management directly.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you have any questions, please contact Tenant360 directly.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,
@@ -251,14 +251,14 @@ export async function sendMentionEmail({
 }) {
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: toEmail,
     subject: `${fromName} mentioned you in ${woNumber} — ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM — You were mentioned</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">Tenant360 — You were mentioned</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>Hi <strong>${toName}</strong>,</p>
@@ -271,10 +271,10 @@ export async function sendMentionEmail({
               View Work Order
             </a>
           </div>
-          <p style="color: #6b7280; font-size: 14px;">You can reply directly in the FacilityPPM portal.</p>
+          <p style="color: #6b7280; font-size: 14px;">You can reply directly in the Tenant360 portal.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,
@@ -303,14 +303,14 @@ export async function sendCostingApprovalEmail({
 
   const transporter = createTransporter()
   await transporter.sendMail({
-    from: `"FacilityPPM" <${process.env.GMAIL_USER}>`,
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: toEmail,
     subject: `Cost Approval Required: ${woNumber}  ${propertyName}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 22px;">Marajo Property Management</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">FacilityPPM  Cost Estimate Approval</p>
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">Tenant360  Cost Estimate Approval</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
@@ -322,10 +322,10 @@ export async function sendCostingApprovalEmail({
             </a>
           </div>
           <p style="color: #6b7280; font-size: 14px;">This approval link expires in 7 days. Approving this estimate authorises the work to proceed.</p>
-          <p style="color: #6b7280; font-size: 14px;">If you have questions, please contact Marajo Property Management directly.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you have questions, please contact Tenant360 directly.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
-          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Marajo Property Management · FacilityPPM</p>
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
         </div>
       </div>
     `,

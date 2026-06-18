@@ -41,10 +41,10 @@ export default function ProviderLoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-700 rounded-xl mb-4">
-            <span className="text-white font-bold text-2xl">M</span>
+            <span className="text-white font-bold text-2xl">T</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">FacilityPPM</h1>
-          <p className="text-gray-500 text-sm mt-1">Provider Portal · Marajo Property Management</p>
+          <h1 className="text-2xl font-bold text-gray-900">Tenant360</h1>
+          <p className="text-gray-500 text-sm mt-1">Provider Portal · Tenant360</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
@@ -63,7 +63,7 @@ export default function ProviderLoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="provider@marajo.com.ph"
+                placeholder="provider@tenant360.com"
               />
             </div>
 
@@ -100,7 +100,7 @@ export default function ProviderLoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          FacilityPPM v2.0 · Provider access only
+          Tenant360 v0.1.22alpha · Provider access only
         </p>
       </div>
     </div>

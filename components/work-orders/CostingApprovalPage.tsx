@@ -67,7 +67,7 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <p className="font-bold text-base leading-tight">Marajo Property Management</p>
+            <p className="font-bold text-base leading-tight">Tenant360</p>
             <p className="text-green-200 text-xs">Cost Estimate Approval — {propertyName}</p>
           </div>
         </div>
@@ -156,7 +156,7 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
           <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
             <h3 className="font-semibold text-gray-900 text-sm">Approve Cost Estimate</h3>
             <p className="text-sm text-gray-600">
-              By approving, you authorise Marajo Property Management to proceed with the work
+              By approving, you authorise Tenant360 to proceed with the work
               described above at the quoted cost.
             </p>
 

@@ -23,7 +23,7 @@ export default async function CostingApprovalTokenPage({ params }: Props) {
           <p className="text-4xl mb-4">⏱</p>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Link Expired</h2>
           <p className="text-sm text-gray-500">
-            This cost approval link has expired. Please contact Marajo Property Management
+            This cost approval link has expired. Please contact Tenant360
             for a new link.
           </p>
         </div>

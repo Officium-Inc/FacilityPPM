@@ -9,7 +9,7 @@ export default function SignOffRejectedPage() {
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">Concern Submitted</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Marajo Property Management has been notified. A corrective work order has been raised
+          Tenant360 has been notified. A corrective work order has been raised
           to address your concern.
         </p>
         <p className="text-xs text-gray-400">

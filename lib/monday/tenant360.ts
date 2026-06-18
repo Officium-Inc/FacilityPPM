@@ -797,7 +797,7 @@ export async function validateIntegrationMappings(input: {
   for (const mapping of input.mappings) {
     const column = columnMap.get(mapping.columnId)
     const field = getMondayFieldDefinition(mapping.fieldId)
-    if (!field) return { valid: false, error: `Unknown FacilityPPM field: ${mapping.fieldId}`, board }
+    if (!field) return { valid: false, error: `Unknown Tenant360 field: ${mapping.fieldId}`, board }
     if (!column) return { valid: false, error: `Mapped Monday column was not found: ${mapping.columnId}`, board }
     if (!isColumnCompatible(field.id, column.type)) {
       return { valid: false, error: `${field.label} is not compatible with Monday ${column.title} (${column.type}).`, board }

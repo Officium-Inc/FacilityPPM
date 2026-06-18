@@ -73,7 +73,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-dvh overflow-hidden bg-gray-50">
-      <Sidebar slug={slug} userRole={userRole} />
+      <Sidebar slug={slug} userRole={userRole} propertyName={property.name} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar
           title={property.name}

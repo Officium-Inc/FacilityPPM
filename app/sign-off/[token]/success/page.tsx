@@ -13,8 +13,8 @@ export default function SignOffSuccessPage() {
           and stored securely.
         </p>
         <p className="text-xs text-gray-400">
-          You will receive a copy of the signed receipt by email. Contact Marajo Property
-          Management if you have any questions.
+          You will receive a copy of the signed receipt by email. Contact Tenant360 if
+          you have any questions.
         </p>
       </div>
     </div>

@@ -31,7 +31,7 @@ const toneClasses: Record<LoadingTone, {
 }
 
 export default function LoadingState({
-  title = 'Loading FacilityPPM',
+  title = 'Loading Tenant360',
   message = 'Preparing your workspace...',
   tone = 'green',
   fullScreen = false,
@@ -54,7 +54,7 @@ export default function LoadingState({
           <div className={cn('absolute inset-1 rounded-2xl opacity-20 blur-lg', colors.glow)} />
           <div className={cn('absolute inset-0 rounded-2xl border-2 border-gray-200 bg-white shadow-sm', colors.ring, 'animate-spin')} />
           <div className={cn('absolute inset-3 flex items-center justify-center rounded-xl shadow-sm', colors.badge)}>
-            <span className="text-lg font-bold text-white">M</span>
+            <span className="text-lg font-bold text-white">T</span>
           </div>
         </div>
 

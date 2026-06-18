@@ -76,7 +76,7 @@ export default async function SignOffTokenPage({ params }: Props) {
           <p className="text-4xl mb-4">⏱</p>
           <h2 className="text-xl font-bold text-gray-900 mb-2">Link Expired</h2>
           <p className="text-sm text-gray-500">
-            This sign-off link expired. Please contact Marajo Property Management for a new link.
+            This sign-off link expired. Please contact Tenant360 for a new link.
           </p>
         </div>
       </div>

@@ -20,7 +20,7 @@ export const MONDAY_FIELD_DEFINITIONS: MondayFieldDefinition[] = [
   { id: 'approval_or_waiver_date', label: 'Approval/Waiver Date', kind: 'date', compatibleTypes: ['date'] },
   { id: 'grand_total', label: 'Grand Total', kind: 'number', compatibleTypes: ['numbers'] },
   { id: 'attachments', label: 'Attachments', kind: 'files', compatibleTypes: ['file'] },
-  { id: 'facilityppm_link', label: 'FacilityPPM Link', kind: 'link', compatibleTypes: ['link', 'text', 'long_text'] },
+  { id: 'facilityppm_link', label: 'Tenant360 Link', kind: 'link', compatibleTypes: ['link', 'text', 'long_text'] },
   { id: 'workflow_status', label: 'Workflow Status', kind: 'status', compatibleTypes: ['status'] },
   { id: 'type', label: 'Type', kind: 'status', compatibleTypes: ['status', 'text', 'long_text'] },
   { id: 'priority', label: 'Priority', kind: 'status', compatibleTypes: ['status', 'text', 'long_text'] },
