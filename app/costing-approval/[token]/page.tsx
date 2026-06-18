@@ -9,7 +9,7 @@ interface Props {
 export default async function CostingApprovalTokenPage({ params }: Props) {
   const { token } = await params
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')
   const res = await fetch(`${appUrl}/api/costing-approval/${token}`, {
     cache: 'no-store',
   })
