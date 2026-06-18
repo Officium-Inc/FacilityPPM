@@ -1,11 +1,17 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Plus, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import StatusBadge from '@/components/work-orders/StatusBadge'
+import NewServiceRequestModal from './NewServiceRequestModal'
 
 interface Props {
   params: Promise<{ slug: string }>
+}
+
+function rowsOf<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
 }
 
 export default async function ServiceRequestsPage({ params }: Props) {
@@ -47,7 +53,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
     status: string
     priority: string
     created_at: string
-    work_order_reports: ReportRow[]
+    work_order_reports: ReportRow | ReportRow[] | null
   }
 
   const rows = (reactiveWOs ?? []) as unknown as WoRow[]
@@ -66,25 +72,16 @@ export default async function ServiceRequestsPage({ params }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Service Requests</h2>
           <p className="text-sm text-gray-500 mt-0.5">{rows.length} submitted</p>
         </div>
-        <Link
-          href={`/${slug}/fault-reports/new`}
-          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Service Request
-        </Link>
+        <NewServiceRequestModal slug={slug} />
       </div>
 
       {rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <AlertTriangle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">No service requests submitted yet.</p>
-          <Link
-            href={`/${slug}/fault-reports/new`}
-            className="mt-4 inline-flex items-center gap-2 text-sm text-green-700 hover:underline"
-          >
-            <Plus className="w-4 h-4" /> Submit your first request
-          </Link>
+          <div className="mt-4">
+            <NewServiceRequestModal slug={slug} triggerLabel="Submit your first request" variant="link" />
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -101,7 +98,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((wo) => {
-                  const r = wo.work_order_reports?.[0]
+                  const r = rowsOf(wo.work_order_reports)[0]
                   return (
                     <tr key={wo.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
