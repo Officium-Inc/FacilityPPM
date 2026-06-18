@@ -5,18 +5,9 @@ import { useRouter } from 'next/navigation'
 import { LogOut, Bell, ChevronDown, Check, ArrowLeftRight, AtSign, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatPHT } from '@/lib/utils'
+import LoadingState from './LoadingState'
 
 const switchOverlayStyles = `
-@keyframes fadeInOverlay {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes scaleInSpinner {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
-}
-.switch-overlay { animation: fadeInOverlay 0.2s ease forwards; }
-.switch-spinner { animation: scaleInSpinner 0.25s ease forwards; }
 @keyframes dropdownIn {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -154,22 +145,22 @@ export default function TopbarClient({
   const showSwitcher = properties.length > 1
 
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white pl-14 pr-3 sm:pr-6 md:pl-6">
       <style>{switchOverlayStyles}</style>
 
       {/* Full-page switching overlay */}
       {switching && (
-        <div className="switch-overlay fixed inset-0 z-[9999] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-          <div className="switch-spinner flex flex-col items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" />
-            <p className="text-sm font-medium text-gray-700">
-              Switching to <span className="text-green-600">{switchingTo}</span>…
-            </p>
-          </div>
+        <div className="fixed inset-0 z-[9999]">
+          <LoadingState
+            fullScreen
+            title={switchingTo ? `Switching to ${switchingTo}` : 'Switching property'}
+            message="Refreshing your workspace and permissions..."
+            className="bg-white/90 backdrop-blur-sm"
+          />
         </div>
       )}
-      <div className="flex items-center gap-2">
-        <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className="truncate text-sm font-semibold text-gray-900 sm:text-base">{title}</h1>
 
         {showSwitcher && (
           <div className="relative" ref={dropdownRef}>
@@ -184,7 +175,7 @@ export default function TopbarClient({
             </button>
 
             {dropdownOpen && (
-              <div className="dropdown-enter absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+              <div className="dropdown-enter absolute left-0 top-full z-50 mt-1 w-[calc(100vw-2rem)] max-w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                 <p className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Switch Property
                 </p>
@@ -206,7 +197,7 @@ export default function TopbarClient({
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {/* Notification bell */}
         <div className="relative" ref={notifRef}>
           <button
@@ -223,7 +214,7 @@ export default function TopbarClient({
           </button>
 
           {notifOpen && (
-            <div className="dropdown-enter absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+            <div className="dropdown-enter absolute right-0 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-80 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <span className="text-sm font-semibold text-gray-900">Notifications</span>

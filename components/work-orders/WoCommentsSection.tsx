@@ -188,8 +188,8 @@ export default function WoCommentsSection({ workOrderId, initialComments, mentio
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <div className="flex items-center gap-2 mb-4">
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
         <MessageSquare className="w-4 h-4 text-gray-400" />
         <h3 className="font-semibold text-gray-900 text-sm">
           Comments {comments.length > 0 && <span className="text-gray-400 font-normal">({comments.length})</span>}
@@ -197,15 +197,15 @@ export default function WoCommentsSection({ workOrderId, initialComments, mentio
       </div>
 
       {/* Thread */}
-      <div className="space-y-3 max-h-96 overflow-y-auto pr-1 mb-4">
+      <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1 mb-3">
         {comments.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">No comments yet. Start the conversation.</p>
         ) : (
           comments.map((c) => {
             const style = getRoleStyle(c.author_role)
             return (
-              <div key={c.id} className="flex gap-3">
-                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${style.bg} ${style.text}`}>
+              <div key={c.id} className="flex gap-2.5">
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${style.bg} ${style.text}`}>
                   {c.author_name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -251,7 +251,7 @@ export default function WoCommentsSection({ workOrderId, initialComments, mentio
             onChange={handleInput}
             onKeyDown={handleKeyDown}
             placeholder="Write a comment… type @ to mention someone"
-            rows={2}
+            rows={1}
             disabled={submitting}
             className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50"
           />

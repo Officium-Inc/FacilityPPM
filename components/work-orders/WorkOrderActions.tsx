@@ -21,7 +21,7 @@ interface WorkOrderActionsProps {
   slug: string
 }
 
-const INPUT = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
+const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
 
 export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug }: WorkOrderActionsProps) {
   const router = useRouter()
@@ -119,7 +119,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
       <h3 className="font-semibold text-gray-900 text-sm">Actions</h3>
 
       {message && (
@@ -161,7 +161,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
       {status === 'inspecting' && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Record Inspection Findings</p>
-          <textarea value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Inspection notes & diagnosis…" rows={3} className={INPUT} />
+          <textarea value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Inspection notes & diagnosis…" rows={2} className={INPUT} />
           <input type="text" value={rootCause} onChange={(e) => setRootCause(e.target.value)} placeholder="Root cause" className={INPUT} />
           <textarea value={scopeOfWork} onChange={(e) => setScopeOfWork(e.target.value)} placeholder="Scope of work required…" rows={2} className={INPUT} />
           <ActionButton
@@ -240,7 +240,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
             )}
             <button
               onClick={() => setAssignModalOpen(true)}
-              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
             >
               <span className="flex items-center gap-2"><UserCheck className="w-4 h-4" /> Assign &amp; Start Work</span>
               <ArrowRight className="w-4 h-4" />
@@ -391,7 +391,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
       {status === 'in_progress' && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Submit Completion Evidence</p>
-          <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={3} className={INPUT} />
+          <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={2} className={INPUT} />
 
           {/* File / photo upload */}
           <div>
@@ -452,7 +452,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
 
       {status === 'signed' && (
         <div className="space-y-3">
-          <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-3 text-sm">
+          <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-sm">
             <p className="font-medium text-teal-800">Signed by tenant</p>
             {workOrder.signed_by_name && <p className="text-teal-700 mt-0.5">{workOrder.signed_by_name}</p>}
             {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{formatPHT(workOrder.signed_at, true)}</p>}
@@ -467,7 +467,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
 
       {(status === 'verified' || status === 'completed') && (
         <div className="space-y-3">
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-3 text-sm">
+          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
             <p className="font-medium text-green-800">{status === 'completed' ? 'Work Order Completed' : 'Verified by Head Engineer'}</p>
             {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
           </div>
@@ -483,7 +483,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
       {status === 'on_hold' && <ActionButton onClick={() => handleStatusChange('in_progress')} loading={loading} icon={RefreshCw} label="Resume Work" />}
 
       {workOrder.rejection_reason && status !== 'costing' && status !== 'pending_approval' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-3 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">
           <p className="font-medium text-red-800">Last rejection reason</p>
           <p className="text-red-700 mt-0.5">{workOrder.rejection_reason}</p>
         </div>
@@ -499,7 +499,7 @@ function ActionButton({ onClick, loading, icon: Icon, label, variant = 'primary'
     <button
       onClick={onClick}
       disabled={loading}
-      className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center ${
+          className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg transition-colors w-full justify-center ${
         variant === 'primary'
           ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white'
           : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'

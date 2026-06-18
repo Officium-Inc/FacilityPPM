@@ -1,15 +1,13 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import StatusBadge from '@/components/work-orders/StatusBadge'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
-import WorkflowTimeline from '@/components/work-orders/WorkflowTimeline'
+import WorkOrderStickyHeader from '@/components/work-orders/WorkOrderStickyHeader'
 import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
-import { ArrowLeft, FileText, Ban, FileDown, Image as ImageIcon } from 'lucide-react'
-import Link from 'next/link'
+import { FileText, FileDown, Image as ImageIcon } from 'lucide-react'
 
 interface Props {
   params: Promise<{ slug: string; id: string }>
@@ -80,42 +78,16 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   }))
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <Link
-        href={`/${slug}/work-orders`}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        Back to Work Orders
-      </Link>
+    <div className="-m-4 min-h-full sm:-m-6">
+      <WorkOrderStickyHeader slug={slug} workOrder={workOrder} approvalTrail={approvalTrail} />
 
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-2xl font-bold text-gray-900">{workOrder.wo_number}</h2>
-            <StatusBadge status={workOrder.status} />
-            {workOrder.is_cost_waived && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                <Ban className="w-3 h-3" /> Cost Waived
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-gray-500 mt-1 capitalize">
-            {workOrder.type} · {workOrder.priority} priority
-          </p>
-        </div>
-
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 space-y-6">
-          {/* Workflow timeline */}
-          <WorkflowTimeline workOrder={workOrder} approvalTrail={approvalTrail} />
-
+      <div className="mx-auto w-full max-w-[96rem] px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
+        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,22rem)] xl:items-start">
+          <div className="order-2 min-w-0 space-y-4 xl:order-1">
           {/* Fault report */}
           {report && report.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 text-sm mb-4">Fault Report</h3>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900 text-sm mb-3">Fault Report</h3>
               <dl className="space-y-2 text-sm">
                 <Detail label="Description" value={report[0].fault_description ?? '—'} />
                 {report[0].location_notes ? <Detail label="Location" value={report[0].location_notes} /> : null}
@@ -138,8 +110,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
           {/* Costing */}
           {costing && costing.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 text-sm mb-4">Cost Estimate</h3>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900 text-sm mb-3">Cost Estimate</h3>
               <dl className="space-y-1 text-sm">
                 <Detail label="Labour" value={`${costing[0].labour_hours ?? 0}h × ₱${costing[0].labour_rate ?? 0}/h = ₱${Number(costing[0].labour_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
                 <Detail label="Materials" value={`₱${Number(costing[0].materials_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
@@ -155,8 +127,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
           {/* Completion evidence */}
           {evidence && evidence.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-900 text-sm mb-4">Completion Evidence</h3>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="font-semibold text-gray-900 text-sm mb-3">Completion Evidence</h3>
               <dl className="space-y-2 text-sm">
                 <Detail label="Work Done" value={String(evidence[0].work_description ?? '—')} />
                 {workOrder.hours_logged && <Detail label="Hours Logged" value={`${workOrder.hours_logged}h`} />}
@@ -164,9 +136,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             </div>
           )}
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-900 text-sm mb-4">Work Order Details</h3>
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 text-sm mb-3">Work Order Details</h3>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-2 text-sm">
               <Detail label="Property" value={site?.name ?? '—'} />
               <Detail label="Address" value={site ? `${site.address}, ${site.city}` : '—'} />
               <Detail label="Building" value={asset?.buildings?.name ?? '—'} />
@@ -192,7 +164,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
           </div>
 
           {checklist.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900 text-sm mb-2">
                 Checklist ({checklist.length} items)
               </h3>
@@ -227,7 +199,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             if (!hasReport && !hasCosting && !hasReceipt && photos.length === 0 && supportingDocs.length === 0) return null
 
             return (
-              <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
+              <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
                 <h3 className="font-semibold text-gray-900 text-sm">Attachments</h3>
 
                 {/* PDF Documents */}
@@ -240,9 +212,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           href={`/api/pdf/${workOrder.id}/report`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                          className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
                         >
-                          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                             <FileDown className="w-4 h-4 text-blue-600" />
                           </div>
                           <div className="min-w-0">
@@ -258,9 +230,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           href={`/api/pdf/${workOrder.id}/costing`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                          className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
                         >
-                          <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
                             <FileDown className="w-4 h-4 text-green-600" />
                           </div>
                           <div className="min-w-0">
@@ -276,9 +248,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           href={workOrder.pdf_url ?? `/api/pdf/${workOrder.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                          className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
                         >
-                          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
                             <FileText className="w-4 h-4 text-purple-600" />
                           </div>
                           <div className="min-w-0">
@@ -293,9 +265,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors"
+                          className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors"
                         >
-                          <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
                             <FileText className="w-4 h-4 text-gray-500" />
                           </div>
                           <div className="min-w-0">
@@ -321,7 +293,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           <img
                             src={p.url}
                             alt={`${p.label} photo ${i + 1}`}
-                            className="w-24 h-24 object-cover rounded-lg border border-gray-200 group-hover:opacity-80 transition-opacity"
+                            className="w-20 h-20 object-cover rounded-lg border border-gray-200 group-hover:opacity-80 transition-opacity"
                           />
                           <span className="absolute bottom-1 left-1 text-[9px] font-medium bg-black/50 text-white rounded px-1 py-0.5">
                             {p.label}
@@ -339,8 +311,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
           <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} mentionables={mentionables} />
         </div>
 
-        <div>
-          <WorkOrderActions workOrder={workOrder} engineers={engineers} schedules={schedules} slug={slug} />
+          <div className="order-1 min-w-0 xl:order-2 xl:sticky xl:top-[var(--wo-sticky-header-height,10rem)]">
+            <WorkOrderActions workOrder={workOrder} engineers={engineers} schedules={schedules} slug={slug} />
+          </div>
         </div>
       </div>
     </div>
@@ -349,9 +322,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <dt className="text-xs text-gray-400 font-medium uppercase tracking-wide">{label}</dt>
-      <dd className="text-gray-800 mt-0.5">{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-[11px] text-gray-400 font-medium uppercase tracking-wide">{label}</dt>
+      <dd className="text-gray-800 mt-0.5 leading-snug break-words">{value}</dd>
     </div>
   )
 }
