@@ -1,4 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
 
 const MONDAY_MANAGE_ROLES = ['admin', 'property_manager']
 
@@ -38,7 +39,7 @@ export async function requireMondayPropertyAdmin(): Promise<
     .maybeSingle()
 
   const roleData = engineer?.roles as unknown as { name?: string } | null
-  const roleName = roleData?.name?.toLowerCase() ?? ''
+  const roleName = normalizeRoleName(roleData?.name)
 
   if (!MONDAY_MANAGE_ROLES.includes(roleName)) {
     return { ok: false, status: 403, error: 'Forbidden' }

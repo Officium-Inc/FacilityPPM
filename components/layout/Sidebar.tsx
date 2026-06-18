@@ -13,6 +13,7 @@ import {
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { normalizeRoleName } from '@/lib/roles'
 
 type NavItem = { href: string; label: string; icon: React.ElementType }
 
@@ -22,16 +23,17 @@ const MEMBERS_MANAGE_ROLES = ['admin', 'property_manager']
 
 function buildNav(slug: string, userRole: string): NavItem[] {
   const base = `/${slug}`
+  const normalizedRole = normalizeRoleName(userRole)
   const nav: NavItem[] = [
     { href: base, label: 'Dashboard', icon: LayoutDashboard },
   ]
 
-  if (WORK_ORDER_ROLES.includes(userRole)) {
+  if (WORK_ORDER_ROLES.includes(normalizedRole)) {
     nav.push({ href: `${base}/work-orders`, label: 'Work Orders', icon: ClipboardList })
     nav.push({ href: `${base}/assets`, label: 'Assets', icon: Package })
   }
 
-  if (WAIVED_ORDER_ROLES.includes(userRole)) {
+  if (WAIVED_ORDER_ROLES.includes(normalizedRole)) {
     nav.push({ href: `${base}/waived-orders`, label: 'Waived Orders', icon: Ban })
   }
 

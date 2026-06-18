@@ -1,4 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -30,7 +31,7 @@ export default async function WaivedOrdersPage({ params }: Props) {
       .eq('user_id', user.id)
       .maybeSingle()
     const roleData = (eng?.roles as unknown as { name: string } | null)
-    userRole = roleData?.name ?? 'viewer'
+    userRole = normalizeRoleName(roleData?.name) || 'viewer'
   }
 
   if (!ALLOWED_ROLES.includes(userRole)) {

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { normalizeRoleName } from '@/lib/roles'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 
@@ -46,7 +47,7 @@ export default async function DashboardLayout({
     }
     if (engineer) {
       const roleData = (engineer.roles as unknown as { name: string } | null)
-      userRole = roleData?.name ?? 'viewer'
+      userRole = normalizeRoleName(roleData?.name) || 'viewer'
     }
   }
 

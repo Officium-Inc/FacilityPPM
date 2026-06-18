@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -28,13 +29,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const property = invite.properties as { id: string; name: string; slug: string }
   const email = invite.email as string
   const inviteRoleName = (invite.role_name as string | null) ?? null
-
-  // Resolve role: prefer invite's role_name, fall back to 'admin'
-  const { data: role } = await service
-    .from('roles')
-    .select('id')
-    .ilike('name', inviteRoleName ?? 'admin')
-    .maybeSingle()
+  const roleId = await resolveCanonicalRoleId(service, inviteRoleName ?? 'admin')
 
   // Check if user already exists
   const { data: existingList } = await service.auth.admin.listUsers()
@@ -66,7 +61,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         await service.from('engineers').insert({
           property_id: property.id,
           user_id: existingUser.id,
-          role_id: role?.id ?? null,
+          role_id: roleId,
           full_name: (full_name?.trim()) || (existingUser.user_metadata?.full_name as string) || email,
           email: email.toLowerCase(),
           is_active: true,
@@ -100,7 +95,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { error: engErr } = await service.from('engineers').insert({
       property_id: property.id,
       user_id: authData.user.id,
-      role_id: role?.id ?? null,
+      role_id: roleId,
       full_name: displayName,
       email: email.toLowerCase(),
       is_active: true,

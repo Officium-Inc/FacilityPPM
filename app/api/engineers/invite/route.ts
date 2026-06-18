@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendInviteEmail } from '@/lib/email'
+import { normalizeRoleName } from '@/lib/roles'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     name?: string
     role_name?: string
   }
+  const roleName = normalizeRoleName(body.role_name)
 
   if (!body.email?.trim()) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
       property_id: propertyId,
       email,
       invited_name: body.name?.trim() || null,
-      role_name: body.role_name?.trim() || null,
+      role_name: roleName || null,
       invited_by: user.email ?? null,
     })
     .select('token')
