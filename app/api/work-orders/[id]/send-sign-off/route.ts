@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateSignOffToken, getSignOffExpiry } from '@/lib/token'
 import { sendSignOffEmail } from '@/lib/email'
+import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -80,6 +81,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   } catch {
     // Email failure is non-fatal; sign-off token is already set
   }
+
+  await syncTenant360WorkOrder(id, { findExisting: true })
 
   return NextResponse.json({ success: true, token })
 }

@@ -8,6 +8,23 @@ interface Params {
   params: Promise<{ workOrderId: string }>
 }
 
+type ReportPdfRow = {
+  fault_description?: string | null
+  location_notes?: string | null
+  reported_by_name?: string | null
+  reported_by_contact?: string | null
+  urgency?: string | null
+  inspection_notes?: string | null
+  root_cause?: string | null
+  scope_of_work?: string | null
+  inspected_at?: string | null
+}
+
+function rowsOf<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workOrderId } = await params
   const service = await createServiceClient()
@@ -35,17 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
   }
 
-  const reports = wo.work_order_reports as {
-    fault_description?: string | null
-    location_notes?: string | null
-    reported_by_name?: string | null
-    reported_by_contact?: string | null
-    urgency?: string | null
-    inspection_notes?: string | null
-    root_cause?: string | null
-    scope_of_work?: string | null
-    inspected_at?: string | null
-  }[] | null
+  const reports = rowsOf(wo.work_order_reports as ReportPdfRow | ReportPdfRow[] | null)
 
   if (!reports || reports.length === 0) {
     return NextResponse.json({ error: 'No report found for this work order' }, { status: 404 })
