@@ -13,6 +13,11 @@ interface Props {
   params: Promise<{ slug: string; id: string }>
 }
 
+function rowsOf<T>(value: T | T[] | null | undefined): T[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
+
 export default async function WorkOrderDetailPage({ params }: Props) {
   const { slug, id } = await params
   const supabase = await createClient()
@@ -66,9 +71,10 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string }
   type EvidenceRow = { work_description?: string; completion_photo_urls?: string[] | null; supporting_doc_urls?: string[] | null }
 
-  const report = ((wo as Record<string, unknown>).work_order_reports as ReportRow[] | null) ?? []
-  const costing = ((wo as Record<string, unknown>).work_order_costings as CostingRow[] | null) ?? []
-  const evidence = ((wo as Record<string, unknown>).work_order_completion_evidence as EvidenceRow[] | null) ?? []
+  const joined = wo as Record<string, unknown>
+  const report = rowsOf(joined.work_order_reports as ReportRow | ReportRow[] | null)
+  const costing = rowsOf(joined.work_order_costings as CostingRow | CostingRow[] | null)
+  const evidence = rowsOf(joined.work_order_completion_evidence as EvidenceRow | EvidenceRow[] | null)
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
   const engineers = (engineersList ?? []) as unknown as Engineer[]
   const comments = (rawComments ?? []) as WoComment[]
@@ -186,12 +192,14 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             const photos = [
               ...(report[0]?.photo_urls?.map((u: string) => ({ url: u, label: 'Service Report' })) ?? []),
               ...(report[0]?.inspection_photo_urls?.map((u: string) => ({ url: u, label: 'Inspection' })) ?? []),
-              ...(evidence[0]?.completion_photo_urls?.map((u: string) => ({ url: u, label: 'Completion' })) ?? []),
+              ...evidence.flatMap(row =>
+                (row.completion_photo_urls ?? []).map((u: string) => ({ url: u, label: 'Completion' }))
+              ),
               ...checklist.flatMap(item =>
                 (item.photo_urls ?? []).map((u: string) => ({ url: u, label: 'Checklist' }))
               ),
             ]
-            const supportingDocs = evidence[0]?.supporting_doc_urls ?? []
+            const supportingDocs = evidence.flatMap(row => row.supporting_doc_urls ?? [])
             const hasReport = report.length > 0
             const hasCosting = costing.length > 0
             const hasReceipt = !!(workOrder.pdf_url || workOrder.signed_at)
