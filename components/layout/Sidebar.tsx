@@ -48,21 +48,12 @@ function buildNav(slug: string, userRole: string): NavItem[] {
   return nav
 }
 
-export default function Sidebar({
-  slug,
-  userRole,
-  propertyName,
-}: {
-  slug: string
-  userRole: string
-  propertyName: string
-}) {
+export default function Sidebar({ slug, userRole }: { slug: string; userRole: string }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const base = `/${slug}`
   const nav = buildNav(slug, userRole)
-  const sidebarSubtitle = propertyName || slug
 
   useEffect(() => {
     setMobileOpen(false)
@@ -79,39 +70,34 @@ export default function Sidebar({
     <>
     <aside
       className={cn(
-        'group/sidebar relative hidden md:flex flex-col bg-gray-900 min-h-screen shrink-0 transition-[width] duration-300 ease-out',
+        'hidden md:flex flex-col bg-gray-900 min-h-screen shrink-0 transition-[width] duration-300 ease-out',
         collapsed ? 'w-20' : 'w-60'
       )}
     >
       {/* Brand */}
       <div className={cn('border-b border-gray-700/50 py-5', collapsed ? 'px-3' : 'px-6')}>
-        <div className={cn('flex items-center', collapsed ? 'justify-center' : 'gap-3')}>
+        <div className={cn('flex', collapsed ? 'flex-col items-center gap-3' : 'items-center gap-3')}>
           <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">T</span>
+            <span className="text-white font-bold text-sm">M</span>
           </div>
           <div className={cn('min-w-0 transition-all duration-200', collapsed ? 'hidden' : 'block')}>
-            <p className="text-white font-semibold text-sm leading-tight">Tenant360</p>
-            <p className="truncate text-gray-400 text-xs">{sidebarSubtitle}</p>
+            <p className="text-white font-semibold text-sm leading-tight">FacilityPPM</p>
+            <p className="text-gray-400 text-xs">Marajo PM</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((value) => !value)}
+            className={cn(
+              'rounded-lg p-1.5 text-gray-400 transition-all duration-200 hover:bg-gray-800 hover:text-white active:scale-95',
+              !collapsed && 'ml-auto'
+            )}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={() => setCollapsed((value) => !value)}
-        className={cn(
-          'absolute -right-3 top-[3.625rem] z-20 flex h-7 w-7 items-center justify-center rounded-full border border-gray-700 bg-gray-800 text-gray-300 shadow-lg transition-all duration-200 hover:bg-gray-700 hover:text-white active:scale-95',
-          collapsed
-            ? 'translate-x-0 opacity-100'
-            : 'translate-x-1 opacity-0 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100'
-        )}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        <span className={cn('text-lg leading-none transition-transform duration-200', collapsed ? 'rotate-0' : 'rotate-180')}>
-          ›
-        </span>
-      </button>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -140,7 +126,7 @@ export default function Sidebar({
       </nav>
 
       <div className="px-3 py-4 border-t border-gray-700/50">
-        <p className={cn('text-xs text-gray-500 px-3', collapsed && 'px-0 text-center')}>v0.1.22alpha</p>
+        <p className={cn('text-xs text-gray-500 px-3', collapsed && 'px-0 text-center')}>v0.1alpha</p>
       </div>
     </aside>
 
@@ -178,11 +164,11 @@ export default function Sidebar({
           <div className="flex items-center justify-between border-b border-gray-700/50 px-5 py-4">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-600">
-                <span className="text-sm font-bold text-white">T</span>
+                <span className="text-sm font-bold text-white">M</span>
               </div>
               <div>
-                <p className="text-sm font-semibold leading-tight text-white">Tenant360</p>
-                <p className="max-w-44 truncate text-xs text-gray-400">{sidebarSubtitle}</p>
+                <p className="text-sm font-semibold leading-tight text-white">FacilityPPM</p>
+                <p className="text-xs text-gray-400">Marajo PM</p>
               </div>
             </div>
             <button
@@ -217,7 +203,7 @@ export default function Sidebar({
           </nav>
 
           <div className="border-t border-gray-700/50 px-3 py-4">
-            <p className="px-3 text-xs text-gray-500">v0.1.22alpha</p>
+            <p className="px-3 text-xs text-gray-500">v0.1alpha</p>
           </div>
         </aside>
       </div>
