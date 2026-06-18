@@ -35,14 +35,14 @@ export default function SuspendedClient({ propertyName, slug, isLoggedIn, otherP
         </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Suspended</h1>
         <p className="text-gray-500 mb-2">
-          {propertyName}&apos;s FacilityPPM license has been suspended.
+          {propertyName}&apos;s Tenant360 license has been suspended.
         </p>
         <p className="text-sm text-gray-400 mb-8">
-          Please contact Marajo Property Management to restore access.
+          Please contact Tenant360 to restore access.
         </p>
 
         <a
-          href="mailto:support@marajo.com.ph"
+          href="mailto:support@tenant360.com"
           className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
         >
           Contact Support

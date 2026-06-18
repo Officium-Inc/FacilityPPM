@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'FacilityPPM — Marajo Property Management',
-  description: 'Planned Preventive Maintenance System',
+  title: 'Tenant360',
+  description: 'Tenant and property maintenance platform',
 }
 
 export default function RootLayout({

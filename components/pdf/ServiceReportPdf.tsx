@@ -208,7 +208,7 @@ export default function ServiceReportPdf({
 
         {/* Footer */}
         <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>FacilityPPM · Service Report · {woNumber}</Text>
+          <Text style={styles.footerText}>Tenant360 · Service Report · {woNumber}</Text>
           <Text style={styles.footerText}>Generated {generatedAt}</Text>
         </View>
       </Page>

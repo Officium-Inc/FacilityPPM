@@ -403,7 +403,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Monday personal API tokens are long. Paste the full token; FacilityPPM stores it encrypted.
+                Monday personal API tokens are long. Paste the full token; Tenant360 stores it encrypted.
               </p>
             </div>
             <button
@@ -471,7 +471,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="w-12 px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Use</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">FacilityPPM Field</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Tenant360 Field</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Monday Column</th>
                   </tr>
                 </thead>

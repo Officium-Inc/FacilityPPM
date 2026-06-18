@@ -48,12 +48,21 @@ function buildNav(slug: string, userRole: string): NavItem[] {
   return nav
 }
 
-export default function Sidebar({ slug, userRole }: { slug: string; userRole: string }) {
+export default function Sidebar({
+  slug,
+  userRole,
+  propertyName,
+}: {
+  slug: string
+  userRole: string
+  propertyName: string
+}) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const base = `/${slug}`
   const nav = buildNav(slug, userRole)
+  const sidebarSubtitle = propertyName || slug
 
   useEffect(() => {
     setMobileOpen(false)
@@ -78,11 +87,11 @@ export default function Sidebar({ slug, userRole }: { slug: string; userRole: st
       <div className={cn('border-b border-gray-700/50 py-5', collapsed ? 'px-3' : 'px-6')}>
         <div className={cn('flex items-center', collapsed ? 'justify-center' : 'gap-3')}>
           <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">M</span>
+            <span className="text-white font-bold text-sm">T</span>
           </div>
           <div className={cn('min-w-0 transition-all duration-200', collapsed ? 'hidden' : 'block')}>
-            <p className="text-white font-semibold text-sm leading-tight">FacilityPPM</p>
-            <p className="text-gray-400 text-xs">Marajo PM</p>
+            <p className="text-white font-semibold text-sm leading-tight">Tenant360</p>
+            <p className="truncate text-gray-400 text-xs">{sidebarSubtitle}</p>
           </div>
         </div>
       </div>
@@ -131,7 +140,7 @@ export default function Sidebar({ slug, userRole }: { slug: string; userRole: st
       </nav>
 
       <div className="px-3 py-4 border-t border-gray-700/50">
-        <p className={cn('text-xs text-gray-500 px-3', collapsed && 'px-0 text-center')}>v2.0</p>
+        <p className={cn('text-xs text-gray-500 px-3', collapsed && 'px-0 text-center')}>v0.1.22alpha</p>
       </div>
     </aside>
 
@@ -169,11 +178,11 @@ export default function Sidebar({ slug, userRole }: { slug: string; userRole: st
           <div className="flex items-center justify-between border-b border-gray-700/50 px-5 py-4">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-600">
-                <span className="text-sm font-bold text-white">M</span>
+                <span className="text-sm font-bold text-white">T</span>
               </div>
               <div>
-                <p className="text-sm font-semibold leading-tight text-white">FacilityPPM</p>
-                <p className="text-xs text-gray-400">Marajo PM</p>
+                <p className="text-sm font-semibold leading-tight text-white">Tenant360</p>
+                <p className="max-w-44 truncate text-xs text-gray-400">{sidebarSubtitle}</p>
               </div>
             </div>
             <button
@@ -208,7 +217,7 @@ export default function Sidebar({ slug, userRole }: { slug: string; userRole: st
           </nav>
 
           <div className="border-t border-gray-700/50 px-3 py-4">
-            <p className="px-3 text-xs text-gray-500">v2.0</p>
+            <p className="px-3 text-xs text-gray-500">v0.1.22alpha</p>
           </div>
         </aside>
       </div>

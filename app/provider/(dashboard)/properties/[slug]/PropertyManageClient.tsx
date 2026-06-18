@@ -477,7 +477,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
               <h3 className="font-semibold text-gray-900 text-sm">Invite by Email</h3>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Send an invitation link. The recipient sets their own password. If they already have a FacilityPPM account they&apos;ll be added automatically.
+              Send an invitation link. The recipient sets their own password. If they already have a Tenant360 account they&apos;ll be added automatically.
             </p>
             <form onSubmit={handleSendInvite} className="space-y-3">
               <div className="flex gap-3">

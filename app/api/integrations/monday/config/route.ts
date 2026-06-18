@@ -42,7 +42,7 @@ function normalizeMappings(value: unknown, board: MondayBoardDetails): MondayFie
 
     const field = getMondayFieldDefinition(fieldId)
     const column = columns.get(columnId)
-    if (!field) throw new Error(`Unknown FacilityPPM field: ${fieldId}`)
+    if (!field) throw new Error(`Unknown Tenant360 field: ${fieldId}`)
     if (!column) throw new Error(`Mapped Monday column was not found: ${columnId}`)
     if (!isColumnCompatible(field.id, column.type)) {
       throw new Error(`${field.label} is not compatible with Monday ${column.title} (${column.type}).`)

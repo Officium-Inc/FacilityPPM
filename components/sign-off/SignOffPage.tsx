@@ -80,7 +80,7 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
             <Shield className="w-5 h-5" />
           </div>
           <div>
-            <p className="font-bold text-base leading-tight">Marajo Property Management</p>
+            <p className="font-bold text-base leading-tight">Tenant360</p>
             <p className="text-green-200 text-xs">Maintenance Sign-Off</p>
           </div>
         </div>

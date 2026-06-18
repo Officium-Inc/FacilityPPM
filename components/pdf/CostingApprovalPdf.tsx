@@ -215,7 +215,7 @@ export default function CostingApprovalPdf({
 
         {/* Footer */}
         <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>FacilityPPM · Cost Estimate · {woNumber}</Text>
+          <Text style={styles.footerText}>Tenant360 · Cost Estimate · {woNumber}</Text>
           <Text style={styles.footerText}>Generated {generatedAt}</Text>
         </View>
       </Page>
