@@ -51,18 +51,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  const { data: existingEngineer } = await service
+  const { data: existingMemberships } = await service
     .from('engineers')
-    .select('user_id, full_name, email')
+    .select('user_id, property_id, full_name, email')
     .eq('email', normalizedEmail)
     .not('user_id', 'is', null)
     .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
 
-  if (!existingEngineer?.user_id) {
+  const sourceMembership = existingMemberships?.find(
+    (membership) => membership.property_id !== property.id
+  )
+
+  if (!sourceMembership?.user_id) {
     return NextResponse.json(
-      { error: 'No existing linked account was found for this email. Create the account first or send an invitation.' },
+      { error: 'No Tenant360 account from another property was found for this email.' },
       { status: 404 }
     )
   }
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: alreadyMember } = await service
     .from('engineers')
     .select('id')
-    .eq('user_id', existingEngineer.user_id)
+    .eq('user_id', sourceMembership.user_id)
     .eq('property_id', property.id)
     .maybeSingle()
 
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
-  const { data: authUser, error: authErr } = await service.auth.admin.getUserById(existingEngineer.user_id)
+  const { data: authUser, error: authErr } = await service.auth.admin.getUserById(sourceMembership.user_id)
   if (authErr || !authUser.user) {
     return NextResponse.json({ error: authErr?.message ?? 'Linked auth account was not found.' }, { status: 404 })
   }
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const currentSlugs: string[] = (currentMeta.property_slugs as string[] | undefined) ??
     (currentMeta.property_slug ? [currentMeta.property_slug as string] : [])
 
-  const { error: metaErr } = await service.auth.admin.updateUserById(existingEngineer.user_id, {
+  const { error: metaErr } = await service.auth.admin.updateUserById(sourceMembership.user_id, {
     app_metadata: {
       ...currentMeta,
       property_ids: [...new Set([...currentIds, property.id])],
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const displayName =
     body.full_name?.trim() ||
-    existingEngineer.full_name ||
+    sourceMembership.full_name ||
     (authUser.user.user_metadata?.full_name as string | undefined) ||
     normalizedEmail
 
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .from('engineers')
     .insert({
       property_id: property.id,
-      user_id: existingEngineer.user_id,
+      user_id: sourceMembership.user_id,
       role_id: roleId,
       full_name: displayName,
       email: normalizedEmail,

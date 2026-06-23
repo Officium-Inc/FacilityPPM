@@ -157,7 +157,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
     setAdminLoading(false)
   }
 
-  async function handleLinkExistingMember(e: React.FormEvent) {
+  async function handleAddMemberFromOtherProperty(e: React.FormEvent) {
     e.preventDefault()
     setExistingLoading(true)
     setExistingMsg(null)
@@ -613,9 +613,9 @@ export default function PropertyManageClient({ property, engineers, roles, stats
               <h3 className="font-semibold text-gray-900 text-sm">Add Existing Member</h3>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Add a user who already has a Tenant360 login to this property. No password is needed.
+              Add a user who already has a Tenant360 login in another property. No password is needed.
             </p>
-            <form onSubmit={handleLinkExistingMember} className="space-y-4">
+            <form onSubmit={handleAddMemberFromOtherProperty} className="space-y-4">
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Full Name (optional)</label>
