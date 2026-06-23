@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import LicenseBadge from '@/components/provider/LicenseBadge'
 import { formatRoleName, getCanonicalRoleRows } from '@/lib/roles'
@@ -45,6 +45,11 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('overview')
   const roleRows = getCanonicalRoleRows(roles)
+  const defaultExistingRoleId =
+    roleRows.find((r) => r.name === 'tenant')?.id ??
+    roleRows.find((r) => r.name === 'viewer')?.id ??
+    roleRows[0]?.id ??
+    ''
 
   // ── Overview state ──────────────────────────────────────────────
   const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(property.license_status)
@@ -69,6 +74,12 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminMsg, setAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+  const [existingName, setExistingName] = useState('')
+  const [existingEmail, setExistingEmail] = useState('')
+  const [existingRoleId, setExistingRoleId] = useState(defaultExistingRoleId)
+  const [existingLoading, setExistingLoading] = useState(false)
+  const [existingMsg, setExistingMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -82,6 +93,14 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   const [deleteMsg, setDeleteMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // ── Handlers ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    setMemberList(engineers)
+  }, [engineers])
+
+  useEffect(() => {
+    setInviteList(initInvites)
+  }, [initInvites])
 
   async function handleLicenseUpdate(e: React.FormEvent) {
     e.preventDefault()
@@ -126,11 +145,52 @@ export default function PropertyManageClient({ property, engineers, roles, stats
     if (!res.ok) {
       setAdminMsg({ type: 'error', text: data.error ?? 'Failed to create account.' })
     } else {
-      setAdminMsg({ type: 'success', text: `Account created for ${adminEmail}.` })
+      setAdminMsg({
+        type: 'success',
+        text: data.added_to_existing
+          ? `Existing account added to ${property.name}.`
+          : `Account created for ${adminEmail}.`,
+      })
       setAdminName(''); setAdminEmail(''); setAdminPassword('')
       router.refresh()
     }
     setAdminLoading(false)
+  }
+
+  async function handleAddMemberFromOtherProperty(e: React.FormEvent) {
+    e.preventDefault()
+    setExistingLoading(true)
+    setExistingMsg(null)
+
+    const roleId = existingRoleId || defaultExistingRoleId
+    const res = await fetch(`/api/provider/properties/${property.slug}/members/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: existingName,
+        email: existingEmail,
+        role_id: roleId || null,
+      }),
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setExistingMsg({ type: 'error', text: data.error ?? 'Failed to add existing member.' })
+    } else {
+      setExistingMsg({ type: 'success', text: `${existingEmail} added to ${property.name}.` })
+      setExistingName('')
+      setExistingEmail('')
+      setExistingRoleId(defaultExistingRoleId)
+      if (data.member) {
+        setMemberList((prev) => {
+          if (prev.some((m) => m.id === data.member.id)) return prev
+          return [...prev, data.member as Engineer].sort((a, b) => a.full_name.localeCompare(b.full_name))
+        })
+      }
+      router.refresh()
+    }
+
+    setExistingLoading(false)
   }
 
   async function handleSendInvite(e: React.FormEvent) {
@@ -546,6 +606,65 @@ export default function PropertyManageClient({ property, engineers, roles, stats
             )}
           </div>
 
+          {/* Add existing account */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <UserPlus className="w-4 h-4 text-gray-500" />
+              <h3 className="font-semibold text-gray-900 text-sm">Add Existing Member</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Add a user who already has a Tenant360 login in another property. No password is needed.
+            </p>
+            <form onSubmit={handleAddMemberFromOtherProperty} className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Full Name (optional)</label>
+                  <input
+                    type="text"
+                    value={existingName}
+                    onChange={(e) => setExistingName(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Existing Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={existingEmail}
+                    onChange={(e) => setExistingEmail(e.target.value)}
+                    placeholder="tenant@example.com"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                  <select
+                    required
+                    value={existingRoleId || defaultExistingRoleId}
+                    onChange={(e) => setExistingRoleId(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="" disabled>Select role</option>
+                    {roleRows.map((r) => (
+                      <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {existingMsg && <Msg msg={existingMsg} />}
+              <button
+                type="submit"
+                disabled={existingLoading || !roleRows.length}
+                className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                <UserPlus className="w-4 h-4" />
+                {existingLoading ? 'Adding...' : 'Add to Property'}
+              </button>
+            </form>
+          </div>
+
           {/* Add directly with password */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center gap-2 mb-4">
@@ -553,7 +672,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
               <h3 className="font-semibold text-gray-900 text-sm">Add Member Directly</h3>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Create an account with a temporary password you share manually.
+              Create a new account with a temporary password you share manually.
             </p>
             <form onSubmit={handleAddAdmin} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
