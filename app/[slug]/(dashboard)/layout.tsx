@@ -63,6 +63,10 @@ export default async function DashboardLayout({
     })
   }
 
+  if (userRole === 'tenant') {
+    redirect(`/${slug}/tenant`)
+  }
+
   // Fetch all properties this user has access to (for the switcher)
   const propertyIds: string[] = (user?.app_metadata?.property_ids as string[] | undefined) ??
     (user?.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])

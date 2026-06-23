@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer } from '@/types'
 import { createClient } from '@/lib/supabase/client'
@@ -261,7 +262,8 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
 
           {/* Modal */}
           {assignModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            typeof document !== 'undefined' && createPortal(
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!loading) setAssignModalOpen(false) }} />
               <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 {/* Header */}
@@ -395,7 +397,9 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
                   </div>
                 </div>
               </div>
-            </div>
+            </div>,
+            document.body
+            )
           )}
         </>
       )}

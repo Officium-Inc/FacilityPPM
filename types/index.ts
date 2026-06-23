@@ -117,6 +117,7 @@ export interface WorkOrder {
   property_id: string | null
   schedule_id: string | null
   engineer_id: string | null
+  requested_by_id: string | null
   wo_number: string
   type: WorkOrderType
   status: WorkOrderStatus
