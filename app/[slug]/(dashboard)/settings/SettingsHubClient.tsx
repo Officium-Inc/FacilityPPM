@@ -10,6 +10,8 @@ import {
   PlugZap,
   KeyRound,
   SearchX,
+  UserCircle,
+  Building2,
 } from 'lucide-react'
 
 interface Props {
@@ -44,6 +46,28 @@ export default function SettingsHubClient({
 
   const sections = useMemo<HubSection[]>(
     () => [
+      {
+        title: 'Account',
+        items: [
+          {
+            key: 'profile',
+            label: 'Your Profile',
+            description: 'Update your name, contact details and password',
+            href: `/${slug}/settings?tab=profile`,
+            icon: UserCircle,
+            iconClass: 'bg-sky-50 text-sky-600',
+          },
+          {
+            key: 'company',
+            label: 'Company Profile',
+            description: 'Manage company name, address and contact information',
+            href: `/${slug}/settings?tab=company`,
+            icon: Building2,
+            iconClass: 'bg-teal-50 text-teal-600',
+            meta: canManageSettings ? undefined : 'View only',
+          },
+        ],
+      },
       {
         title: 'Team & Access',
         items: [

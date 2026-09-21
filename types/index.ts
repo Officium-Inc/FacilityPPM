@@ -5,6 +5,12 @@ export interface Property {
   slug: string
   name: string
   license_status: LicenseStatus
+  address: string | null
+  city: string | null
+  country: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  website: string | null
   created_at: string
 }
 
