@@ -1,8 +1,10 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { normalizeRoleName } from '@/lib/roles'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import EngineersClient from '../engineers/EngineersClient'
 import ApiKeysClient from './ApiKeysClient'
+import SettingsHubClient from './SettingsHubClient'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -13,8 +15,8 @@ const MANAGE_ROLES = ['admin', 'property_manager']
 
 export default async function SettingsPage({ params, searchParams }: Props) {
   const { slug } = await params
-  const { tab = 'members' } = await searchParams
-  const activeTab = tab === 'api-keys' ? 'api-keys' : 'members'
+  const { tab } = await searchParams
+  const activeTab = tab === 'api-keys' ? 'api-keys' : tab === 'members' ? 'members' : null
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const propertyId = user?.app_metadata?.property_id as string | undefined
@@ -54,36 +56,41 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       .order('created_at', { ascending: false }),
   ])
 
+  if (!activeTab) {
+    return (
+      <div className="space-y-6">
+        <div className="mx-auto max-w-4xl">
+          <h2 className="text-xl font-bold text-gray-900">Settings</h2>
+          <p className="text-sm text-gray-500 mt-0.5">Manage property members and integrations</p>
+        </div>
+        <SettingsHubClient
+          slug={slug}
+          memberCount={engineers?.length ?? 0}
+          pendingInviteCount={pendingInvitations?.length ?? 0}
+          canManageSettings={canManageSettings}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Settings</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Manage property members and integrations</p>
-      </div>
-
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6">
-          <Link
-            href={`/${slug}/settings`}
-            className={`pb-3 text-sm font-medium ${
-              activeTab === 'members'
-                ? 'border-b-2 border-green-600 text-green-700'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Members
-          </Link>
-          <Link
-            href={`/${slug}/settings?tab=api-keys`}
-            className={`pb-3 text-sm font-medium ${
-              activeTab === 'api-keys'
-                ? 'border-b-2 border-green-600 text-green-700'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            API Keys
-          </Link>
-        </nav>
+        <Link
+          href={`/${slug}/settings`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-green-700"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Settings
+        </Link>
+        <h2 className="mt-2 text-xl font-bold text-gray-900">
+          {activeTab === 'api-keys' ? 'API Keys & Integrations' : 'Members'}
+        </h2>
+        <p className="text-sm text-gray-500 mt-0.5">
+          {activeTab === 'api-keys'
+            ? 'Connect Monday.com and manage API credentials'
+            : 'Invite teammates, assign roles, and manage access'}
+        </p>
       </div>
 
       {activeTab === 'api-keys' ? (
