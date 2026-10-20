@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Ban, ClipboardCheck, FileDown, FileText, ImageIcon } from 'lucide-react'
+import { ArrowLeft, Ban, ClipboardCheck, FileDown } from 'lucide-react'
 import StatusBadge from '@/components/work-orders/StatusBadge'
+import WorkOrderFormView from '@/components/work-orders/WorkOrderFormView'
+import { loadWorkOrderForm } from '@/lib/work-order-form'
 import {
   getTenantApprovalHref,
   getTenantPortalContext,
@@ -60,7 +62,6 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
   }
 
   const report = rowsOf(request.work_order_reports)[0]
-  const photos = (report?.photo_urls ?? []).filter(Boolean)
   const isApproval = isAwaitingTenant(request)
   const approvalHref = getTenantApprovalHref(slug, request)
   const detailHref = `/${slug}/tenant/service-requests/${request.id}`
@@ -69,6 +70,8 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
   const auditHref = request.status === 'completed'
     ? request.audit_report_url ?? `/api/pdf/${request.id}/audit`
     : null
+  // Ownership was verified above, so the tenant may see their own captured signatures
+  const formData = await loadWorkOrderForm(context.service, request.id, { includeSignatures: true })
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -160,16 +163,7 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
       )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-green-700" />
-          <h3 className="text-sm font-semibold text-gray-900">Report Details</h3>
-        </div>
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-          <Detail label="Tenant / Lessee" value={report?.tenant_lessee ?? '-'} />
-          <Detail label="Contact Person" value={report?.reported_by_name ?? context.engineer.full_name} />
-          <Detail label="Telephone / Email" value={report?.reported_by_contact ?? context.engineer.email ?? '-'} />
-          <Detail label="Unit / Location" value={report?.location_notes ?? '-'} />
-          <Detail label="Description of Work Requested" value={report?.fault_description ?? '-'} wide />
           <Detail
             label="Priority"
             value={priority ? `${priority.label} (${priority.sla})` : 'Not assessed yet - an engineer will set this after inspection'}
@@ -178,21 +172,8 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
         </dl>
       </div>
 
-      {photos.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <ImageIcon className="h-5 w-5 text-green-700" />
-            <h3 className="text-sm font-semibold text-gray-900">Photos ({photos.length})</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {photos.map((url, index) => (
-              <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-gray-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Report photo ${index + 1}`} className="aspect-square w-full object-cover transition-transform hover:scale-105" />
-              </a>
-            ))}
-          </div>
-        </div>
+      {formData && (
+        <WorkOrderFormView data={formData} pdfHref={`/api/pdf/${request.id}/report`} />
       )}
     </div>
   )

@@ -5,9 +5,11 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Save } from 'lucide-react'
 import type { Property } from '@/types'
+import { DEFAULT_WORK_ORDER_TERMS } from '@/lib/work-order-terms'
 
 interface Props {
-  property: Pick<Property, 'name' | 'slug' | 'license_status' | 'address' | 'city' | 'country' | 'contact_email' | 'contact_phone' | 'website'>
+  property: Pick<Property, 'name' | 'slug' | 'license_status' | 'address' | 'city' | 'country' | 'contact_email' | 'contact_phone' | 'website'> &
+    Partial<Pick<Property, 'legal_name' | 'fax' | 'work_order_terms'>>
   canManage: boolean
 }
 
@@ -15,12 +17,15 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
   const router = useRouter()
   const [form, setForm] = useState({
     name: property.name ?? '',
+    legal_name: property.legal_name ?? '',
     address: property.address ?? '',
     city: property.city ?? '',
     country: property.country ?? '',
     contact_email: property.contact_email ?? '',
     contact_phone: property.contact_phone ?? '',
+    fax: property.fax ?? '',
     website: property.website ?? '',
+    work_order_terms: property.work_order_terms ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +104,18 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
             </div>
           </div>
           <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Corporation name <span className="font-normal text-gray-400">(printed on the Work Order Request form)</span></label>
+            <input
+              type="text"
+              value={form.legal_name}
+              onChange={(e) => update('legal_name', e.target.value)}
+              disabled={!canManage}
+              placeholder={form.name || 'e.g. Fort 26th Condominium Corporation'}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-gray-400">Leave blank to use the company name.</p>
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">Address</label>
             <input
               type="text"
@@ -154,16 +171,51 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
               />
             </div>
           </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Fax</label>
+              <input
+                type="tel"
+                value={form.fax}
+                onChange={(e) => update('fax', e.target.value)}
+                disabled={!canManage}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Website</label>
+              <input
+                type="url"
+                value={form.website}
+                onChange={(e) => update('website', e.target.value)}
+                disabled={!canManage}
+                placeholder="https://"
+                className={inputClass}
+              />
+            </div>
+          </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Website</label>
-            <input
-              type="url"
-              value={form.website}
-              onChange={(e) => update('website', e.target.value)}
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-medium text-gray-700">Work order terms and conditions</label>
+              {canManage && form.work_order_terms !== DEFAULT_WORK_ORDER_TERMS && (
+                <button
+                  type="button"
+                  onClick={() => update('work_order_terms', DEFAULT_WORK_ORDER_TERMS)}
+                  className="text-xs font-medium text-green-700 hover:underline"
+                >
+                  Use default text
+                </button>
+              )}
+            </div>
+            <textarea
+              value={form.work_order_terms}
+              onChange={(e) => update('work_order_terms', e.target.value)}
               disabled={!canManage}
-              placeholder="https://"
+              rows={5}
+              placeholder={DEFAULT_WORK_ORDER_TERMS}
               className={inputClass}
             />
+            <p className="mt-1 text-xs text-gray-400">Printed on the Work Order Request form. Leave blank to use the default text.</p>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">License status</label>

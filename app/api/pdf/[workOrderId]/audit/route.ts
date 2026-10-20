@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { loadAuditReportData, renderAuditReport } from '@/lib/audit-report'
-import { resolveWorkOrderActor } from '@/lib/work-order-events'
+import { canViewWorkOrder } from '@/lib/work-order-access'
 
 interface Params {
   params: Promise<{ workOrderId: string }>
@@ -25,20 +25,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!wo) return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
 
   // Property members can open any report in their property; tenants only their own.
-  if (user.app_metadata?.role !== 'provider') {
-    const propertyIds: string[] = (user.app_metadata?.property_ids as string[] | undefined) ??
-      (user.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])
-    if (!wo.property_id || !propertyIds.includes(wo.property_id)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const actor = await resolveWorkOrderActor(service, user, wo.property_id)
-    if (actor.role === 'tenant') {
-      const ownsByMember = wo.requested_by_id && wo.requested_by_id === actor.id
-      const ownsByEmail = !wo.requested_by_id &&
-        wo.tenant_email?.trim().toLowerCase() === (actor.email ?? '').trim().toLowerCase()
-      if (!ownsByMember && !ownsByEmail) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+  if (!(await canViewWorkOrder(service, user, wo))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const data = await loadAuditReportData(service, workOrderId)

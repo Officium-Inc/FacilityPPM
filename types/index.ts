@@ -11,6 +11,9 @@ export interface Property {
   contact_email: string | null
   contact_phone: string | null
   website: string | null
+  legal_name: string | null
+  fax: string | null
+  work_order_terms: string | null
   created_at: string
 }
 
@@ -234,10 +237,16 @@ export interface WorkOrderReport {
   created_at: string
 }
 
+export type ProvidedBy = 'engineering' | 'tenant' | 'contractor'
+
 export interface CostingLineItem {
   description: string
   qty: number
   unit_cost: number
+  /** Unit of measure, e.g. "pcs", "m". */
+  unit?: string
+  /** Who supplies the item; missing on older estimates, which are treated as engineering. */
+  provided_by?: ProvidedBy
 }
 
 export interface WorkOrderCosting {

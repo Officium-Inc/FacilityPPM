@@ -4,9 +4,13 @@ import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
 import WorkOrderStickyHeader from '@/components/work-orders/WorkOrderStickyHeader'
 import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
+import WorkOrderFormView from '@/components/work-orders/WorkOrderFormView'
+import { loadWorkOrderForm } from '@/lib/work-order-form'
+import { canViewWorkOrder } from '@/lib/work-order-access'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
 import { priorityLabel } from '@/lib/priority'
+import { normalizeLineItems, formatQtyUnit, lineItemTotal, providedByLabel } from '@/lib/costing'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
 import { FileText, FileDown, Image as ImageIcon } from 'lucide-react'
 
@@ -69,7 +73,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   )
 
   type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; tenant_lessee?: string | null; urgency?: string | null; inspection_notes?: string; root_cause?: string; scope_of_work?: string; photo_urls?: string[] | null; inspection_photo_urls?: string[] | null }
-  type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string }
+  type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string | null; line_items?: unknown }
   type EvidenceRow = { work_description?: string; completion_photo_urls?: string[] | null; supporting_doc_urls?: string[] | null }
 
   const joined = wo as Record<string, unknown>
@@ -83,6 +87,17 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     id: e.id,
     full_name: (e as { id: string; full_name: string }).full_name,
   }))
+
+  // Captured signature images are only shown to users who may view this work order
+  const { data: { user } } = await supabase.auth.getUser()
+  const canSeeSignatures = user
+    ? await canViewWorkOrder(service, user, {
+        property_id: workOrder.property_id,
+        requested_by_id: workOrder.requested_by_id,
+        tenant_email: workOrder.tenant_email,
+      })
+    : false
+  const formData = await loadWorkOrderForm(service, id, { includeSignatures: canSeeSignatures })
 
   return (
     <div className="-m-4 min-h-full sm:-m-6">
@@ -116,12 +131,23 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             </div>
           )}
 
+          {formData && (
+            <WorkOrderFormView data={formData} pdfHref={`/api/pdf/${workOrder.id}/report`} defaultOpen={false} />
+          )}
+
           {/* Costing */}
           {costing && costing.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <h3 className="font-semibold text-gray-900 text-sm mb-3">Cost Estimate</h3>
               <dl className="space-y-1 text-sm">
                 <Detail label="Labour" value={`${costing[0].labour_hours ?? 0}h × ₱${costing[0].labour_rate ?? 0}/h = ₱${Number(costing[0].labour_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
+                {normalizeLineItems(costing[0].line_items).map((item, index) => (
+                  <Detail
+                    key={index}
+                    label={`Item ${index + 1}`}
+                    value={`${item.description} — ${formatQtyUnit(item)} × ₱${item.unit_cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })} = ₱${lineItemTotal(item).toLocaleString('en-PH', { minimumFractionDigits: 2 })} (${providedByLabel(item.provided_by)}${item.provided_by === 'tenant' ? ', not charged' : ''})`}
+                  />
+                ))}
                 <Detail label="Materials" value={`₱${Number(costing[0].materials_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
                 <Detail label="Subcontractor" value={`₱${Number(costing[0].subcontractor_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
                 <Detail label="Grand Total" value={`₱${Number(costing[0].grand_total ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`} />
@@ -260,7 +286,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-900 truncate">
-                              {report[0].inspection_notes ? 'Inspection Report' : 'Service Report'}
+                              Service Report Form
                             </p>
                             <p className="text-xs text-gray-400">PDF · Click to open</p>
                           </div>
@@ -353,7 +379,21 @@ export default async function WorkOrderDetailPage({ params }: Props) {
         </div>
 
           <div className="order-1 min-w-0 xl:order-2 xl:sticky xl:top-[var(--wo-sticky-header-height,10rem)]">
-            <WorkOrderActions workOrder={workOrder} engineers={engineers} schedules={schedules} slug={slug} />
+            <WorkOrderActions
+              key={`${workOrder.status}:${workOrder.execution_mode}`}
+              workOrder={workOrder}
+              engineers={engineers}
+              schedules={schedules}
+              slug={slug}
+              existingCosting={costing[0] ? {
+                labour_hours: Number(costing[0].labour_hours ?? 0),
+                labour_rate: Number(costing[0].labour_rate ?? 0),
+                materials_total: Number(costing[0].materials_total ?? 0),
+                subcontractor_total: Number(costing[0].subcontractor_total ?? 0),
+                line_items: normalizeLineItems(costing[0].line_items),
+                notes: costing[0].notes ?? null,
+              } : null}
+            />
           </div>
         </div>
       </div>

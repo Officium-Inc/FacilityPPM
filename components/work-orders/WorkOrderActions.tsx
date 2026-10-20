@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import type { WorkOrder, Engineer, Priority } from '@/types'
+import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown } from 'lucide-react'
+import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import { normalizeRoleName } from '@/lib/roles'
 import { PRIORITY_OPTIONS, priorityOptionLabel, suggestDueDate } from '@/lib/priority'
+import { PROVIDED_BY_OPTIONS, costingToLineItems, lineItemTotal, roundMoney, summarizeLineItems } from '@/lib/costing'
 
 type InspectionOutcome = 'proceed' | 'third_party' | 'cancel'
 
@@ -23,6 +24,8 @@ interface WorkOrderActionsProps {
   engineers?: Engineer[]
   schedules?: Schedule[]
   slug: string
+  /** Previously saved estimate, used to prefill the costing form when it is revised. */
+  existingCosting?: Pick<WorkOrderCosting, 'labour_hours' | 'labour_rate' | 'materials_total' | 'subcontractor_total' | 'line_items' | 'notes'> | null
 }
 
 const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
@@ -39,7 +42,7 @@ function uploadKindLabel(url: string) {
   return 'File'
 }
 
-export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug }: WorkOrderActionsProps) {
+export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug, existingCosting = null }: WorkOrderActionsProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -54,11 +57,17 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
   const [contractorNotes, setContractorNotes] = useState('')
   const [inspectionCancelReason, setInspectionCancelReason] = useState('')
 
-  const [labourHours, setLabourHours] = useState(0)
-  const [labourRate, setLabourRate] = useState(0)
-  const [materialsTotal, setMaterialsTotal] = useState(0)
-  const [subcontractorTotal, setSubcontractorTotal] = useState(0)
-  const [costingNotes, setCostingNotes] = useState('')
+  const isThirdParty = workOrder.execution_mode === 'third_party'
+  const blankCostingItem = (): CostingLineItem => ({
+    description: '', qty: 1, unit: '', unit_cost: 0, provided_by: isThirdParty ? 'contractor' : 'engineering',
+  })
+  const [labourHours, setLabourHours] = useState(Number(existingCosting?.labour_hours ?? 0))
+  const [labourRate, setLabourRate] = useState(Number(existingCosting?.labour_rate ?? 0))
+  const [costingItems, setCostingItems] = useState<CostingLineItem[]>(() => {
+    const saved = costingToLineItems(existingCosting)
+    return saved.length > 0 ? saved : [blankCostingItem()]
+  })
+  const [costingNotes, setCostingNotes] = useState(existingCosting?.notes ?? '')
   const [selectedCostingTenantId, setSelectedCostingTenantId] = useState('')
 
   const [assignEngineerId, setAssignEngineerId] = useState('')
@@ -78,7 +87,17 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
   const [assignScheduleId, setAssignScheduleId] = useState(workOrder.schedule_id ?? '')
 
   const { status } = workOrder
-  const isThirdParty = workOrder.execution_mode === 'third_party'
+  const { materialsTotal, subcontractorTotal } = summarizeLineItems(costingItems)
+  const costingTotal = roundMoney(labourHours * labourRate + materialsTotal + subcontractorTotal)
+  function updateCostingItem(index: number, patch: Partial<CostingLineItem>) {
+    setCostingItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+  function removeCostingItem(index: number) {
+    setCostingItems((items) => items.filter((_, i) => i !== index))
+  }
+  function addCostingItem() {
+    setCostingItems((items) => [...items, blankCostingItem()])
+  }
   const getRoleName = (roles: unknown): string => {
     if (!roles) return ''
     if (Array.isArray(roles)) return normalizeRoleName((roles as Array<{ name?: string }>)[0]?.name)
@@ -260,7 +279,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
       {(status === 'costing' || (status === 'pending_approval' && workOrder.rejection_reason)) && (
         <div className="space-y-3">
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Prepare Cost Estimate</p>
-          {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Enter the contractor's quote under Subcontractor." />}
+          {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Add the contractor's quote as an item provided by the third-party contractor." />}
           {workOrder.rejection_reason && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
               Rejection reason: {workOrder.rejection_reason}
@@ -275,18 +294,46 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
               <label className="text-xs text-gray-500 mb-1 block">Rate (₱/hr)</label>
               <input type="number" value={labourRate} onChange={(e) => setLabourRate(Number(e.target.value))} min={0} className={INPUT} />
             </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Materials (₱)</label>
-              <input type="number" value={materialsTotal} onChange={(e) => setMaterialsTotal(Number(e.target.value))} min={0} className={INPUT} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">{isThirdParty ? 'Contractor quote (₱)' : 'Subcontractor (₱)'}</label>
-              <input type="number" value={subcontractorTotal} onChange={(e) => setSubcontractorTotal(Number(e.target.value))} min={0} className={INPUT} />
-            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Materials, Tools &amp; Labor</p>
+          <div className="space-y-2">
+            {costingItems.map((item, index) => (
+              <div key={index} className="space-y-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-4 shrink-0 text-xs text-gray-400">{index + 1}</span>
+                  <input type="text" value={item.description} onChange={(e) => updateCostingItem(index, { description: e.target.value })} placeholder="Description" className={INPUT} />
+                  <button type="button" onClick={() => removeCostingItem(index)} className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove item ${index + 1}`}>
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <input type="number" value={item.qty} onChange={(e) => updateCostingItem(index, { qty: Number(e.target.value) })} min={0} step="any" placeholder="Qty" aria-label="Quantity" className={INPUT} />
+                  <input type="text" value={item.unit ?? ''} onChange={(e) => updateCostingItem(index, { unit: e.target.value })} placeholder="Unit" aria-label="Unit" className={INPUT} />
+                  <input type="number" value={item.unit_cost} onChange={(e) => updateCostingItem(index, { unit_cost: Number(e.target.value) })} min={0} placeholder="Unit cost" aria-label="Unit cost" className={INPUT} />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <select value={item.provided_by ?? 'engineering'} onChange={(e) => updateCostingItem(index, { provided_by: e.target.value as ProvidedBy })} aria-label="Provided by" className={INPUT}>
+                    {PROVIDED_BY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <span className={`shrink-0 text-xs font-medium ${item.provided_by === 'tenant' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                    ₱{lineItemTotal(item).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={addCostingItem} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-green-500 hover:text-green-700">
+              <Plus className="h-4 w-4" /> Add item
+            </button>
           </div>
           <p className="text-sm font-semibold text-gray-800">
-            Total: ₱{(labourHours * labourRate + materialsTotal + subcontractorTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+            Estimated total: ₱{costingTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
           </p>
+          {costingItems.some((item) => item.provided_by === 'tenant') && (
+            <p className="text-xs text-gray-400">Items provided by the tenant are listed on the form but not included in the total.</p>
+          )}
           <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Additional notes…" rows={2} className={INPUT} />
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send approval to tenant</p>
           {tenants.length === 0 ? (
@@ -302,7 +349,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
           <ActionButton
             onClick={() => {
               const t = engineers.find(e => e.id === selectedCostingTenantId)
-              apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, materialsTotal, subcontractorTotal, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+              apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
             }}
             loading={loading} icon={Send} label="Send Cost Approval to Tenant"
           />

@@ -1,91 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
-import { createServiceClient } from '@/lib/supabase/server'
-import ServiceReportPdf from '@/components/pdf/ServiceReportPdf'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import WorkOrderFormPdf from '@/components/pdf/WorkOrderFormPdf'
+import { fetchFormPhotoBuffers, loadWorkOrderForm } from '@/lib/work-order-form'
+import { canViewWorkOrder } from '@/lib/work-order-access'
 
 interface Params {
   params: Promise<{ workOrderId: string }>
 }
 
-type ReportPdfRow = {
-  fault_description?: string | null
-  location_notes?: string | null
-  reported_by_name?: string | null
-  reported_by_contact?: string | null
-  tenant_lessee?: string | null
-  urgency?: string | null
-  inspection_notes?: string | null
-  root_cause?: string | null
-  scope_of_work?: string | null
-  inspected_at?: string | null
-}
-
-function rowsOf<T>(value: T | T[] | null | undefined): T[] {
-  if (!value) return []
-  return Array.isArray(value) ? value : [value]
-}
-
+/**
+ * The Work Order Request form. It is reachable without a session (the Monday sync downloads it),
+ * so captured signature images are only embedded for signed-in users who may view the work order.
+ */
 export async function GET(_req: NextRequest, { params }: Params) {
   const { workOrderId } = await params
   const service = await createServiceClient()
 
-  const { data: wo, error } = await service
+  const { data: wo } = await service
     .from('work_orders')
-    .select(`
-      id, wo_number, created_at, property_id,
-      ppm_schedules(
-        assets(
-          name,
-          buildings(name, sites(name, address, city))
-        )
-      ),
-      work_order_reports!work_order_reports_work_order_id_fkey(
-        fault_description, location_notes, reported_by_name, reported_by_contact, tenant_lessee,
-        urgency, inspection_notes, root_cause, scope_of_work, inspected_at
-      ),
-      properties(name)
-    `)
+    .select('id, wo_number, property_id, requested_by_id, tenant_email')
     .eq('id', workOrderId)
     .single()
 
-  if (error || !wo) {
-    return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
-  }
+  if (!wo) return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
 
-  const reports = rowsOf(wo.work_order_reports as ReportPdfRow | ReportPdfRow[] | null)
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const includeSignatures = user ? await canViewWorkOrder(service, user, wo) : false
 
-  if (!reports || reports.length === 0) {
-    return NextResponse.json({ error: 'No report found for this work order' }, { status: 404 })
-  }
+  const data = await loadWorkOrderForm(service, workOrderId, { includeSignatures })
+  if (!data) return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
 
-  const report = reports[0]
-  const schedule = wo.ppm_schedules as unknown as { assets: { name: string; buildings: { name: string; sites: { name: string; address: string; city: string } } } | { name: string; buildings: { name: string; sites: { name: string; address: string; city: string } } }[] | null } | null
-  const assetRaw = schedule?.assets
-  const asset = Array.isArray(assetRaw) ? assetRaw[0] ?? null : assetRaw
-  const building = asset?.buildings ?? null
-  const siteRaw = building?.sites
-  const site = Array.isArray(siteRaw) ? siteRaw[0] ?? null : siteRaw
-  const propertyRaw = wo.properties as { name: string } | { name: string }[] | null
-  const propertyName = Array.isArray(propertyRaw) ? propertyRaw[0]?.name ?? '' : propertyRaw?.name ?? ''
-
-  const generatedAt = new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Asia/Manila',
-  }).format(new Date()) + ' PHT'
-
-  const element = React.createElement(ServiceReportPdf, {
-    woNumber: wo.wo_number,
-    propertyName,
-    assetName: asset?.name ?? null,
-    buildingName: building?.name ?? null,
-    siteName: site?.name ?? null,
-    createdAt: wo.created_at,
-    report,
-    generatedAt,
-  }) as ReactElement<DocumentProps, string | JSXElementConstructor<unknown>>
-
+  const photoBuffers = await fetchFormPhotoBuffers(data.photos)
+  const element = React.createElement(WorkOrderFormPdf, { data, photoBuffers }) as ReactElement<
+    DocumentProps,
+    string | JSXElementConstructor<unknown>
+  >
   const buffer = await renderToBuffer(element)
 
   return new NextResponse(new Uint8Array(buffer), {

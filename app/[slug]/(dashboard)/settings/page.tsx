@@ -81,7 +81,8 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       .order('created_at', { ascending: false }),
     service
       .from('properties')
-      .select('name, slug, license_status, address, city, country, contact_email, contact_phone, website')
+      // `*` so the page keeps working before migration 018 adds the work order form fields
+      .select('*')
       .eq('id', propertyId ?? '')
       .maybeSingle(),
   ])

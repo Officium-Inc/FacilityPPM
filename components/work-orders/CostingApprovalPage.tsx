@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { WorkOrderCosting } from '@/types'
+import { formatQtyUnit, lineItemTotal, providedByLabel } from '@/lib/costing'
 import SignaturePad from '@/components/sign-off/SignaturePad'
 import { CheckCircle, FileText, XCircle } from 'lucide-react'
 
@@ -93,18 +94,26 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {costing.line_items.map((item, i) => (
-                      <tr key={i} className="py-1">
-                        <td className="py-1.5 text-gray-700">{item.description}</td>
-                        <td className="py-1.5 text-right text-gray-500">{item.qty}</td>
-                        <td className="py-1.5 text-right text-gray-500">
-                          ₱{item.unit_cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-1.5 text-right text-gray-700">
-                          ₱{(item.qty * item.unit_cost).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))}
+                    {costing.line_items.map((item, i) => {
+                      const tenantSupplied = item.provided_by === 'tenant'
+                      return (
+                        <tr key={i} className="py-1">
+                          <td className="py-1.5 text-gray-700">
+                            {item.description}
+                            <span className="block text-[11px] text-gray-400">
+                              {providedByLabel(item.provided_by)}{tenantSupplied ? ' · not charged' : ''}
+                            </span>
+                          </td>
+                          <td className="py-1.5 text-right text-gray-500">{formatQtyUnit(item)}</td>
+                          <td className="py-1.5 text-right text-gray-500">
+                            ₱{item.unit_cost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className={`py-1.5 text-right ${tenantSupplied ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                            ₱{lineItemTotal(item).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}
@@ -116,7 +125,13 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
                     <span>₱{costing.labour_total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
-                {costing.subcontractor_total > 0 && (
+                {!(costing.line_items?.length > 0) && costing.materials_total > 0 && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>Materials</span>
+                    <span>₱{costing.materials_total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {!(costing.line_items?.length > 0) && costing.subcontractor_total > 0 && (
                   <div className="flex justify-between text-gray-600">
                     <span>Subcontractor</span>
                     <span>₱{costing.subcontractor_total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>

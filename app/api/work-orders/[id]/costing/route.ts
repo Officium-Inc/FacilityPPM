@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendCostingApprovalEmail } from '@/lib/email'
 import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
+import { normalizeLineItems, roundMoney, summarizeLineItems } from '@/lib/costing'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -17,11 +18,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const body = await request.json()
   const {
-    labourHours = 0,
-    labourRate = 0,
-    materialsTotal = 0,
-    subcontractorTotal = 0,
-    lineItems = [],
+    labourHours: rawLabourHours = 0,
+    labourRate: rawLabourRate = 0,
+    materialsTotal: rawMaterialsTotal = 0,
+    subcontractorTotal: rawSubcontractorTotal = 0,
+    lineItems: rawLineItems = [],
     notes,
     tenantEmail,
     tenantName,
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     labourRate?: number
     materialsTotal?: number
     subcontractorTotal?: number
-    lineItems?: unknown[]
+    lineItems?: unknown
     notes?: string
     tenantEmail?: string
     tenantName?: string
@@ -39,6 +40,19 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!tenantEmail?.trim()) {
     return NextResponse.json({ error: 'Tenant email is required to send cost approval.' }, { status: 400 })
   }
+
+  const money = (value: unknown) => {
+    const number = Number(value)
+    return Number.isFinite(number) && number > 0 ? roundMoney(number) : 0
+  }
+  const labourHours = money(rawLabourHours)
+  const labourRate = money(rawLabourRate)
+
+  // Totals are derived from the line items; plain totals are still accepted when there are none.
+  const lineItems = normalizeLineItems(rawLineItems)
+  const { materialsTotal, subcontractorTotal } = lineItems.length > 0
+    ? summarizeLineItems(lineItems)
+    : { materialsTotal: money(rawMaterialsTotal), subcontractorTotal: money(rawSubcontractorTotal) }
 
   const service = await createServiceClient()
 
@@ -53,7 +67,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in costing stage.' }, { status: 409 })
   }
 
-  const grandTotal = labourHours * labourRate + materialsTotal + subcontractorTotal
+  const grandTotal = roundMoney(labourHours * labourRate + materialsTotal + subcontractorTotal)
 
   const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })

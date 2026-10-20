@@ -13,3 +13,13 @@ export async function optimizeImage(raw: Buffer) {
     .webp({ quality: IMAGE_QUALITY })
     .toBuffer()
 }
+
+/** PDF renderers cannot embed WebP, so photos are converted to a small JPEG first. */
+export async function toPdfJpeg(raw: Buffer, maxPx = 900) {
+  return sharp(raw)
+    .rotate()
+    .resize(maxPx, maxPx, { fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 75 })
+    .toBuffer()
+}
