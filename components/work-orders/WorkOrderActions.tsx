@@ -13,19 +13,22 @@ import { PROVIDED_BY_OPTIONS, costingToLineItems, lineItemTotal, roundMoney, sum
 
 type InspectionOutcome = 'proceed' | 'third_party' | 'cancel'
 
-interface Schedule {
-  id: string
-  title: string
-  assets: { id: string; name: string } | null
+/** Read-only job context shown in the Assign Work Order modal (sourced from the originating tenant report + approved cost). */
+interface AssignJobSummary {
+  location?: string | null
+  requestedBy?: string | null
+  reportedIssue?: string | null
+  approvedCost?: number | null
 }
 
 interface WorkOrderActionsProps {
   workOrder: WorkOrder
   engineers?: Engineer[]
-  schedules?: Schedule[]
   slug: string
   /** Previously saved estimate, used to prefill the costing form when it is revised. */
   existingCosting?: Pick<WorkOrderCosting, 'labour_hours' | 'labour_rate' | 'materials_total' | 'subcontractor_total' | 'line_items' | 'notes'> | null
+  /** Context about the job being assigned, shown read-only in the Assign Work Order modal. */
+  jobSummary?: AssignJobSummary
 }
 
 const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
@@ -42,7 +45,7 @@ function uploadKindLabel(url: string) {
   return 'File'
 }
 
-export default function WorkOrderActions({ workOrder, engineers = [], schedules = [], slug: _slug, existingCosting = null }: WorkOrderActionsProps) {
+export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, existingCosting = null, jobSummary = {} }: WorkOrderActionsProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -84,7 +87,6 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
   const [assignInspectionTeamId, setAssignInspectionTeamId] = useState('')
   const [assignModalOpen, setAssignModalOpen] = useState(false)
   const [assignPriority, setAssignPriority] = useState<Priority>(workOrder.priority ?? 'medium')
-  const [assignScheduleId, setAssignScheduleId] = useState(workOrder.schedule_id ?? '')
 
   const { status } = workOrder
   const { materialsTotal, subcontractorTotal } = summarizeLineItems(costingItems)
@@ -458,16 +460,24 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
                     </div>
                   </div>
 
-                  {/* PPM Schedule */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">PPM Schedule (optional)</label>
-                    <select value={assignScheduleId} onChange={(e) => setAssignScheduleId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                      <option value="">— Select schedule —</option>
-                      {schedules.map((s) => (
-                        <option key={s.id} value={s.id}>{s.title}{s.assets ? ` (${s.assets.name})` : ''}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Job Summary — read-only context from the originating report, so the assigner doesn't need to leave the modal */}
+                  {(jobSummary.location || jobSummary.requestedBy || jobSummary.reportedIssue || jobSummary.approvedCost != null) && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 space-y-1 text-xs text-gray-600">
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Job Summary</p>
+                      {jobSummary.location && (
+                        <p><span className="font-medium text-gray-700">Location:</span> {jobSummary.location}</p>
+                      )}
+                      {jobSummary.requestedBy && (
+                        <p><span className="font-medium text-gray-700">Requested by:</span> {jobSummary.requestedBy}</p>
+                      )}
+                      {jobSummary.reportedIssue && (
+                        <p className="line-clamp-2"><span className="font-medium text-gray-700">Issue:</span> {jobSummary.reportedIssue}</p>
+                      )}
+                      {jobSummary.approvedCost != null && (
+                        <p><span className="font-medium text-gray-700">Approved cost:</span> ₱{jobSummary.approvedCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Assign Service Team Member */}
                   <div>
@@ -534,7 +544,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], schedules 
                       type="button"
                       disabled={loading}
                       onClick={async () => {
-                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority, scheduleId: assignScheduleId || undefined })
+                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority })
                         if (ok) setAssignModalOpen(false)
                       }}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"

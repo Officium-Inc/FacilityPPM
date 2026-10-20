@@ -22,13 +22,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     dueDate,
     instructions,
     priority,
-    scheduleId,
   } = body as {
     engineerId?: string
     dueDate?: string
     instructions?: string
     priority?: string
-    scheduleId?: string
   }
 
   if (!engineerId) {
@@ -72,7 +70,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     assignment_instructions: instructions?.trim() ?? null,
     priority: isPriority(priority) ? priority : undefined,
     status: 'in_progress',
-    ...(scheduleId ? { schedule_id: scheduleId } : {}),
     ...(newWoNumber ? { wo_number: newWoNumber } : {}),
     updated_at: new Date().toISOString(),
   }).eq('id', id)

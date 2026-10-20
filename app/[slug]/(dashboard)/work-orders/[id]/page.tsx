@@ -51,19 +51,12 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   if (woError) console.error('[WO detail] query error:', woError)
   if (!wo) notFound()
 
-  // Fetch approval trail, engineers list, schedules, and comments
-  const [{ data: trailData }, { data: engineersList }, { data: rawSchedules }, { data: rawComments }] = await Promise.all([
+  // Fetch approval trail, engineers list, and comments
+  const [{ data: trailData }, { data: engineersList }, { data: rawComments }] = await Promise.all([
     service.from('approval_trail').select('*').eq('work_order_id', id).order('created_at'),
     service.from('engineers').select('id, full_name, email, is_active, roles(id, name)').eq('property_id', wo.property_id).eq('is_active', true),
-    service.from('ppm_schedules').select('id, title, assets(id, name)').eq('is_active', true).order('title'),
     service.from('work_order_comments').select('id, author_name, author_role, message, created_at').eq('work_order_id', id).order('created_at', { ascending: true }),
   ])
-
-  const schedules = (rawSchedules ?? []).map((s) => ({
-    id: s.id as string,
-    title: s.title as string,
-    assets: Array.isArray(s.assets) ? (s.assets[0] as { id: string; name: string } | undefined) ?? null : (s.assets as { id: string; name: string } | null),
-  }))
 
   const workOrder = wo as WorkOrder
   const asset = workOrder.ppm_schedules?.assets
@@ -87,6 +80,14 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     id: e.id,
     full_name: (e as { id: string; full_name: string }).full_name,
   }))
+
+  // Read-only context shown in the Assign Work Order modal, sourced from the originating tenant report + approved cost
+  const assignJobSummary = {
+    location: [asset?.name, report[0]?.location_notes, site?.name].filter(Boolean).join(' — ') || null,
+    requestedBy: report[0]?.tenant_lessee || report[0]?.reported_by_name || null,
+    reportedIssue: report[0]?.fault_description ?? null,
+    approvedCost: workOrder.costing_approved_by_name && costing[0]?.grand_total != null ? Number(costing[0].grand_total) : null,
+  }
 
   // Captured signature images are only shown to users who may view this work order
   const { data: { user } } = await supabase.auth.getUser()
@@ -383,8 +384,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               key={`${workOrder.status}:${workOrder.execution_mode}`}
               workOrder={workOrder}
               engineers={engineers}
-              schedules={schedules}
               slug={slug}
+              jobSummary={assignJobSummary}
               existingCosting={costing[0] ? {
                 labour_hours: Number(costing[0].labour_hours ?? 0),
                 labour_rate: Number(costing[0].labour_rate ?? 0),
