@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendCostingApprovalEmail } from '@/lib/email'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -53,14 +55,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const grandTotal = labourHours * labourRate + materialsTotal + subcontractorTotal
 
-  // Resolve engineer
-  const { data: engineer } = await service
-    .from('engineers')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('property_id', wo.property_id)
-    .maybeSingle()
-
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const { actor } = access
+  const engineer = actor.id ? { id: actor.id } : null
   const costingPayload = {
     labour_hours: labourHours,
     labour_rate: labourRate,
@@ -121,6 +119,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     }).eq('id', id)
     return NextResponse.json({ error: 'Failed to send cost approval email.' }, { status: 500 })
   }
+
+  await logWorkOrderEvent(service, id, {
+    eventType: 'costing_submitted',
+    step: 'Costing',
+    actorName: actor.name,
+    actorEmail: actor.email,
+    actorRole: actor.role,
+    decision: 'Sent for approval',
+    reason: notes,
+    metadata: { grand_total: grandTotal, tenant_email: tenantEmail.trim() },
+  })
 
   return NextResponse.json({ success: true, costingToken })
 }

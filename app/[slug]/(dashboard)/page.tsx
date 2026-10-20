@@ -50,16 +50,11 @@ export default async function DashboardPage({ params }: Props) {
 
   const wos = (workOrders as WorkOrder[]) ?? []
   const totalWOs = wos.length
-  const completedOrVerified = wos.filter(
-    (wo) => wo.status === 'completed' || wo.status === 'verified'
-  ).length
+  const completedOrVerified = wos.filter((wo) => wo.status === 'completed').length
   const completionRate =
     totalWOs > 0 ? Math.round((completedOrVerified / totalWOs) * 100) : 0
   const openWOs = wos.filter(
-    (wo) =>
-      wo.status !== 'completed' &&
-      wo.status !== 'verified' &&
-      wo.status !== 'cancelled'
+    (wo) => wo.status !== 'completed' && wo.status !== 'cancelled'
   ).length
 
   const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: unknown }>

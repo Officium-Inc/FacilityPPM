@@ -7,6 +7,8 @@ import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
+import { generateAndStoreAuditReport } from '@/lib/audit-report'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -22,12 +24,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Fetch work order by token
   const { data: wo, error: fetchErr } = await supabase
     .from('work_orders')
-    .select('id, wo_number, status, sign_off_expires_at, signed_at, property_id, tenant_email, tenant_name')
+    .select('id, wo_number, status, sign_off_expires_at, signed_at, property_id, tenant_email, tenant_name, head_engineer_verified_at')
     .eq('sign_off_token', token)
     .single()
 
   if (fetchErr || !wo) {
     return NextResponse.json({ error: 'Invalid or expired sign-off token.' }, { status: 404 })
+  }
+
+  if (wo.status === 'cancelled') {
+    return NextResponse.json({ error: 'This service report was cancelled.' }, { status: 410 })
   }
 
   // Validate token expiry
@@ -66,10 +72,14 @@ export async function POST(request: NextRequest, { params }: Params) {
       ip,
     })
 
+    // Final verification now happens before tenant sign-off, so signing completes the order.
+    // Orders from the previous flow (signed before verification) stay `signed` until verified.
+    const completesNow = Boolean(wo.head_engineer_verified_at)
+
     const { error: updateErr } = await supabase
       .from('work_orders')
       .update({
-        status: 'signed',
+        status: completesNow ? 'completed' : 'signed',
         signed_at: now,
         signed_by_name: signedByName,
         signed_by_ip: ip,
@@ -106,6 +116,20 @@ export async function POST(request: NextRequest, { params }: Params) {
       decision: 'approved',
       signature_data: signatureData,
       ip_address: ip,
+    })
+
+    await logWorkOrderEvent(supabase, wo.id, {
+      eventType: 'tenant_signed',
+      step: 'Tenant sign-off',
+      actorName: signedByName,
+      actorEmail: (wo as { tenant_email?: string | null }).tenant_email ?? null,
+      actorRole: 'tenant',
+      decision: 'Approved',
+      reason: [
+        typeof ratingValue === 'number' ? `Rated ${ratingValue}/5` : null,
+        (body.ratingComment as string | undefined)?.trim() || null,
+      ].filter(Boolean).join(' - ') || null,
+      createdAt: now,
     })
 
     // Log audit
@@ -168,6 +192,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       // PDF/email failure is non-fatal
     }
 
+    // Built last so the timeline and file list include the signed receipt
+    if (completesNow) await generateAndStoreAuditReport(supabase, wo.id)
+
     await syncTenant360WorkOrder(wo.id)
 
     return NextResponse.json({ success: true })
@@ -187,6 +214,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         rejection_reason: rejectionReason.trim(),
         sign_off_token: null,
         sign_off_expires_at: null,
+        head_engineer_verified_at: null,
         updated_at: now,
       })
       .eq('id', wo.id)
@@ -194,6 +222,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 })
     }
+
+    await logWorkOrderEvent(supabase, wo.id, {
+      eventType: 'tenant_rejected',
+      step: 'Tenant sign-off',
+      actorName: (wo as { tenant_name?: string | null }).tenant_name ?? 'Tenant',
+      actorEmail: (wo as { tenant_email?: string | null }).tenant_email ?? null,
+      actorRole: 'tenant',
+      decision: 'Rejected',
+      reason: rejectionReason.trim(),
+      createdAt: now,
+    })
 
     // Create corrective work order
     const { data: originalWo } = await supabase

@@ -92,7 +92,7 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-bold text-gray-900 text-lg mb-1">Work Order {workOrder.wo_number}</h2>
           <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-4 capitalize">
-            {workOrder.type} · {workOrder.priority} priority
+            {workOrder.type}{workOrder.priority ? ` · ${workOrder.priority} priority` : ''}
           </p>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
             <Detail label="Property" value={site?.name ?? '—'} />

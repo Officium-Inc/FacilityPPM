@@ -18,7 +18,7 @@ export default async function ReportsPage({ params }: Props) {
     { count: cancelled },
   ] = await Promise.all([
     supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? ''),
-    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'verified'),
+    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'completed'),
     supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'overdue'),
     supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'cancelled'),
   ])
@@ -35,7 +35,7 @@ export default async function ReportsPage({ params }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
           { label: 'Total Work Orders', value: total ?? 0 },
-          { label: 'Verified (Signed Off)', value: verified ?? 0 },
+          { label: 'Completed (Signed Off)', value: verified ?? 0 },
           { label: 'Overdue', value: overdue ?? 0 },
           { label: 'Cancelled', value: cancelled ?? 0 },
         ].map((stat) => (
@@ -58,7 +58,7 @@ export default async function ReportsPage({ params }: Props) {
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          {verified} of {total} work orders fully verified and signed off
+          {verified} of {total} work orders verified, signed off and completed
         </p>
       </div>
     </div>

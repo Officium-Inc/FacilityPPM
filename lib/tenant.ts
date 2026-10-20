@@ -40,7 +40,9 @@ export interface TenantRequestReport {
   location_notes: string | null
   reported_by_name: string
   reported_by_contact: string | null
-  urgency: Priority
+  tenant_lessee: string | null
+  urgency: Priority | null
+  photo_urls: string[] | null
   created_at: string
 }
 
@@ -50,7 +52,7 @@ export interface TenantRequestRow {
   requested_by_id: string | null
   wo_number: string
   status: WorkOrderStatus
-  priority: Priority
+  priority: Priority | null
   type: string
   created_at: string
   updated_at: string
@@ -58,18 +60,33 @@ export interface TenantRequestRow {
   tenant_email: string | null
   costing_token: string | null
   sign_off_token: string | null
+  audit_report_url: string | null
+  cancellation_reason: string | null
   work_order_reports: TenantRequestReport | TenantRequestReport[] | null
 }
 
-const STATUS_GROUPS: Record<Exclude<TenantRequestFilter, 'my-requests'>, WorkOrderStatus[]> = {
-  pending: ['new_report', 'inspecting', 'costing', 'assigned', 'in_progress'],
-  'for-my-approval': ['pending_approval', 'svc_submitted'],
-  complete: ['signed', 'verified', 'completed'],
+/**
+ * Flow: ... in_progress -> svc_submitted (final verification by the head engineer)
+ * -> verified (waiting for the tenant to sign off) -> completed.
+ * `signed` is the legacy "tenant signed, not yet verified" state.
+ * A legacy svc_submitted order that already has a sign-off link is still waiting on the tenant.
+ */
+export function isAwaitingTenant(row: Pick<TenantRequestRow, 'status' | 'sign_off_token'>) {
+  return (
+    row.status === 'pending_approval' ||
+    row.status === 'verified' ||
+    (row.status === 'svc_submitted' && Boolean(row.sign_off_token))
+  )
+}
+
+const STATUS_GROUPS: Record<'pending' | 'complete' | 'cancelled', WorkOrderStatus[]> = {
+  pending: ['new_report', 'inspecting', 'costing', 'assigned', 'in_progress', 'svc_submitted'],
+  complete: ['signed', 'completed'],
   cancelled: ['cancelled'],
 }
 
 export const TENANT_REQUEST_TITLES: Record<TenantRequestFilter, string> = {
-  'my-requests': 'My Requests',
+  'my-requests': 'My Reports',
   pending: 'Pending',
   'for-my-approval': 'For My Approval',
   complete: 'Complete',
@@ -170,6 +187,8 @@ export function filterTenantRequests(
     .filter((row) => isTenantOwnedRequest(row, context))
     .filter((row) => {
       if (filter === 'my-requests') return true
+      if (filter === 'for-my-approval') return isAwaitingTenant(row)
+      if (filter === 'pending') return STATUS_GROUPS.pending.includes(row.status) && !isAwaitingTenant(row)
       return STATUS_GROUPS[filter].includes(row.status)
     })
 }
@@ -194,8 +213,10 @@ export async function getTenantServiceRequests(
       tenant_email,
       costing_token,
       sign_off_token,
+      audit_report_url,
+      cancellation_reason,
       work_order_reports!work_order_reports_work_order_id_fkey(
-        id, fault_description, location_notes, reported_by_name, reported_by_contact, urgency, created_at
+        id, fault_description, location_notes, reported_by_name, reported_by_contact, tenant_lessee, urgency, photo_urls, created_at
       )
     `)
     .eq('property_id', context.property.id)
@@ -209,7 +230,7 @@ export function getTenantApprovalHref(slug: string, row: TenantRequestRow) {
   if (row.status === 'pending_approval' && row.costing_token) {
     return `/costing-approval/${row.costing_token}`
   }
-  if (row.status === 'svc_submitted' && row.sign_off_token) {
+  if ((row.status === 'verified' || row.status === 'svc_submitted') && row.sign_off_token) {
     return `/sign-off/${row.sign_off_token}`
   }
   return `/${slug}/tenant/service-requests/${row.id}`

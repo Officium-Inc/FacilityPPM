@@ -331,3 +331,57 @@ export async function sendCostingApprovalEmail({
     `,
   })
 }
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+export async function sendCancellationEmail({
+  toEmail,
+  toName,
+  woNumber,
+  propertyName,
+  stage,
+  reason,
+}: {
+  toEmail: string
+  toName?: string | null
+  woNumber: string
+  propertyName: string
+  stage: 'inspection' | 'costing'
+  reason: string
+}) {
+  const greeting = toName ? `Dear ${escapeHtml(toName)},` : 'Dear Tenant,'
+  const stageLabel = stage === 'costing' ? 'cost estimate' : 'inspection'
+
+  const transporter = createTransporter()
+  await transporter.sendMail({
+    from: `"Tenant360" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: `Service Report Cancelled: ${woNumber} — ${propertyName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #b91c1c; padding: 24px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
+          <p style="color: #fecaca; margin: 4px 0 0;">Service Report Cancelled</p>
+        </div>
+        <div style="padding: 32px 24px; background: #f9fafb;">
+          <p>${greeting}</p>
+          <p>Your service report <strong>${escapeHtml(woNumber)}</strong> for <strong>${escapeHtml(propertyName)}</strong> was cancelled after the ${stageLabel} stage.</p>
+          <div style="background: white; border-left: 4px solid #dc2626; padding: 12px 16px; margin: 20px 0; border-radius: 0 8px 8px 0;">
+            <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px; text-transform: uppercase;">Reason</p>
+            <p style="margin: 0; color: #374151; font-size: 15px;">${escapeHtml(reason).replace(/\n/g, '<br>')}</p>
+          </div>
+          <p style="color: #6b7280; font-size: 14px;">If you still need this work done, you can submit a new service report from your tenant portal or contact Tenant360 directly.</p>
+        </div>
+        <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">
+          <p style="color: #6b7280; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tenant360 · Tenant360</p>
+        </div>
+      </div>
+    `,
+  })
+}

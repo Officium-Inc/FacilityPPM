@@ -72,6 +72,7 @@ interface ReportData {
   location_notes?: string | null
   reported_by_name?: string | null
   reported_by_contact?: string | null
+  tenant_lessee?: string | null
   urgency?: string | null
   inspection_notes?: string | null
   root_cause?: string | null
@@ -114,7 +115,7 @@ export default function ServiceReportPdf({
             <Text style={styles.headerSub}>{woNumber} · {propertyName}</Text>
           </View>
           <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText}>{hasInspection ? 'INSPECTION COMPLETE' : 'FAULT REPORTED'}</Text>
+            <Text style={styles.typeBadgeText}>{hasInspection ? 'INSPECTION COMPLETE' : 'REPORT SUBMITTED'}</Text>
           </View>
         </View>
 
@@ -142,12 +143,18 @@ export default function ServiceReportPdf({
           </View>
         </View>
 
-        {/* Fault Report Section */}
+        {/* Service Report Details Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Fault Report</Text>
+            <Text style={styles.sectionTitle}>Report Details</Text>
           </View>
           <View style={styles.sectionBody}>
+            {report.tenant_lessee ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>Tenant / Lessee</Text>
+                <Text style={styles.value}>{report.tenant_lessee}</Text>
+              </View>
+            ) : null}
             <View style={styles.row}>
               <Text style={styles.label}>Description</Text>
               <Text style={styles.value}>{report.fault_description ?? '—'}</Text>
@@ -157,18 +164,18 @@ export default function ServiceReportPdf({
               <Text style={styles.value}>{report.location_notes ?? '—'}</Text>
             </View>
             <View style={styles.row}>
-              <Text style={styles.label}>Reported By</Text>
+              <Text style={styles.label}>Contact Person</Text>
               <Text style={styles.value}>{report.reported_by_name ?? '—'}</Text>
             </View>
             {report.reported_by_contact ? (
               <View style={styles.row}>
-                <Text style={styles.label}>Contact</Text>
+                <Text style={styles.label}>Telephone / Email</Text>
                 <Text style={styles.value}>{report.reported_by_contact}</Text>
               </View>
             ) : null}
             <View style={styles.row}>
-              <Text style={styles.label}>Urgency</Text>
-              <Text style={styles.value}>{report.urgency ?? '—'}</Text>
+              <Text style={styles.label}>Priority</Text>
+              <Text style={[styles.value, { textTransform: 'capitalize' }]}>{report.urgency ?? 'Not assessed'}</Text>
             </View>
           </View>
         </View>

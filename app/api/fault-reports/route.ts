@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { logWorkOrderEvent, resolveWorkOrderActor } from '@/lib/work-order-events'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -80,6 +81,17 @@ export async function POST(request: NextRequest) {
 
   // Link report_id back to WO
   await service.from('work_orders').update({ report_id: report.id }).eq('id', wo.id)
+
+  const actor = await resolveWorkOrderActor(service, user, propertyId)
+  await logWorkOrderEvent(service, wo.id, {
+    eventType: 'report_submitted',
+    step: 'Service report submitted',
+    actorName: actor.name,
+    actorEmail: actor.email,
+    actorRole: actor.role,
+    decision: 'Submitted',
+    metadata: { reported_by: reportedByName.trim() },
+  })
 
   return NextResponse.json({ workOrderId: wo.id, woNumber }, { status: 201 })
 }

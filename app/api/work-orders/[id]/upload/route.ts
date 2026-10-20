@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import sharp from 'sharp'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { IMAGE_TYPES, optimizeImage } from '@/lib/image-upload'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']
 const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg']
 const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES, 'application/pdf']
 const MAX_SIZE = 20 * 1024 * 1024 // 20 MB raw input limit
 const BUCKET = 'receipts'
-
-// Images are converted to WebP at 80% quality, max 1920px on the longest side
-const IMAGE_MAX_PX = 1920
-const IMAGE_QUALITY = 80
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
@@ -50,11 +45,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (isImage) {
     // Convert to WebP and resize to at most IMAGE_MAX_PX on the longest side
-    uploadBuffer = await sharp(raw)
-      .rotate() // auto-orient from EXIF
-      .resize(IMAGE_MAX_PX, IMAGE_MAX_PX, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: IMAGE_QUALITY })
-      .toBuffer()
+    uploadBuffer = await optimizeImage(raw)
     contentType = 'image/webp'
     ext = 'webp'
   } else {

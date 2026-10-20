@@ -34,6 +34,7 @@ export type WorkOrderStatus =
 
 export type WorkOrderType = 'ppm' | 'reactive' | 'statutory' | 'project'
 export type Priority = 'critical' | 'high' | 'medium' | 'low'
+export type ExecutionMode = 'in_house' | 'third_party'
 export type ChecklistResult = 'pass' | 'fail' | 'na' | null
 
 export interface Site {
@@ -132,7 +133,7 @@ export interface WorkOrder {
   notes: string | null
   tenant_name: string | null
   tenant_email: string | null
-  priority: Priority
+  priority: Priority | null
   sign_off_token: string | null
   sign_off_expires_at: string | null
   signed_at: string | null
@@ -162,6 +163,16 @@ export interface WorkOrder {
   cost_waived_at: string | null
   cost_waived_by_name: string | null
   cost_waived_reason: string | null
+  // Execution / cancellation fields
+  execution_mode: ExecutionMode
+  contractor_name: string | null
+  contractor_contact: string | null
+  contractor_notes: string | null
+  cancelled_at: string | null
+  cancelled_by_name: string | null
+  cancellation_reason: string | null
+  cancelled_stage: 'inspection' | 'costing' | null
+  audit_report_url: string | null
   // Audit fields
   original_wo_number: string | null
   // Monday Tenant 360 sync fields
@@ -211,7 +222,8 @@ export interface WorkOrderReport {
   location_notes: string | null
   reported_by_name: string
   reported_by_contact: string | null
-  urgency: Priority
+  tenant_lessee: string | null
+  urgency: Priority | null
   photo_urls: string[]
   inspection_notes: string | null
   root_cause: string | null
@@ -263,6 +275,20 @@ export interface ServiceRating {
   comment: string | null
   submitted_by_name: string | null
   rated_at: string
+}
+
+export interface WorkOrderEvent {
+  id: string
+  work_order_id: string
+  event_type: string
+  step: string
+  actor_name: string | null
+  actor_email: string | null
+  actor_role: string | null
+  decision: string | null
+  reason: string | null
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 export interface ApprovalTrailEntry {

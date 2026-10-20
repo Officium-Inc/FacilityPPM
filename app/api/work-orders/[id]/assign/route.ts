@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { isPriority } from '@/lib/priority'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -45,12 +48,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in assignment stage.' }, { status: 409 })
   }
 
-  // Resolve the head engineer making the assignment
-  const { data: headEngineer } = await service
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const { actor } = access
+  const headEngineer = actor.id ? { id: actor.id } : null
+
+  const { data: assignee } = await service
     .from('engineers')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('property_id', wo.property_id)
+    .select('full_name, email')
+    .eq('id', engineerId)
     .maybeSingle()
 
   // Rename REPT- number to proper WO- number on first assignment
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     head_engineer_id: headEngineer?.id ?? null,
     due_date: dueDate ?? null,
     assignment_instructions: instructions?.trim() ?? null,
-    priority: priority ?? undefined,
+    priority: isPriority(priority) ? priority : undefined,
     status: 'in_progress',
     ...(scheduleId ? { schedule_id: scheduleId } : {}),
     ...(newWoNumber ? { wo_number: newWoNumber } : {}),
@@ -79,6 +85,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       .update({ original_wo_number: wo.wo_number } as Record<string, unknown>)
       .eq('id', id)
   }
+
+  await logWorkOrderEvent(service, id, {
+    eventType: 'assigned',
+    step: 'Assignment',
+    actorName: actor.name,
+    actorEmail: actor.email,
+    actorRole: actor.role,
+    decision: 'Assigned',
+    reason: `Assigned to ${assignee?.full_name ?? 'service team member'}${dueDate ? `, due ${dueDate}` : ''}`,
+    metadata: { assignee_name: assignee?.full_name ?? null, assignee_email: assignee?.email ?? null, due_date: dueDate ?? null },
+  })
 
   await syncTenant360WorkOrder(id, { findExisting: true })
 

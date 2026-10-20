@@ -39,10 +39,10 @@ export default function TenantSidebar({
     { href: base, label: 'Dashboard', icon: LayoutDashboard },
     {
       href: `${base}/service-requests`,
-      label: 'Service Request',
+      label: 'Service Report',
       icon: ClipboardList,
       children: [
-        { href: `${base}/service-requests/my-requests`, label: 'My Request', icon: ClipboardList },
+        { href: `${base}/service-requests/my-requests`, label: 'My Reports', icon: ClipboardList },
         { href: `${base}/service-requests/pending`, label: 'Pending', icon: Clock },
         { href: `${base}/service-requests/for-my-approval`, label: 'For My Approval', icon: ClipboardCheck },
         { href: `${base}/service-requests/complete`, label: 'Complete', icon: CheckCircle },

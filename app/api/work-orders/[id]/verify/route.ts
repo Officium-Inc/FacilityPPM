@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
-import { generateRecordHash } from '@/lib/token'
+import { generateRecordHash, generateSignOffToken, getSignOffExpiry } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
+import { sendSignOffEmail } from '@/lib/email'
+import { generateAndStoreAuditReport } from '@/lib/audit-report'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
+/**
+ * Final verification by the head engineer.
+ * svc_submitted -> verified: the tenant sign-off link is generated and emailed.
+ * signed (legacy, tenant signed before verification) -> completed.
+ */
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
@@ -19,36 +28,50 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { notes } = body as { notes?: string }
+  const { notes, tenantEmail, tenantName } = body as { notes?: string; tenantEmail?: string; tenantName?: string }
 
   const service = await createServiceClient()
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, property_id, engineer_id')
+    .select('id, wo_number, status, property_id, engineer_id, tenant_email, tenant_name, properties(name)')
     .eq('id', id)
     .single()
 
   if (!wo) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
-  if (wo.status !== 'signed') {
-    return NextResponse.json({ error: 'Work order has not been signed off yet.' }, { status: 409 })
+  if (wo.status !== 'svc_submitted' && wo.status !== 'signed') {
+    return NextResponse.json({ error: 'Work order is not waiting for final verification.' }, { status: 409 })
   }
 
-  // Resolve head engineer
-  const { data: headEngineer } = await service
-    .from('engineers')
-    .select('id, full_name')
-    .eq('user_id', user.id)
-    .eq('property_id', wo.property_id)
-    .maybeSingle()
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const { actor } = access
 
+  const isLegacySigned = wo.status === 'signed'
   const now = new Date().toISOString()
+  const cleanNotes = notes?.trim() || null
+
+  const resolvedTenantEmail = (wo.tenant_email as string | null)?.trim() || tenantEmail?.trim() || ''
+  const resolvedTenantName = (wo.tenant_name as string | null)?.trim() || tenantName?.trim() || resolvedTenantEmail
+  if (!isLegacySigned && !resolvedTenantEmail) {
+    return NextResponse.json({ error: 'Select the tenant who will sign off this work order.' }, { status: 400 })
+  }
+
+  const signOffToken = isLegacySigned ? null : generateSignOffToken()
 
   const { error } = await service.from('work_orders').update({
-    status: 'completed',
-    head_engineer_id: headEngineer?.id ?? null,
+    status: isLegacySigned ? 'completed' : 'verified',
+    head_engineer_id: actor.id,
     head_engineer_verified_at: now,
-    head_engineer_notes: notes?.trim() ?? null,
+    head_engineer_notes: cleanNotes,
+    ...(isLegacySigned
+      ? {}
+      : {
+          sign_off_token: signOffToken,
+          sign_off_expires_at: getSignOffExpiry().toISOString(),
+          tenant_email: resolvedTenantEmail,
+          tenant_name: resolvedTenantName,
+        }),
     updated_at: now,
   }).eq('id', id)
 
@@ -57,13 +80,45 @@ export async function POST(request: NextRequest, { params }: Params) {
   await service.from('approval_trail').insert({
     work_order_id: wo.id,
     stage: 'final_verification',
-    actor_name: headEngineer?.full_name ?? 'Head Engineer',
+    actor_name: actor.name || 'Head Engineer',
     actor_role: 'head_engineer',
     decision: 'approved',
-    reason: notes?.trim() ?? null,
+    reason: cleanNotes,
   })
 
-  // Generate and upload PDF inline
+  await logWorkOrderEvent(service, id, {
+    eventType: 'final_verified',
+    step: 'Final verification',
+    actorName: actor.name,
+    actorEmail: actor.email,
+    actorRole: actor.role,
+    decision: 'Approved',
+    reason: cleanNotes,
+    createdAt: now,
+  })
+
+  if (!isLegacySigned) {
+    let emailSent = true
+    try {
+      const property = wo.properties as { name?: string } | { name?: string }[] | null
+      const propertyName = (Array.isArray(property) ? property[0]?.name : property?.name) ?? 'your property'
+      await sendSignOffEmail({
+        tenantEmail: resolvedTenantEmail,
+        tenantName: resolvedTenantName,
+        woNumber: wo.wo_number,
+        propertyName,
+        token: signOffToken!,
+      })
+    } catch {
+      // Non-fatal: the token is saved, so the link can be resent from the work order page
+      emailSent = false
+    }
+
+    await syncTenant360WorkOrder(id)
+    return NextResponse.json({ success: true, emailSent })
+  }
+
+  // Legacy path: the tenant already signed, so verification completes the order.
   try {
     const { data: fullWo } = await service
       .from('work_orders')
@@ -93,6 +148,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // PDF generation failure is non-fatal
   }
 
+  await generateAndStoreAuditReport(service, id)
   await syncTenant360WorkOrder(id)
 
   return NextResponse.json({ success: true })

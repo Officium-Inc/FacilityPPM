@@ -156,7 +156,7 @@ export default function WorkOrderStickyHeader({
               </div>
               {!compact && (
                 <p className="mt-0.5 text-xs capitalize text-gray-500">
-                  {workOrder.type} - {workOrder.priority} priority
+                  {workOrder.type} - {workOrder.priority ? `${workOrder.priority} priority` : 'priority not assessed'}
                 </p>
               )}
             </div>

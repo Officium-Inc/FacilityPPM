@@ -4,13 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PRIORITY_OPTIONS, priorityOptionLabel } from '@/lib/priority'
 
-const URGENCY_OPTIONS = [
-  { value: 'critical', label: 'Critical - immediate safety risk' },
-  { value: 'high', label: 'High - significant disruption' },
-  { value: 'medium', label: 'Medium - normal priority' },
-  { value: 'low', label: 'Low - cosmetic / minor' },
-]
+const URGENCY_OPTIONS = [...PRIORITY_OPTIONS].reverse().map((option) => ({
+  value: option.value,
+  label: priorityOptionLabel(option),
+}))
 
 const EMPTY_FORM = {
   faultDescription: '',
@@ -31,7 +30,7 @@ interface Props {
 
 export default function NewServiceRequestModal({
   slug,
-  triggerLabel = 'New Service Request',
+  triggerLabel = 'New Service Report',
   variant = 'primary',
 }: Props) {
   const router = useRouter()
@@ -61,7 +60,7 @@ export default function NewServiceRequestModal({
     e.preventDefault()
 
     if (!form.faultDescription.trim() || !form.reportedByName.trim()) {
-      setError('Fault description and reported-by name are required.')
+      setError('Description and reported-by name are required.')
       return
     }
 
@@ -76,7 +75,7 @@ export default function NewServiceRequestModal({
 
     const data = await res.json()
     if (!res.ok) {
-      setError(data.error ?? 'Failed to submit service request.')
+      setError(data.error ?? 'Failed to submit service report.')
       setLoading(false)
       return
     }
@@ -109,16 +108,16 @@ export default function NewServiceRequestModal({
           <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">New Service Request</h2>
+                <h2 className="text-lg font-bold text-gray-900">New Service Report</h2>
                 <p className="mt-0.5 text-sm text-gray-500">
-                  Submit a request to start the maintenance workflow.
+                  Submit a report to start the maintenance workflow.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={close}
                 className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                aria-label="Close service request form"
+                aria-label="Close service report form"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -132,7 +131,7 @@ export default function NewServiceRequestModal({
                 </div>
               )}
 
-              <Field label="Fault Description" required>
+              <Field label="Description" required>
                 <textarea
                   value={form.faultDescription}
                   onChange={set('faultDescription')}
@@ -176,7 +175,7 @@ export default function NewServiceRequestModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Urgency">
+                <Field label="Priority">
                   <select value={form.urgency} onChange={set('urgency')} className={INPUT}>
                     {URGENCY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -209,7 +208,7 @@ export default function NewServiceRequestModal({
                   disabled={loading}
                   className="rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:opacity-50"
                 >
-                  {loading ? 'Submitting...' : 'Submit Service Request'}
+                  {loading ? 'Submitting...' : 'Submit Service Report'}
                 </button>
               </div>
             </form>

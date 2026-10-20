@@ -15,9 +15,9 @@ export default async function NewFaultReportPage({ params }: Props) {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">New Fault Report</h2>
+        <h2 className="text-xl font-bold text-gray-900">New Service Report</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Submit a fault report to initiate the maintenance approval workflow.
+          Submit a service report to initiate the maintenance approval workflow.
         </p>
       </div>
       <FaultReportForm slug={slug} />

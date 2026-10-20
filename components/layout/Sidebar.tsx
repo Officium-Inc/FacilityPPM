@@ -40,7 +40,7 @@ function buildNav(slug: string, userRole: string): NavItem[] {
     nav.push({ href: `${base}/waived-orders`, label: 'Waived Orders', icon: Ban })
   }
 
-  nav.push({ href: `${base}/fault-reports`, label: 'Service Request', icon: AlertTriangle })
+  nav.push({ href: `${base}/fault-reports`, label: 'Service Report', icon: AlertTriangle })
   nav.push({ href: `${base}/schedules`, label: 'Schedules', icon: CalendarClock })
   nav.push({ href: `${base}/reports`, label: 'Reports', icon: BarChart3 })
   nav.push({ href: `${base}/settings`, label: 'Settings', icon: Settings })

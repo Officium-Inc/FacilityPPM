@@ -4,15 +4,15 @@ import { format } from 'date-fns'
 import { Check, X } from 'lucide-react'
 
 const STAGES: { status: WorkOrderStatus; label: string; description: string }[] = [
-  { status: 'new_report', label: 'Service Report', description: 'Initial fault submitted' },
+  { status: 'new_report', label: 'Service Report', description: 'Initial report submitted' },
   { status: 'inspecting', label: 'Inspection', description: 'Engineer on-site inspection' },
   { status: 'costing', label: 'Costing', description: 'Cost estimate prepared' },
-  { status: 'pending_approval', label: 'Cost Approval', description: 'Awaiting tenant sign-off on cost' },
+  { status: 'pending_approval', label: 'Cost Approval', description: 'Awaiting tenant approval of the cost' },
   { status: 'assigned', label: 'Assignment', description: 'Engineer assigned to job' },
   { status: 'in_progress', label: 'Work Execution', description: 'Work being carried out' },
-  { status: 'signed', label: 'Tenant Sign-Off', description: 'Tenant approved and signed' },
-  { status: 'verified', label: 'Final Verification', description: 'Head engineer approved' },
-  { status: 'completed', label: 'Completed', description: 'WO closed, PDF generated' },
+  { status: 'svc_submitted', label: 'Final Verification', description: 'Head engineer verifies the work' },
+  { status: 'verified', label: 'Tenant Sign-Off', description: 'Awaiting tenant sign-off' },
+  { status: 'completed', label: 'Completed', description: 'WO closed, audit report generated' },
 ]
 
 const STATUS_PROGRESS: Partial<Record<WorkOrderStatus, number>> = {
@@ -23,8 +23,8 @@ const STATUS_PROGRESS: Partial<Record<WorkOrderStatus, number>> = {
   assigned: 4,
   in_progress: 5,
   svc_submitted: 6,
-  signed: 7,
-  verified: 8,
+  signed: 6, // legacy: tenant signed before verification, still awaiting final verification
+  verified: 7,
   completed: 8,
 }
 
@@ -109,8 +109,8 @@ export default function WorkflowTimeline({ workOrder, approvalTrail, compact = f
             const active = i === currentIndex && !isComplete
             const trailEntry = approvalTrail.find((t) => {
               if (stage.status === 'pending_approval') return t.stage === 'costing_approval'
-              if (stage.status === 'signed') return t.stage === 'sign_off'
-              if (stage.status === 'verified') return t.stage === 'final_verification'
+              if (stage.status === 'svc_submitted') return t.stage === 'final_verification'
+              if (stage.status === 'verified') return t.stage === 'sign_off'
               return false
             })
             const rejected = trailEntry?.decision === 'rejected'
@@ -170,7 +170,7 @@ export default function WorkflowTimeline({ workOrder, approvalTrail, compact = f
                   )}
                 </div>
 
-                {(trailEntry || (stage.status === 'signed' && workOrder.signed_by_name)) && (
+                {(trailEntry || (stage.status === 'verified' && workOrder.signed_by_name)) && (
                   <div className="sr-only">
                     {trailEntry && (
                       <>
@@ -180,7 +180,7 @@ export default function WorkflowTimeline({ workOrder, approvalTrail, compact = f
                         {trailEntry.reason ? ` ${trailEntry.reason}` : ''}
                       </>
                     )}
-                    {stage.status === 'signed' && workOrder.signed_by_name && ` Signed by ${workOrder.signed_by_name}`}
+                    {stage.status === 'verified' && workOrder.signed_by_name && ` Signed by ${workOrder.signed_by_name}`}
                   </div>
                 )}
               </li>

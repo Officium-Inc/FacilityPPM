@@ -13,6 +13,7 @@ type ReportPdfRow = {
   location_notes?: string | null
   reported_by_name?: string | null
   reported_by_contact?: string | null
+  tenant_lessee?: string | null
   urgency?: string | null
   inspection_notes?: string | null
   root_cause?: string | null
@@ -40,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         )
       ),
       work_order_reports!work_order_reports_work_order_id_fkey(
-        fault_description, location_notes, reported_by_name, reported_by_contact,
+        fault_description, location_notes, reported_by_name, reported_by_contact, tenant_lessee,
         urgency, inspection_notes, root_cause, scope_of_work, inspected_at
       ),
       properties(name)

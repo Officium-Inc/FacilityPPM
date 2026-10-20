@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateSignOffToken, getSignOffExpiry } from '@/lib/token'
 import { sendSignOffEmail } from '@/lib/email'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
@@ -18,12 +19,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const service = await createServiceClient()
+
   // Fetch work order
-  const { data: wo, error: fetchErr } = await supabase
+  const { data: wo, error: fetchErr } = await service
     .from('work_orders')
     .select(`
       id, wo_number, status, sign_off_token, property_id, tenant_email, tenant_name,
-      ppm_schedules(title, assets(name, buildings(name, sites(name))))
+      ppm_schedules(title, assets(name, buildings(name, sites(name)))),
+      properties(name)
     `)
     .eq('id', id)
     .single()
@@ -32,18 +36,22 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
   }
 
-  const VALID_STATUSES = ['completed', 'assigned', 'in_progress', 'svc_submitted']
-  if (!VALID_STATUSES.includes(wo.status)) {
-    return NextResponse.json({ error: 'Work order is not in a valid state for sign-off' }, { status: 400 })
+  // `verified` = head engineer approved, waiting for the tenant. `svc_submitted` only applies to
+  // orders from the previous flow that already had a sign-off link.
+  const isResendable = wo.status === 'verified' || (wo.status === 'svc_submitted' && wo.sign_off_token)
+  if (!isResendable) {
+    return NextResponse.json({ error: 'Work order is not waiting for tenant sign-off' }, { status: 400 })
   }
+
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const token = generateSignOffToken()
   const expiresAt = getSignOffExpiry()
 
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await service
     .from('work_orders')
     .update({
-      status: wo.status === 'svc_submitted' ? 'svc_submitted' : 'completed',
       sign_off_token: token,
       sign_off_expires_at: expiresAt.toISOString(),
       updated_at: new Date().toISOString(),
@@ -55,7 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // Log to audit
-  await supabase.from('audit_log').insert({
+  await service.from('audit_log').insert({
     property_id: (wo as { property_id?: string | null }).property_id ?? null,
     user_id: user.id,
     action: 'work_order.sign_off_link_sent',
@@ -65,10 +73,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     ip_address: request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? null,
   })
 
-  // Send email — gracefully handle if Resend isn't configured
+  // Send email — gracefully handle if mail isn't configured
+  let emailSent = true
   try {
-    const assets = (wo.ppm_schedules as { assets?: { name?: string; buildings?: { sites?: { name?: string } } } } | null)?.assets
-    const siteName = assets?.buildings?.sites?.name ?? 'your property'
+    const property = wo.properties as { name?: string } | { name?: string }[] | null
+    const siteName = (Array.isArray(property) ? property[0]?.name : property?.name) ?? 'your property'
     const email = (wo as { tenant_email?: string | null }).tenant_email
     if (!email) throw new Error('No tenant email on record — cannot send sign-off link')
     await sendSignOffEmail({
@@ -80,9 +89,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
   } catch {
     // Email failure is non-fatal; sign-off token is already set
+    emailSent = false
   }
 
   await syncTenant360WorkOrder(id, { findExisting: true })
 
-  return NextResponse.json({ success: true, token })
+  return NextResponse.json({ success: true, token, emailSent })
 }

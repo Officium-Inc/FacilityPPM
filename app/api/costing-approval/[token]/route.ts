@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
 import { sendCostingApprovalConfirmationEmail } from '@/lib/email'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
@@ -71,6 +72,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (!wo) return NextResponse.json({ error: 'Invalid or expired token.' }, { status: 404 })
 
+  if (wo.status === 'cancelled') {
+    return NextResponse.json({ error: 'This service report was cancelled.' }, { status: 410 })
+  }
+
   if (wo.costing_token_expires_at && new Date(wo.costing_token_expires_at) < new Date()) {
     return NextResponse.json({ error: 'This approval link has expired.' }, { status: 410 })
   }
@@ -111,6 +116,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       decision: 'approved',
       signature_data: signatureData ?? null,
       ip_address: ip,
+    })
+
+    await logWorkOrderEvent(service, wo.id, {
+      eventType: 'costing_approved',
+      step: 'Cost approval',
+      actorName: tenantName!.trim(),
+      actorEmail: (wo as { tenant_email?: string | null }).tenant_email ?? null,
+      actorRole: 'tenant',
+      decision: 'Approved',
+      createdAt: now,
     })
 
     // Send confirmation email to tenant with cost breakdown
@@ -162,6 +177,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       decision: 'rejected',
       reason: reason!.trim(),
       ip_address: ip,
+    })
+
+    await logWorkOrderEvent(service, wo.id, {
+      eventType: 'costing_rejected',
+      step: 'Cost approval',
+      actorName: tenantName!.trim(),
+      actorEmail: (wo as { tenant_email?: string | null }).tenant_email ?? null,
+      actorRole: 'tenant',
+      decision: 'Rejected',
+      reason: reason!.trim(),
+      createdAt: now,
     })
   }
 

@@ -6,6 +6,7 @@ import WorkOrderStickyHeader from '@/components/work-orders/WorkOrderStickyHeade
 import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
+import { priorityLabel } from '@/lib/priority'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
 import { FileText, FileDown, Image as ImageIcon } from 'lucide-react'
 
@@ -67,7 +68,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     (a, b) => a.sort_order - b.sort_order
   )
 
-  type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; urgency?: string; inspection_notes?: string; root_cause?: string; scope_of_work?: string; photo_urls?: string[] | null; inspection_photo_urls?: string[] | null }
+  type ReportRow = { fault_description?: string; location_notes?: string; reported_by_name?: string; reported_by_contact?: string; tenant_lessee?: string | null; urgency?: string | null; inspection_notes?: string; root_cause?: string; scope_of_work?: string; photo_urls?: string[] | null; inspection_photo_urls?: string[] | null }
   type CostingRow = { labour_hours?: number; labour_rate?: number; labour_total?: number; materials_total?: number; subcontractor_total?: number; grand_total?: number; notes?: string }
   type EvidenceRow = { work_description?: string; completion_photo_urls?: string[] | null; supporting_doc_urls?: string[] | null }
 
@@ -90,16 +91,17 @@ export default async function WorkOrderDetailPage({ params }: Props) {
       <div className="mx-auto w-full max-w-[96rem] px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
         <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,22rem)] xl:items-start">
           <div className="order-2 min-w-0 space-y-4 xl:order-1">
-          {/* Fault report */}
+          {/* Service report */}
           {report && report.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="font-semibold text-gray-900 text-sm mb-3">Fault Report</h3>
+              <h3 className="font-semibold text-gray-900 text-sm mb-3">Service Report</h3>
               <dl className="space-y-2 text-sm">
                 <Detail label="Description" value={report[0].fault_description ?? '—'} />
+                {report[0].tenant_lessee ? <Detail label="Tenant / Lessee" value={report[0].tenant_lessee} /> : null}
                 {report[0].location_notes ? <Detail label="Location" value={report[0].location_notes} /> : null}
-                <Detail label="Reported By" value={report[0].reported_by_name ?? '—'} />
-                {report[0].reported_by_contact ? <Detail label="Contact" value={report[0].reported_by_contact} /> : null}
-                <Detail label="Urgency" value={report[0].urgency ?? '—'} />
+                <Detail label="Contact Person" value={report[0].reported_by_name ?? '—'} />
+                {report[0].reported_by_contact ? <Detail label="Telephone / Email" value={report[0].reported_by_contact} /> : null}
+                <Detail label="Priority" value={priorityLabel(report[0].urgency ?? workOrder.priority)} />
                 {report[0].inspection_notes ? (
                   <>
                     <div className="border-t border-gray-100 pt-2 mt-2">
@@ -154,6 +156,20 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               <Detail label="Location" value={asset?.location ?? '—'} />
               <Detail label="Schedule" value={workOrder.ppm_schedules?.title ?? '—'} />
               <Detail label="Engineer" value={workOrder.engineers?.full_name ?? 'Unassigned'} />
+              <Detail
+                label="Work Carried Out By"
+                value={
+                  workOrder.execution_mode === 'third_party'
+                    ? `Third-party contractor${workOrder.contractor_name ? `: ${workOrder.contractor_name}` : ''}`
+                    : 'In-house team'
+                }
+              />
+              {workOrder.execution_mode === 'third_party' && workOrder.contractor_contact && (
+                <Detail label="Contractor Contact" value={workOrder.contractor_contact} />
+              )}
+              {workOrder.execution_mode === 'third_party' && workOrder.contractor_notes && (
+                <Detail label="Contractor Notes" value={workOrder.contractor_notes} />
+              )}
               {workOrder.original_wo_number && (
                 <Detail label="Original Report No." value={workOrder.original_wo_number} />
               )}
@@ -203,18 +219,35 @@ export default async function WorkOrderDetailPage({ params }: Props) {
             const hasReport = report.length > 0
             const hasCosting = costing.length > 0
             const hasReceipt = !!(workOrder.pdf_url || workOrder.signed_at)
+            const hasAudit = workOrder.status === 'completed'
 
-            if (!hasReport && !hasCosting && !hasReceipt && photos.length === 0 && supportingDocs.length === 0) return null
+            if (!hasReport && !hasCosting && !hasReceipt && !hasAudit && photos.length === 0 && supportingDocs.length === 0) return null
 
             return (
               <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
                 <h3 className="font-semibold text-gray-900 text-sm">Attachments</h3>
 
                 {/* PDF Documents */}
-                {(hasReport || hasCosting || hasReceipt) && (
+                {(hasReport || hasCosting || hasReceipt || hasAudit) && (
                   <div>
                     <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2.5">Documents</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {hasAudit && (
+                        <a
+                          href={workOrder.audit_report_url ?? `/api/pdf/${workOrder.id}/audit`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2.5 p-2.5 rounded-lg border border-gray-200 hover:border-green-400 hover:bg-green-50 transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                            <FileDown className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">Audit Report</p>
+                            <p className="text-xs text-gray-400">PDF · Timeline of work</p>
+                          </div>
+                        </a>
+                      )}
                       {hasReport && (
                         <a
                           href={`/api/pdf/${workOrder.id}/report`}

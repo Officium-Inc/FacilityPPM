@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle } from 'lucide-react'
+import { PRIORITY_OPTIONS, priorityOptionLabel } from '@/lib/priority'
 
-const URGENCY_OPTIONS = [
-  { value: 'critical', label: 'Critical — immediate safety risk' },
-  { value: 'high',     label: 'High — significant disruption' },
-  { value: 'medium',   label: 'Medium — normal priority' },
-  { value: 'low',      label: 'Low — cosmetic / minor' },
-]
+const URGENCY_OPTIONS = [...PRIORITY_OPTIONS].reverse().map((option) => ({
+  value: option.value,
+  label: priorityOptionLabel(option),
+}))
 
 export default function FaultReportForm({ slug }: { slug: string }) {
   const router = useRouter()
@@ -33,7 +32,7 @@ export default function FaultReportForm({ slug }: { slug: string }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.faultDescription.trim() || !form.reportedByName.trim()) {
-      setError('Fault description and reported-by name are required.')
+      setError('Description and reported-by name are required.')
       return
     }
 
@@ -48,7 +47,7 @@ export default function FaultReportForm({ slug }: { slug: string }) {
 
     const data = await res.json()
     if (!res.ok) {
-      setError(data.error ?? 'Failed to submit fault report.')
+      setError(data.error ?? 'Failed to submit service report.')
       setLoading(false)
       return
     }
@@ -66,7 +65,7 @@ export default function FaultReportForm({ slug }: { slug: string }) {
         </div>
       )}
 
-      <Field label="Fault Description" required>
+      <Field label="Description" required>
         <textarea
           value={form.faultDescription}
           onChange={set('faultDescription')}
@@ -110,7 +109,7 @@ export default function FaultReportForm({ slug }: { slug: string }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Urgency">
+        <Field label="Priority">
           <select value={form.urgency} onChange={set('urgency')} className={INPUT}>
             {URGENCY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -140,7 +139,7 @@ export default function FaultReportForm({ slug }: { slug: string }) {
           disabled={loading}
           className="px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 disabled:opacity-50 rounded-lg transition-colors"
         >
-          {loading ? 'Submitting…' : 'Submit Fault Report'}
+          {loading ? 'Submitting…' : 'Submit Service Report'}
         </button>
       </div>
     </form>

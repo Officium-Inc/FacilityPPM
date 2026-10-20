@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
+import { priorityLabel } from '@/lib/priority'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import NewServiceRequestModal from './NewServiceRequestModal'
 
@@ -44,14 +45,14 @@ export default async function ServiceRequestsPage({ params }: Props) {
     fault_description: string
     location_notes: string | null
     reported_by_name: string
-    urgency: string
+    urgency: string | null
     created_at: string
   }
   type WoRow = {
     id: string
     wo_number: string
     status: string
-    priority: string
+    priority: string | null
     created_at: string
     work_order_reports: ReportRow | ReportRow[] | null
   }
@@ -69,7 +70,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Service Requests</h2>
+          <h2 className="text-xl font-bold text-gray-900">Service Reports</h2>
           <p className="text-sm text-gray-500 mt-0.5">{rows.length} submitted</p>
         </div>
         <NewServiceRequestModal slug={slug} />
@@ -78,9 +79,9 @@ export default async function ServiceRequestsPage({ params }: Props) {
       {rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <AlertTriangle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">No service requests submitted yet.</p>
+          <p className="text-gray-500 text-sm">No service reports submitted yet.</p>
           <div className="mt-4">
-            <NewServiceRequestModal slug={slug} triggerLabel="Submit your first request" variant="link" />
+            <NewServiceRequestModal slug={slug} triggerLabel="Submit your first report" variant="link" />
           </div>
         </div>
       ) : (
@@ -89,7 +90,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {['WO #', 'Description', 'Location', 'Reported By', 'Urgency', 'Status', 'Submitted'].map((h) => (
+                  {['WO #', 'Description', 'Location', 'Reported By', 'Priority', 'Status', 'Submitted'].map((h) => (
                     <th key={h} className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {h}
                     </th>
@@ -113,8 +114,8 @@ export default async function ServiceRequestsPage({ params }: Props) {
                       <td className="px-5 py-3 text-gray-600">{r?.location_notes ?? '—'}</td>
                       <td className="px-5 py-3 text-gray-600">{r?.reported_by_name ?? '—'}</td>
                       <td className="px-5 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${urgencyColour[r?.urgency ?? ''] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {r?.urgency ?? '—'}
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${urgencyColour[r?.urgency ?? ''] ?? 'bg-gray-100 text-gray-500'}`}>
+                          {priorityLabel(r?.urgency ?? wo.priority)}
                         </span>
                       </td>
                       <td className="px-5 py-3">

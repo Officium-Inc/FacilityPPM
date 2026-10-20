@@ -12,7 +12,7 @@ interface Props {
   searchParams: Promise<{ q?: string; status?: string; priority?: string; type?: string }>
 }
 
-function PriorityBadge({ priority }: { priority: Priority }) {
+function PriorityBadge({ priority }: { priority: Priority | null }) {
   const map: Record<Priority, string> = {
     critical: 'bg-red-100 text-red-700',
     high: 'bg-orange-100 text-orange-700',
@@ -20,8 +20,8 @@ function PriorityBadge({ priority }: { priority: Priority }) {
     low: 'bg-gray-100 text-gray-600',
   }
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${map[priority]}`}>
-      {priority}
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${priority ? map[priority] : 'bg-gray-50 text-gray-400 normal-case'}`}>
+      {priority ?? 'Not assessed'}
     </span>
   )
 }

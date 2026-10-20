@@ -12,7 +12,7 @@ interface WoRow {
   id: string
   wo_number: string
   status: WorkOrderStatus
-  priority: string
+  priority: string | null
   type: string
   created_at: string
   is_cost_waived: boolean | null
@@ -115,7 +115,7 @@ export default function WaivedOrdersClient({ workOrders, slug }: Props) {
                       wo.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
                       'bg-gray-100 text-gray-600'
                     }`}>
-                      {wo.priority}
+                      {wo.priority ?? 'Not assessed'}
                     </span>
                   </td>
                   <td className="px-5 py-3 text-gray-600">{wo.engineers?.full_name ?? '—'}</td>
