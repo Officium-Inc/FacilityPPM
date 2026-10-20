@@ -197,7 +197,7 @@ export async function getTenantServiceRequests(
   context: TenantPortalContext,
   filter: TenantRequestFilter = 'my-requests'
 ) {
-  const { data } = await context.service
+  const { data, error } = await context.service
     .from('work_orders')
     .select(`
       id,
@@ -222,6 +222,9 @@ export async function getTenantServiceRequests(
     .eq('property_id', context.property.id)
     .eq('type', 'reactive')
     .order('created_at', { ascending: false })
+
+  // A failed query (for example a column from a migration that has not been applied yet) must not look like "no reports"
+  if (error) console.error('[tenant] failed to load service reports:', error.message)
 
   return filterTenantRequests((data ?? []) as unknown as TenantRequestRow[], context, filter)
 }
