@@ -8,3 +8,5 @@ dist/
 .DS_Store
 Thumbs.db
 *.md
+# Agent skills are committed so the whole team shares them
+!.github/skills/**/*.md

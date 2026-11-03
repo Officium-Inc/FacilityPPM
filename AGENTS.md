@@ -312,3 +312,44 @@ NEXT_PUBLIC_APP_URL             Canonical URL (used for PDF callback fetch)
 ```
 
 All stored in `.env.local` (not committed).
+
+---
+
+## Agent Skills
+
+On-demand skills live in `.github/skills/<name>/` (committed; `.gitignore` re-includes `.github/skills/**/*.md`).
+Agents load a skill when its `description` matches the task, or explicitly via `/<skill-name>`.
+
+| Skill | Use for | Source (pinned) | License |
+|-------|---------|-----------------|---------|
+| `facilityppm-tenant-isolation` | **Project-specific.** Provider/Admin/Tenant role matrix, Supabase authz + RLS rules, audit script | this repo | — |
+| `security-best-practices` | Next.js / React / TS secure-by-default review & report (explicit request) | `openai/skills@49f948f` `skills/.curated/security-best-practices` | see `LICENSE.txt` |
+| `security-threat-model` | Repo-grounded threat model: trust boundaries, abuse paths (explicit request) | `openai/skills@49f948f` `skills/.curated/security-threat-model` | see `LICENSE.txt` |
+| `supabase` | Supabase Auth, SSR, RLS, Storage, CLI; security checklist | `supabase/agent-skills@c9be0e9` `skills/supabase` | MIT |
+| `supabase-postgres-best-practices` | Schema, migrations, RLS policies, indexes, query performance | `supabase/agent-skills@c9be0e9` `skills/supabase-postgres-best-practices` | MIT |
+| `differential-review` | Security review of a PR / commit / diff with blast radius | `trailofbits/skills@711af09` `plugins/differential-review/skills/differential-review` | CC-BY-SA-4.0 |
+| `sharp-edges` | Footgun APIs, dangerous defaults, misuse-prone auth/config design | `trailofbits/skills@711af09` `plugins/sharp-edges/skills/sharp-edges` | CC-BY-SA-4.0 |
+| `supply-chain-risk-auditor` | npm dependency advisories, abandoned packages, install scripts | `trailofbits/skills@711af09` `plugins/supply-chain-risk-auditor/skills/supply-chain-risk-auditor` | CC-BY-SA-4.0 |
+| `vercel-react-best-practices` | React / Next.js performance patterns (not security) | `vercel-labs/agent-skills@1a2c79d` `skills/react-best-practices` | MIT |
+
+Full commit SHAs: openai `49f948faa9258a0c61caceaf225e179651397431`, supabase `c9be0e931b7930f7d02126d04774d904c381e7d7`,
+trailofbits `711af095215ad4ecde5b90cd1d0124b3f1c4ca9e`, vercel-labs `1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62`.
+
+**Tenant-isolation audit** (report-only, needs `pnpm install` for `typescript`):
+
+```bash
+node .github/skills/facilityppm-tenant-isolation/scripts/audit-tenant-isolation.mjs          # Markdown report
+node .github/skills/facilityppm-tenant-isolation/scripts/audit-tenant-isolation.mjs --strict # exit 1 on HIGH
+```
+
+**Notes on third-party skills**
+- Vendored as-is except: `vercel-react-best-practices` omits the generated 112 KB `AGENTS.md` (would be picked up as
+  nested agent instructions; all rules remain in `rules/`) and its `SKILL.md` "Full Compiled Document" line was edited.
+- `supply-chain-risk-auditor` needs Python + [`uv`](https://docs.astral.sh/uv/), calls public registry/advisory APIs
+  (OSV, npm, deps.dev, GitHub, Scorecard) and reads the `gh` token if present. It does **not** parse `pnpm-lock.yaml`,
+  so only direct dependencies from `package.json` are version-matched.
+- `supabase` skill: its feedback flow can file a **public** GitHub issue on `supabase/agent-skills` (after asking) —
+  never include project code, schema, or data in it. Don't let it create `.mcp.json` without review.
+- Trail of Bits frontmatter (`allowed-tools`) and `agents/openai.yaml` files are tool-specific metadata; Copilot ignores them.
+- **Updating**: re-vendor from a new commit SHA, review the diff for prompt-injection / unexpected commands, update
+  this table. Never pull skills from unpinned branches.
