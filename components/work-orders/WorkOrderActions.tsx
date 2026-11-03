@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus } from 'lucide-react'
+import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus, Calculator } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import { normalizeRoleName } from '@/lib/roles'
 import { PRIORITY_OPTIONS, priorityOptionLabel, suggestDueDate } from '@/lib/priority'
@@ -72,6 +72,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   })
   const [costingNotes, setCostingNotes] = useState(existingCosting?.notes ?? '')
   const [selectedCostingTenantId, setSelectedCostingTenantId] = useState('')
+  const [costingModalOpen, setCostingModalOpen] = useState(false)
 
   const [assignEngineerId, setAssignEngineerId] = useState('')
   const [dueDate, setDueDate] = useState(() => suggestDueDate(workOrder.priority))
@@ -279,88 +280,222 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       )}
 
       {(status === 'costing' || (status === 'pending_approval' && workOrder.rejection_reason)) && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Prepare Cost Estimate</p>
-          {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Add the contractor's quote as an item provided by the third-party contractor." />}
-          {workOrder.rejection_reason && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-              Rejection reason: {workOrder.rejection_reason}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Labour Hours</label>
-              <input type="number" value={labourHours} onChange={(e) => setLabourHours(Number(e.target.value))} min={0} step={0.5} className={INPUT} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Rate (₱/hr)</label>
-              <input type="number" value={labourRate} onChange={(e) => setLabourRate(Number(e.target.value))} min={0} className={INPUT} />
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Materials, Tools &amp; Labor</p>
-          <div className="space-y-2">
-            {costingItems.map((item, index) => (
-              <div key={index} className="space-y-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-4 shrink-0 text-xs text-gray-400">{index + 1}</span>
-                  <input type="text" value={item.description} onChange={(e) => updateCostingItem(index, { description: e.target.value })} placeholder="Description" className={INPUT} />
-                  <button type="button" onClick={() => removeCostingItem(index)} className="shrink-0 rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove item ${index + 1}`}>
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <input type="number" value={item.qty} onChange={(e) => updateCostingItem(index, { qty: Number(e.target.value) })} min={0} step="any" placeholder="Qty" aria-label="Quantity" className={INPUT} />
-                  <input type="text" value={item.unit ?? ''} onChange={(e) => updateCostingItem(index, { unit: e.target.value })} placeholder="Unit" aria-label="Unit" className={INPUT} />
-                  <input type="number" value={item.unit_cost} onChange={(e) => updateCostingItem(index, { unit_cost: Number(e.target.value) })} min={0} placeholder="Unit cost" aria-label="Unit cost" className={INPUT} />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <select value={item.provided_by ?? 'engineering'} onChange={(e) => updateCostingItem(index, { provided_by: e.target.value as ProvidedBy })} aria-label="Provided by" className={INPUT}>
-                    {PROVIDED_BY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <span className={`shrink-0 text-xs font-medium ${item.provided_by === 'tenant' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
-                    ₱{lineItemTotal(item).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
+        <>
+          {/* Trigger shown in the Actions card */}
+          <div className="space-y-3">
+            {workOrder.rejection_reason && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                <p className="font-medium">Tenant rejected the previous estimate</p>
+                <p className="mt-0.5">{workOrder.rejection_reason}</p>
               </div>
-            ))}
-            <button type="button" onClick={addCostingItem} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-green-500 hover:text-green-700">
-              <Plus className="h-4 w-4" /> Add item
+            )}
+            {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Add the contractor's quote as an item provided by the third-party contractor." />}
+            <button
+              onClick={() => setCostingModalOpen(true)}
+              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+            >
+              <span className="flex items-center gap-2"><Calculator className="w-4 h-4" /> {workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-sm font-semibold text-gray-800">
-            Estimated total: ₱{costingTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-          </p>
-          {costingItems.some((item) => item.provided_by === 'tenant') && (
-            <p className="text-xs text-gray-400">Items provided by the tenant are listed on the form but not included in the total.</p>
+
+          {/* Modal */}
+          {costingModalOpen && (
+            typeof document !== 'undefined' && createPortal(
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!loading) setCostingModalOpen(false) }} />
+              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">{workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Build a cost breakdown and send it to the tenant for approval.</p>
+                  </div>
+                  <button
+                    onClick={() => { if (!loading) setCostingModalOpen(false) }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Body — scrollable */}
+                <div className="px-6 py-5 space-y-6 overflow-y-auto">
+                  {message && (
+                    <div className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                      {message.text}
+                    </div>
+                  )}
+                  {workOrder.rejection_reason && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
+                      <p className="font-medium">Tenant rejected the previous estimate</p>
+                      <p className="mt-0.5 text-xs">{workOrder.rejection_reason}</p>
+                    </div>
+                  )}
+                  {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Add the contractor's quote as an item provided by the third-party contractor." />}
+
+                  {/* Labour */}
+                  <section className="space-y-2">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Labour</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Labour Hours</label>
+                        <input type="number" value={labourHours} onChange={(e) => setLabourHours(Number(e.target.value))} min={0} step={0.5} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rate (₱ / hour)</label>
+                        <input type="number" value={labourRate} onChange={(e) => setLabourRate(Number(e.target.value))} min={0} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 text-right">Labour subtotal: ₱{(labourHours * labourRate).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                  </section>
+
+                  {/* Materials, Tools & Labor items */}
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Materials, Tools &amp; Labor</h3>
+                      <span className="text-xs text-gray-400">{costingItems.length} item{costingItems.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {costingItems.map((item, index) => (
+                        <div key={index} className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2.5">
+                          <div className="flex items-start gap-2">
+                            <span className="mt-7 w-5 shrink-0 text-center text-xs font-medium text-gray-400">{index + 1}</span>
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+                              <input type="text" value={item.description} onChange={(e) => updateCostingItem(index, { description: e.target.value })} placeholder="e.g. Compressor belt" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <button type="button" onClick={() => removeCostingItem(index)} className="mt-6 shrink-0 rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600" aria-label={`Remove item ${index + 1}`}>
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2.5 pl-7">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                              <input type="number" value={item.qty} onChange={(e) => updateCostingItem(index, { qty: Number(e.target.value) })} min={0} step="any" aria-label="Quantity" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Unit</label>
+                              <input type="text" value={item.unit ?? ''} onChange={(e) => updateCostingItem(index, { unit: e.target.value })} placeholder="pcs" aria-label="Unit" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Unit Cost (₱)</label>
+                              <input type="number" value={item.unit_cost} onChange={(e) => updateCostingItem(index, { unit_cost: Number(e.target.value) })} min={0} aria-label="Unit cost" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
+                            </div>
+                          </div>
+                          <div className="flex items-end justify-between gap-2.5 pl-7">
+                            <div className="flex-1">
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Provided By</label>
+                              <select value={item.provided_by ?? 'engineering'} onChange={(e) => updateCostingItem(index, { provided_by: e.target.value as ProvidedBy })} aria-label="Provided by" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500">
+                                {PROVIDED_BY_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <span className={`shrink-0 pb-2 text-sm font-semibold ${item.provided_by === 'tenant' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                              ₱{lineItemTotal(item).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      <button type="button" onClick={addCostingItem} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-2.5 text-sm text-gray-600 hover:border-green-500 hover:text-green-700 transition-colors">
+                        <Plus className="h-4 w-4" /> Add item
+                      </button>
+                    </div>
+                    {costingItems.some((item) => item.provided_by === 'tenant') && (
+                      <p className="text-xs text-gray-400">Items provided by the tenant are listed on the form but not included in the total.</p>
+                    )}
+                  </section>
+
+                  {/* Estimated total summary */}
+                  <section className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-green-800">
+                      <span>Labour ({labourHours}h × ₱{labourRate}/h)</span>
+                      <span>₱{(labourHours * labourRate).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-green-800">
+                      <span>Materials &amp; items</span>
+                      <span>₱{materialsTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {subcontractorTotal > 0 && (
+                      <div className="flex items-center justify-between text-xs text-green-800">
+                        <span>Subcontractor</span>
+                        <span>₱{subcontractorTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-green-200 text-sm font-bold text-green-900">
+                      <span>Estimated Total</span>
+                      <span>₱{costingTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </section>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+                    <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Any notes for the tenant or internal record…" rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" />
+                  </div>
+
+                  {/* Send to tenant */}
+                  <section className="space-y-2">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Send Approval To</h3>
+                    {tenants.length === 0 ? (
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tenant <span className="text-red-500">*</span></label>
+                        <select value={selectedCostingTenantId} onChange={(e) => setSelectedCostingTenantId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                          <option value="">— Select tenant —</option>
+                          {tenants.map((t) => (
+                            <option key={t.id} value={t.id}>{t.full_name} ({t.email})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </section>
+
+                  <div className="pt-2 border-t border-gray-100">
+                    <CancelRequestPanel
+                      loading={loading}
+                      hint="Cost not approved? Cancel this request. The tenant is notified and any approval link stops working."
+                      onConfirm={async (reason) => {
+                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/cancel`, { reason })
+                        if (ok) setCostingModalOpen(false)
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCostingModalOpen(false)}
+                    disabled={loading}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      if (!selectedCostingTenantId) { setMessage({ type: 'error', text: 'Please select a tenant to send the approval to.' }); return }
+                      const t = tenants.find(e => e.id === selectedCostingTenantId)
+                      const ok = await apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+                      if (ok) setCostingModalOpen(false)
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                    {loading ? 'Sending…' : 'Send Cost Approval to Tenant'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+            )
           )}
-          <textarea value={costingNotes} onChange={(e) => setCostingNotes(e.target.value)} placeholder="Additional notes…" rows={2} className={INPUT} />
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send approval to tenant</p>
-          {tenants.length === 0 ? (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
-          ) : (
-            <select value={selectedCostingTenantId} onChange={(e) => setSelectedCostingTenantId(e.target.value)} className={INPUT}>
-              <option value="">— Select tenant —</option>
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>{t.full_name} ({t.email})</option>
-              ))}
-            </select>
-          )}
-          <ActionButton
-            onClick={() => {
-              const t = engineers.find(e => e.id === selectedCostingTenantId)
-              apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
-            }}
-            loading={loading} icon={Send} label="Send Cost Approval to Tenant"
-          />
-          <CancelRequestPanel
-            loading={loading}
-            hint="Cost not approved? Cancel this request. The tenant is notified and any approval link stops working."
-            onConfirm={(reason) => apiPost(`/api/work-orders/${workOrder.id}/cancel`, { reason })}
-          />
-        </div>
+        </>
       )}
 
       {status === 'pending_approval' && !workOrder.rejection_reason && (
