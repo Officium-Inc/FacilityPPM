@@ -4,15 +4,23 @@ import type { User } from '@supabase/supabase-js'
 import { requirePage, type Service } from '@/lib/authz/guard'
 import { userPropertyIds, type MemberActor } from '@/lib/authz/actor'
 import { can } from '@/lib/authz/permissions'
+import { latestCosting } from '@/lib/costing'
 import { loadCompanyFloors } from '@/lib/floors'
+import { getPriorityOption } from '@/lib/priority'
+import {
+  matchesTenantFilter,
+  tenantActionFor,
+  type TenantRequestFilter,
+  type TenantRequestListItem,
+} from '@/lib/tenant-requests'
+import { formatPHT } from '@/lib/utils'
 import type { Floor, Priority, TenantCompany, WorkOrderStatus } from '@/types'
 
-export type TenantRequestFilter =
-  | 'my-requests'
-  | 'pending'
-  | 'for-my-approval'
-  | 'complete'
-  | 'cancelled'
+export {
+  isAwaitingTenant,
+  TENANT_REQUEST_TITLES,
+  type TenantRequestFilter,
+} from '@/lib/tenant-requests'
 
 export interface TenantProperty {
   id: string
@@ -72,34 +80,6 @@ export interface TenantRequestRow {
   work_order_reports: TenantRequestReport | TenantRequestReport[] | null
 }
 
-/**
- * Flow: ... in_progress -> svc_submitted (final verification by the head engineer)
- * -> verified (waiting for the tenant to sign off) -> completed.
- * `signed` is the legacy "tenant signed, not yet verified" state.
- * A legacy svc_submitted order that already has a sign-off link is still waiting on the tenant.
- */
-export function isAwaitingTenant(row: Pick<TenantRequestRow, 'status' | 'sign_off_token_hash'>) {
-  return (
-    row.status === 'pending_approval' ||
-    row.status === 'verified' ||
-    (row.status === 'svc_submitted' && Boolean(row.sign_off_token_hash))
-  )
-}
-
-const STATUS_GROUPS: Record<'pending' | 'complete' | 'cancelled', WorkOrderStatus[]> = {
-  pending: ['new_report', 'inspecting', 'costing', 'assigned', 'in_progress', 'svc_submitted'],
-  complete: ['signed', 'completed'],
-  cancelled: ['cancelled'],
-}
-
-export const TENANT_REQUEST_TITLES: Record<TenantRequestFilter, string> = {
-  'my-requests': 'All Reports',
-  pending: 'Pending',
-  'for-my-approval': 'For My Approval',
-  complete: 'Complete',
-  cancelled: 'Cancelled',
-}
-
 export function rowsOf<T>(value: T | T[] | null | undefined): T[] {
   if (!value) return []
   return Array.isArray(value) ? value : [value]
@@ -157,12 +137,7 @@ export function filterTenantRequests(
 ) {
   return rows
     .filter((row) => isTenantOwnedRequest(row, context))
-    .filter((row) => {
-      if (filter === 'my-requests') return true
-      if (filter === 'for-my-approval') return isAwaitingTenant(row)
-      if (filter === 'pending') return STATUS_GROUPS.pending.includes(row.status) && !isAwaitingTenant(row)
-      return STATUS_GROUPS[filter].includes(row.status)
-    })
+    .filter((row) => matchesTenantFilter(row, filter))
 }
 
 export async function getTenantServiceRequests(
@@ -210,7 +185,53 @@ export async function getTenantServiceRequests(
 /** Where a tenant reviews a request; requests waiting on them open the in-portal approval / sign-off page. */
 export function getTenantApprovalHref(slug: string, row: Pick<TenantRequestRow, 'id' | 'status' | 'sign_off_token_hash'>) {
   const detail = `/${slug}/tenant/service-requests/${row.id}`
-  return isAwaitingTenant(row) ? `${detail}/review` : detail
+  return tenantActionFor(row) ? `${detail}/review` : detail
+}
+
+/** The plain list row for client components (drops the sign-off token hash and stored file URLs). */
+export function toTenantRequestListItem(slug: string, row: TenantRequestRow): TenantRequestListItem {
+  const report = rowsOf(row.work_order_reports)[0]
+  const location = [rowsOf(row.floors)[0]?.label, report?.location_notes?.trim()].filter(Boolean).join(' · ')
+  return {
+    id: row.id,
+    number: row.wo_number,
+    description: report?.fault_description?.trim() || null,
+    location: location || null,
+    priority: getPriorityOption(report?.urgency ?? row.priority)?.label ?? null,
+    status: row.status,
+    submitted: formatPHT(row.created_at),
+    href: getTenantApprovalHref(slug, row),
+    action: tenantActionFor(row),
+  }
+}
+
+/**
+ * Latest estimate total per work order. `workOrderIds` must come from rows already scoped to the tenant
+ * (`getTenantServiceRequests`).
+ */
+export async function getLatestEstimateTotals(context: TenantPortalContext, workOrderIds: string[]) {
+  const totals = new Map<string, number>()
+  if (workOrderIds.length === 0) return totals
+
+  const { data, error } = await context.service
+    .from('work_order_costings')
+    .select('work_order_id, grand_total, submitted_at, created_at')
+    .in('work_order_id', workOrderIds)
+  if (error) {
+    console.error('[tenant] failed to load estimate totals:', error.message)
+    return totals
+  }
+
+  type CostingRow = { work_order_id: string; grand_total: number | string | null; submitted_at: string | null; created_at: string | null }
+  const byOrder = new Map<string, CostingRow[]>()
+  for (const row of (data ?? []) as CostingRow[]) {
+    byOrder.set(row.work_order_id, [...(byOrder.get(row.work_order_id) ?? []), row])
+  }
+  for (const [id, rows] of byOrder) {
+    const total = Number(latestCosting(rows)?.grand_total)
+    if (Number.isFinite(total)) totals.set(id, total)
+  }
+  return totals
 }
 
 export interface TenantCompanyContext {

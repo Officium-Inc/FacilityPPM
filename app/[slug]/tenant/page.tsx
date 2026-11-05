@@ -1,17 +1,17 @@
 import Link from 'next/link'
-import { AlertTriangle, CheckCircle, ClipboardCheck, ClipboardList } from 'lucide-react'
-import KpiCard from '@/components/dashboard/KpiCard'
-import StatusBadge from '@/components/work-orders/StatusBadge'
+import { CheckCircle, ClipboardCheck, ClipboardList, Clock } from 'lucide-react'
 import NewTenantServiceRequestModal from '@/components/tenant/NewTenantServiceRequestModal'
+import TenantActionPanel, { type TenantActionItem } from '@/components/tenant/TenantActionPanel'
+import TenantRequestList from '@/components/tenant/TenantRequestList'
+import TenantStatCard from '@/components/tenant/TenantStatCard'
 import {
-  getTenantApprovalHref,
+  getLatestEstimateTotals,
   getTenantPortalContext,
   getTenantRequestModalProps,
   getTenantServiceRequests,
-  isAwaitingTenant,
-  rowsOf,
+  toTenantRequestListItem,
 } from '@/lib/tenant'
-import { formatPHT } from '@/lib/utils'
+import { countTenantRequests, tenantRequestsHref } from '@/lib/tenant-requests'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -25,14 +25,19 @@ export default async function TenantDashboardPage({ params }: Props) {
     getTenantRequestModalProps(context, slug),
   ])
 
-  const approval = requests.filter(isAwaitingTenant)
-  const pending = requests.filter(
-    (row) =>
-      ['new_report', 'inspecting', 'costing', 'assigned', 'in_progress', 'svc_submitted'].includes(row.status) &&
-      !isAwaitingTenant(row)
+  const counts = countTenantRequests(requests)
+  const items = requests.map((row) => toTenantRequestListItem(slug, row))
+  const waiting = items.filter((item) => item.action !== null)
+  const estimateTotals = await getLatestEstimateTotals(
+    context,
+    waiting.filter((item) => item.action === 'cost_approval').map((item) => item.id)
   )
-  const complete = requests.filter((row) => ['signed', 'completed'].includes(row.status))
-  const recent = requests.slice(0, 5)
+  const actionItems: TenantActionItem[] = waiting.flatMap((item) =>
+    item.action
+      ? [{ ...item, action: item.action, estimateTotal: item.action === 'cost_approval' ? estimateTotals.get(item.id) ?? null : null }]
+      : []
+  )
+  const recent = items.slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -46,44 +51,51 @@ export default async function TenantDashboardPage({ params }: Props) {
         <NewTenantServiceRequestModal {...modalProps} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="All Reports"
-          value={requests.length}
-          subtitle="Submitted by your company"
-          icon={ClipboardList}
-          color="green"
-        />
-        <KpiCard
-          title="Pending"
-          value={pending.length}
-          subtitle="In progress with the property team"
-          icon={AlertTriangle}
-          color="yellow"
-        />
-        <KpiCard
+      <TenantActionPanel items={actionItems} allHref={tenantRequestsHref(slug, 'for-my-approval')} />
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <TenantStatCard
+          href={tenantRequestsHref(slug, 'for-my-approval')}
           title="For My Approval"
-          value={approval.length}
-          subtitle="Waiting for your review"
+          value={counts['for-my-approval']}
+          subtitle={counts['for-my-approval'] > 0 ? 'Waiting for your review' : 'Nothing waiting for you'}
           icon={ClipboardCheck}
-          color="blue"
+          tone="amber"
+          highlight={counts['for-my-approval'] > 0}
         />
-        <KpiCard
+        <TenantStatCard
+          href={tenantRequestsHref(slug, 'pending')}
+          title="Pending"
+          value={counts.pending}
+          subtitle="In progress with the property team"
+          icon={Clock}
+          tone="sky"
+        />
+        <TenantStatCard
+          href={tenantRequestsHref(slug, 'complete')}
           title="Complete"
-          value={complete.length}
+          value={counts.complete}
           subtitle="Signed off and completed"
           icon={CheckCircle}
-          color="green"
+          tone="green"
+        />
+        <TenantStatCard
+          href={tenantRequestsHref(slug, 'my-requests')}
+          title="All Reports"
+          value={counts['my-requests']}
+          subtitle="Submitted by your company"
+          icon={ClipboardList}
+          tone="green"
         />
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-4 sm:px-5">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Recent Service Reports</h3>
-            <p className="mt-0.5 text-xs text-gray-500">Latest activity from your tenant portal.</p>
+            <p className="mt-0.5 text-xs text-gray-500">Your company&apos;s latest reports.</p>
           </div>
-          <Link href={`/${slug}/tenant/service-requests/my-requests`} className="text-sm font-medium text-green-700 hover:underline">
+          <Link href={tenantRequestsHref(slug, 'my-requests')} className="shrink-0 text-sm font-medium text-green-700 hover:underline">
             View all
           </Link>
         </div>
@@ -101,46 +113,7 @@ export default async function TenantDashboardPage({ params }: Props) {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Report', 'Description', 'Status', 'Submitted', 'Action'].map((heading) => (
-                    <th key={heading} className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {recent.map((row) => {
-                  const report = rowsOf(row.work_order_reports)[0]
-                  const awaiting = isAwaitingTenant(row)
-                  const href = awaiting
-                    ? getTenantApprovalHref(slug, row)
-                    : `/${slug}/tenant/service-requests/${row.id}`
-
-                  return (
-                    <tr key={row.id} className="transition-colors hover:bg-gray-50">
-                      <td className="px-5 py-3 font-medium text-gray-900">{row.wo_number}</td>
-                      <td className="max-w-xs truncate px-5 py-3 text-gray-700">
-                        {report?.fault_description ?? '-'}
-                      </td>
-                      <td className="px-5 py-3">
-                        <StatusBadge status={row.status} />
-                      </td>
-                      <td className="px-5 py-3 text-gray-500">{formatPHT(row.created_at)}</td>
-                      <td className="px-5 py-3">
-                        <Link href={href} className="font-medium text-green-700 hover:underline">
-                          {awaiting ? 'Review' : 'View'}
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <TenantRequestList items={recent} showPriority={false} />
         )}
       </div>
     </div>

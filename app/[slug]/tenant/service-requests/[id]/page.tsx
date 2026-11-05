@@ -4,6 +4,8 @@ import { ArrowLeft, Ban, CheckCircle, ClipboardCheck, FileDown } from 'lucide-re
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFormView from '@/components/work-orders/WorkOrderFormView'
 import TenantCancelRequest from '@/components/tenant/TenantCancelRequest'
+import TenantProgressTracker from '@/components/tenant/TenantProgressTracker'
+import { buildTenantProgress } from '@/lib/tenant-progress'
 import { loadWorkOrderForm } from '@/lib/work-order-form'
 import {
   getTenantApprovalHref,
@@ -21,6 +23,16 @@ import { fileRouteUrl, withFileRouteUrls } from '@/lib/storage-urls'
 interface Props {
   params: Promise<{ slug: string; id: string }>
   searchParams: Promise<{ done?: string; action?: string }>
+}
+
+/** Extra columns for the progress tracker (dates and the assigned engineer's name only). */
+interface ProgressColumns {
+  due_date: string | null
+  costing_approved_at: string | null
+  head_engineer_verified_at: string | null
+  signed_at: string | null
+  completed_date: string | null
+  engineers: { full_name: string | null } | { full_name: string | null }[] | null
 }
 
 const DONE_MESSAGES: Record<string, string> = {
@@ -54,6 +66,12 @@ export default async function TenantServiceRequestDetailPage({ params, searchPar
       sign_off_token_hash,
       audit_report_url,
       cancellation_reason,
+      due_date,
+      costing_approved_at,
+      head_engineer_verified_at,
+      signed_at,
+      completed_date,
+      engineers!work_orders_engineer_id_fkey(full_name),
       floors(label),
       work_order_reports!work_order_reports_work_order_id_fkey(
         id,
@@ -71,16 +89,38 @@ export default async function TenantServiceRequestDetailPage({ params, searchPar
     .eq('property_id', context.property.id)
     .maybeSingle()
 
-  const request = data as unknown as TenantRequestRow | null
+  const request = data as unknown as (TenantRequestRow & ProgressColumns) | null
   if (!request || request.property_id !== context.property.id || !isTenantOwnedRequest(request, context)) {
     notFound()
   }
+
+  // Event types and times only: reasons and actor details stay with the property team
+  const { data: events } = await context.service
+    .from('work_order_events')
+    .select('event_type, created_at')
+    .eq('work_order_id', request.id)
+
+  const progress = buildTenantProgress({
+    status: request.status,
+    hasSignOffLink: Boolean(request.sign_off_token_hash),
+    createdAt: request.created_at,
+    updatedAt: request.updated_at,
+    costingApprovedAt: request.costing_approved_at,
+    verifiedAt: request.head_engineer_verified_at,
+    signedAt: request.signed_at,
+    completedAt: request.completed_date,
+    dueDate: request.due_date,
+    engineerName: rowsOf(request.engineers)[0]?.full_name ?? null,
+    events: events ?? [],
+  })
 
   const report = rowsOf(request.work_order_reports)[0]
   const isApproval = isAwaitingTenant(request)
   const approvalHref = getTenantApprovalHref(slug, request)
   const canWithdraw = request.status === 'new_report' && can(context.actor, 'workRequest.cancel', request)
-  const floorLabel = rowsOf((data as { floors?: { label: string } | { label: string }[] | null }).floors)[0]?.label ?? null
+  const floorLabel = rowsOf(request.floors)[0]?.label ?? null
+  const location = [floorLabel, report?.location_notes?.trim()].filter(Boolean).join(' · ')
+  const photos = (report?.photo_urls ?? []).filter((url) => typeof url === 'string' && url.length > 0).map((url) => fileRouteUrl(url))
   const doneMessage = done ? DONE_MESSAGES[done === 'costing' ? `costing:${action}` : done] : undefined
   const priority = getPriorityOption(report?.urgency ?? request.priority)
   const auditHref = request.status === 'completed'
@@ -185,20 +225,43 @@ export default async function TenantServiceRequestDetailPage({ params, searchPar
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+      {request.status !== 'cancelled' && <TenantProgressTracker progress={progress} />}
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5" aria-labelledby="request-details-title">
+        <h3 id="request-details-title" className="text-sm font-semibold text-gray-900">Request details</h3>
+        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+          <Detail label="Description" value={report?.fault_description?.trim() || '-'} wide />
+          {location && <Detail label="Location" value={location} />}
           <Detail
             label="Priority"
             value={priority ? `${priority.label} (${priority.sla})` : 'Not assessed yet - an engineer will set this after inspection'}
           />
-          <Detail label="Last Updated" value={formatPHT(request.updated_at, true)} />
-          {floorLabel && <Detail label="Floor" value={floorLabel} />}
           {report?.reported_by_name && <Detail label="Submitted By" value={report.reported_by_name} />}
+          <Detail label="Last Updated" value={formatPHT(request.updated_at, true)} />
         </dl>
-      </div>
+        {photos.length > 0 && (
+          <div className="mt-5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Photos</p>
+            <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {photos.map((url, index) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block overflow-hidden rounded-lg border border-gray-200 transition-opacity hover:opacity-90"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`Photo ${index + 1} of the reported issue`} className="aspect-square w-full object-cover" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
 
       {formData && (
-        <WorkOrderFormView data={formData} pdfHref={`/api/pdf/${request.id}/report`} />
+        <WorkOrderFormView data={formData} pdfHref={`/api/pdf/${request.id}/report`} defaultOpen={false} />
       )}
     </div>
   )
