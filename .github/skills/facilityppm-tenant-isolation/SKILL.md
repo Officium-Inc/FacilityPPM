@@ -17,8 +17,9 @@ property. Inside a property, **staff** (Administrator, Property Manager, Head En
 Admin Portal and **Tenants** (one company per floor) use the Tenant Portal. Property scope comes from
 `app_metadata.property_ids[]` (service-role controlled); the per-property role comes from
 `engineers.role_id → roles.name` (resolved server-side). The browser holds the anon key **and** the user JWT,
-so anything RLS allows can be read or written directly through the Supabase Data API — the Next.js layer
-is not the only gate.
+so anything RLS allows can be read directly through the Supabase Data API — the Next.js layer is not the
+only gate. Since migration 022 RLS is read-only and mirrors the matrix (D25); all writes go through route
+handlers with the service role after `lib/authz` checks, so those checks are the real write boundary.
 
 ## Non-negotiable invariants
 
@@ -36,14 +37,19 @@ is not the only gate.
 7. **Provider-only operations** (create/terminate accounts, add/revoke licenses, cross-property activity)
    check `app_metadata.role === 'provider'` server-side; middleware redirects are not authorization.
 8. **Suspended licenses block the property** for all non-provider roles in both pages and API routes.
-9. **Public token links** (sign-off, costing-approval, invite): high-entropy token, expiry, single use,
-   bound to one record, minimal data returned, and never an RLS policy like `token IS NOT NULL` or `USING (true)`.
-10. **Every table in `public` has RLS enabled** with role-aware policies; no `auth.role() = 'authenticated'`
-    as the only predicate; no `USING (true)` / `WITH CHECK (true)` for `anon`/`authenticated`.
+9. **Public token links** (sign-off, costing-approval, invite): high-entropy token (`generateLinkToken()`),
+   stored only as `hashToken()` in `*_token_hash` (D27), expiry, single use, bound to one record, minimal data
+   returned, never sent back to the browser, and never an RLS policy like `token IS NOT NULL` or `USING (true)`.
+10. **Every table in `public` has RLS enabled** with read-only, role-aware policies built on the `private`
+    helpers (D25); no INSERT/UPDATE/DELETE policies; no `auth.role() = 'authenticated'` as the only predicate;
+    no `USING (true)` / `WITH CHECK (true)` for `anon`/`authenticated`.
 11. **Secrets stay server-side**: `SUPABASE_SERVICE_ROLE_KEY` only in `lib/supabase/server.ts`; nothing secret
     in `NEXT_PUBLIC_*`; `'use client'` files never import `@/lib/supabase/server`.
-12. **Storage paths are property-prefixed** (`<property_id>/…`) and URLs from clients are re-validated
-    (see `sanitizeServiceReportPhotoUrls` in `lib/tenant-submit.ts`).
+12. **Files are private** (D26): buckets have no storage policies; browsers get files only through
+    `/api/files/<bucket>/<path>` (authorizes `workRequest.view` on the owning work order) or short-lived signed
+    URLs on token pages. Storage paths are property/work-order prefixed, every path shape is mapped by
+    `fileOwnerFromPath()` (`lib/storage-urls.ts`), and URLs from clients are re-validated
+    (`sanitizeWorkOrderFileUrls`, `sanitizeServiceReportPhotoUrls`).
 
 Details, code templates and RLS templates: [supabase-authz-patterns.md](./references/supabase-authz-patterns.md).
 
@@ -57,8 +63,10 @@ Details, code templates and RLS templates: [supabase-authz-patterns.md](./refere
    `requirePage(slug, '<action>')` / `requirePageRecord(...)`. Work order queries select
    `WORK_ORDER_SCOPE_COLUMNS` (`lib/authz/records.ts`) before authorizing. New actions go into
    `lib/authz/permissions.ts` **and** `tests/authz/permissions.test.ts`. Never compare role strings in routes.
-3. Database change: add a new numbered migration in `supabase/migrations/` that enables RLS and adds
-   role-aware policies in the same file (templates in the reference). Load `supabase-postgres-best-practices`.
+3. Database change: add a new numbered, re-runnable migration in `supabase/migrations/` that enables RLS and
+   adds a role-aware SELECT policy built on the `private` helpers in the same file (templates in the
+   reference); no write policies. Extend `supabase/tests/rls_check.sql` for new tables. Load
+   `supabase-postgres-best-practices`.
 4. UI: hide controls the role cannot use, but treat that as UX only — the server check is the control.
 5. Run the audit script (below) and resolve new HIGH findings before finishing.
 
@@ -86,28 +94,35 @@ Details, code templates and RLS templates: [supabase-authz-patterns.md](./refere
 Suppressing a reviewed false positive: add `// audit-allow: <reason>` inside the handler (or
 `// audit-allow-file: <reason>` near the top of the file). Always include the reason.
 
-## Known sharp edges in the current code (pre-rewrite)
+## Known sharp edges (after the rewrite, verified 2026-11-05)
 
-- RLS on `work_orders`, `work_order_reports`, `work_order_costings`, etc. scopes by `property_id` only —
-  tenants of a property can query every request in that property via the Data API.
-- Several 001/002 policies use `auth.role() = 'authenticated'`, `USING (true)` / `WITH CHECK (true)`, and
-  `sign_off_token IS NOT NULL` / `costing_token IS NOT NULL` (grants access by token *presence*, not match).
-- `invitations` has `FOR SELECT USING (true)` — anyone with the anon key can list invitation tokens.
-- `GET /api/pdf/[workOrderId]` and `GET /api/pdf/[workOrderId]/costing` have no authentication and use the
-  service client; `GET /api/work-orders/[id]/comments` and `POST /api/work-orders/[id]/upload` authenticate
-  but never check that the work order belongs to the caller's property.
-- `evidence` and `receipts` storage buckets are public with bucket-wide `TO public` SELECT policies.
-- `app/[slug]/(dashboard)/work-orders/[id]/page.tsx` loads any work order by id with the service client and
-  never checks that it belongs to the property in the URL (cross-property read by changing the id).
-- `authorizeWorkOrderStaff` only rejects `tenant`/`viewer`: a user with no `engineers` row (empty role), a
-  deactivated member, and Service Group all pass as "staff".
-- `WorkOrderActions.handleStatusChange` updates `work_orders.status` from the browser, relying on RLS.
-- `app/[slug]/(dashboard)/layout.tsx` gives users without an `engineers` row the `viewer` role instead of
-  denying access.
-- `isTenantOwnedRequest` (`lib/tenant.ts`) falls back to substring email matching (`contact.includes(email)`).
-- `resolveWorkOrderActor` (`lib/work-order-events.ts`) does not check `engineers.is_active`.
-- Role names are inconsistent: `'service group'` contains a space while the others are snake_case
-  (the rewrite renames it to `service_group`).
-- Public tokens are stored and compared in plaintext (`.eq('sign_off_token', token)`).
+- **The service client bypasses RLS everywhere.** RLS (022) is defense in depth for the Data API only; a route
+  or page that forgets `authorize()` / `requirePage*()` leaks data regardless of policies. The audit script
+  detects missing checks heuristically, not wrong ones (e.g. authorizing the active property instead of the
+  record's property).
+- **Migrations are applied by hand.** The live database can lag behind `supabase/migrations/`; run
+  `supabase/tests/rls_check.sql` (empty result = pass) after applying 022–024 and before trusting RLS.
+- **Middleware is routing only.** `property_slugs.includes(slug)` lets a user reach a property's URLs; access
+  still needs an active `engineers` row with a current role (`resolveMembership()`).
+- **Stored file URLs are identifiers, not links** (D26). Passing raw `photo_urls` / `pdf_url` / `audit_report_url`
+  to a browser shows broken files; pass data through `withFileRouteUrls()` or `withSignedFileUrls()`. A new
+  upload path shape must be added to `fileOwnerFromPath()`, or `/api/files` answers 404.
+- **`.contains()` on `jsonb` columns** (`photo_urls`, `*_photo_urls`, `supporting_doc_urls`): a JS array is sent
+  as a Postgres array literal and never matches; pass `JSON.stringify([...])`.
+- **`ScopedRecord` still carries `tenant_email`, `reported_by_contact` and `requested_by_id`**, but `can()`
+  ignores them: tenant scope is `company_id` only (D10, D19). Never reintroduce email or submitter matching.
+- **Legacy statuses are still handled**: `signed` (tenant signed, not verified) and `svc_submitted` with a
+  sign-off link (`isAwaitingSignOff()`, D22). Keep them until no rows use them.
+- **Raw token columns still exist** (`sign_off_token`, `costing_token`, `invitations.token`), always null and
+  blocked by CHECK constraints (024). Write only `*_token_hash`.
+- **`roles` is readable by every signed-in user** (role names only, all properties) — acceptable, but don't add
+  sensitive columns to it.
+- **Providers are read-only inside a property** (D2): a new write action must have `provider: false` in
+  `PERMISSIONS` unless it belongs to the Provider Dashboard.
 
-Verify each against the current code before reporting — this list reflects the codebase when the skill was written.
+Fixed by the rewrite (for reviewing older branches): property-only RLS, `USING (true)` / token-presence /
+public invitation policies, unauthenticated PDF routes, cross-property work order reads, staff checks that let
+empty/deactivated/Service Group roles through, browser status writes, `viewer` fallback in the layout, email
+substring matching for tenants, `'service group'` role name, public buckets and plaintext tokens.
+
+Verify each against the current code before reporting — this list reflects the codebase on the date above.
