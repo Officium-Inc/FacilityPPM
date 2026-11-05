@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, wo_number, property_id, requested_by_id, tenant_email')
+    .select('id, wo_number, property_id, requested_by_id, tenant_email, engineer_id')
     .eq('id', workOrderId)
     .single()
 
@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   // Property members can open any report in their property; tenants only their own.
   if (!(await canViewWorkOrder(service, user, wo))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
   }
 
   const data = await loadAuditReportData(service, workOrderId)

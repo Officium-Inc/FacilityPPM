@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { logWorkOrderEvent, resolveWorkOrderActor } from '@/lib/work-order-events'
+import { logWorkOrderEvent } from '@/lib/work-order-events'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { isPriority } from '@/lib/priority'
+
+/** Staff record a service report on behalf of a tenant. Tenants use /api/service-requests. */
+const WORK_ORDER_TYPES = ['ppm', 'reactive', 'statutory', 'project']
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -10,23 +15,26 @@ export async function POST(request: NextRequest) {
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
 
+  const service = await createServiceClient()
+  const access = await authorizeWorkOrderStaff(service, user, propertyId)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const { actor } = access
+
   const body = await request.json()
   const {
     faultDescription,
     locationNotes,
     reportedByName,
     reportedByContact,
-    urgency = 'medium',
-    photoUrls = [],
-    type = 'reactive',
-    priority,
+    urgency: rawUrgency,
+    type: rawType,
+    priority: rawPriority,
   } = body as {
     faultDescription?: string
     locationNotes?: string
     reportedByName?: string
     reportedByContact?: string
     urgency?: string
-    photoUrls?: string[]
     type?: string
     priority?: string
   }
@@ -38,7 +46,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Reported by name is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const urgency = isPriority(rawUrgency) ? rawUrgency : 'medium'
+  const priority = isPriority(rawPriority) ? rawPriority : urgency
+  const type = rawType && WORK_ORDER_TYPES.includes(rawType) ? rawType : 'reactive'
 
   // Generate WO number (REPT- prefix for fault reports)
   const woNumber = `REPT-${Date.now().toString(36).toUpperCase()}`
@@ -51,7 +61,7 @@ export async function POST(request: NextRequest) {
       wo_number: woNumber,
       type,
       status: 'new_report',
-      priority: priority ?? urgency,
+      priority,
     })
     .select('id')
     .single()
@@ -68,7 +78,7 @@ export async function POST(request: NextRequest) {
       reported_by_name: reportedByName.trim(),
       reported_by_contact: reportedByContact?.trim() ?? null,
       urgency,
-      photo_urls: photoUrls,
+      photo_urls: [],
     })
     .select('id')
     .single()
@@ -82,7 +92,6 @@ export async function POST(request: NextRequest) {
   // Link report_id back to WO
   await service.from('work_orders').update({ report_id: report.id }).eq('id', wo.id)
 
-  const actor = await resolveWorkOrderActor(service, user, propertyId)
   await logWorkOrderEvent(service, wo.id, {
     eventType: 'report_submitted',
     step: 'Service report submitted',

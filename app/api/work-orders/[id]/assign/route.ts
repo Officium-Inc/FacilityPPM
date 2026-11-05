@@ -55,7 +55,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     .from('engineers')
     .select('full_name, email')
     .eq('id', engineerId)
+    .eq('property_id', wo.property_id)
+    .eq('is_active', true)
     .maybeSingle()
+
+  if (!assignee) return NextResponse.json({ error: 'Engineer not found in this property.' }, { status: 400 })
 
   // Rename REPT- number to proper WO- number on first assignment
   const isReactiveReport = (wo.wo_number as string).startsWith('REPT-')

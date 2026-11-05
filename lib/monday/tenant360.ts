@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import { createServiceClient } from '@/lib/supabase/server'
+import { renderCostingPdf, renderWorkOrderFormPdf } from '@/lib/pdf-render'
 import {
   DEFAULT_MONDAY_API_VERSION,
   getPropertyMondayConfig,
@@ -30,6 +31,8 @@ interface AttachmentRef {
   key: string
   url: string
   name: string
+  /** Generated documents are rendered in-process; their URL is only used as a stable key. */
+  render?: 'service-report' | 'cost-estimate'
 }
 
 interface MondayItemPage {
@@ -262,19 +265,22 @@ function collectAttachments(wo: WorkOrderSyncRow): AttachmentRef[] {
     })
   })
 
-  if (reports.length > 0 && baseUrl) {
+  // Keys stay URL-based so documents already uploaded to Monday are not uploaded again
+  if (reports.length > 0) {
     attachments.push({
       key: fileKey(`${baseUrl}/api/pdf/${wo.id}/report`),
       url: `${baseUrl}/api/pdf/${wo.id}/report`,
       name: `${wo.wo_number}-service-report.pdf`,
+      render: 'service-report',
     })
   }
 
-  if (rowsOf(wo.work_order_costings).length && baseUrl) {
+  if (rowsOf(wo.work_order_costings).length) {
     attachments.push({
       key: fileKey(`${baseUrl}/api/pdf/${wo.id}/costing`),
       url: `${baseUrl}/api/pdf/${wo.id}/costing`,
       name: `${wo.wo_number}-cost-estimate.pdf`,
+      render: 'cost-estimate',
     })
   }
 
@@ -386,7 +392,15 @@ function filesMapping(mappings: MondayFieldMapping[]) {
   return mappings.find((mapping) => mapping.fieldId === 'attachments') ?? null
 }
 
-async function downloadAttachment(ref: AttachmentRef) {
+async function downloadAttachment(service: ServiceClient, workOrderId: string, ref: AttachmentRef) {
+  if (ref.render) {
+    const pdf = ref.render === 'service-report'
+      ? await renderWorkOrderFormPdf(service, workOrderId, { includeSignatures: false })
+      : await renderCostingPdf(service, workOrderId)
+    if (!pdf) throw new Error(`Could not generate ${ref.name}`)
+    return { buffer: pdf.buffer, contentType: 'application/pdf', fileName: sanitizeFileName(ref.name) }
+  }
+
   const response = await fetch(ref.url)
   if (!response.ok) {
     throw new Error(`Could not download ${ref.name} (${response.status})`)
@@ -593,6 +607,8 @@ async function findMondayItemByName(client: MondayClient, boardId: string, itemN
 }
 
 async function uploadMissingAttachments(client: MondayClient, input: {
+  service: ServiceClient
+  workOrderId: string
   itemId: string
   columnId: string
   attachments: AttachmentRef[]
@@ -602,7 +618,7 @@ async function uploadMissingAttachments(client: MondayClient, input: {
 
   for (const ref of input.attachments) {
     if (assets[ref.key]) continue
-    const file = await downloadAttachment(ref)
+    const file = await downloadAttachment(input.service, input.workOrderId, ref)
     const uploaded = await client.uploadFileToColumn({
       itemId: input.itemId,
       columnId: input.columnId,
@@ -776,6 +792,8 @@ export async function syncTenant360WorkOrder(workOrderId: string, options: { fin
     let mondayFileAssets = mondayItem.id === wo.monday_item_id ? wo.monday_file_assets ?? {} : {}
     if (fileMapping?.columnId) {
       mondayFileAssets = await uploadMissingAttachments(client, {
+        service,
+        workOrderId,
         itemId: mondayItem.id,
         columnId: fileMapping.columnId,
         attachments: collectAttachments(wo),

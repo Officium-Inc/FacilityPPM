@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { sanitizeWorkOrderFileUrls } from '@/lib/work-order-files'
 import { isPriority, priorityLabel } from '@/lib/priority'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     inspectionNotes,
     rootCause,
     scopeOfWork,
-    inspectionPhotoUrls = [],
+    inspectionPhotoUrls: rawInspectionPhotoUrls,
     outcome = 'proceed',
     priority,
     contractorName,
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     inspectionNotes?: string
     rootCause?: string
     scopeOfWork?: string
-    inspectionPhotoUrls?: string[]
+    inspectionPhotoUrls?: unknown
     outcome?: 'proceed' | 'third_party'
     priority?: string
     contractorName?: string
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Verify WO exists and is in inspecting state
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, report_id, property_id')
+    .select('id, status, report_id, property_id, engineer_id')
     .eq('id', id)
     .single()
 
@@ -65,9 +66,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in inspection stage.' }, { status: 409 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  // Staff, or the Service Group member assigned to inspect it (decision D20)
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
   const { actor } = access
+  const inspectionPhotoUrls = sanitizeWorkOrderFileUrls(rawInspectionPhotoUrls, wo.property_id, id)
 
   const now = new Date().toISOString()
   const isThirdParty = outcome === 'third_party'

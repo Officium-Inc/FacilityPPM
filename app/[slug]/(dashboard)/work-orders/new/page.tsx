@@ -19,7 +19,8 @@ export default async function NewWorkOrderPage({ params }: Props) {
   const [{ data: rawSchedules }, { data: engineers }] = await Promise.all([
     service
       .from('ppm_schedules')
-      .select('id, title, assets(id, name)')
+      .select('id, title, assets!inner(id, name, buildings!inner(sites!inner(property_id)))')
+      .eq('assets.buildings.sites.property_id', propertyId)
       .eq('is_active', true)
       .order('title'),
     service

@@ -1,15 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { resolveCanonicalRoleId } from '@/lib/roles'
+import {
+  MEMBER_MANAGER_ROLES,
+  assignableRolesFor,
+  canManageMemberRole,
+  normalizeRoleName,
+  resolveCanonicalRoleId,
+} from '@/lib/roles'
+import { authorizePropertyRole } from '@/lib/work-order-access'
+import { revokePropertyAccess } from '@/lib/auth-users'
 
-export async function POST(request: NextRequest) {
+type Service = Awaited<ReturnType<typeof createServiceClient>>
+
+async function memberManager() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const
 
   const propertyId = user.app_metadata?.property_id as string | undefined
-  if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
+  if (!propertyId) return { error: NextResponse.json({ error: 'No active property' }, { status: 400 }) } as const
+
+  const service = await createServiceClient()
+  const access = await authorizePropertyRole(service, user, propertyId, MEMBER_MANAGER_ROLES)
+  if (!access.ok) return { error: NextResponse.json({ error: access.error }, { status: access.status }) } as const
+
+  return { user, propertyId, service, actor: access.actor } as const
+}
+
+async function loadTarget(service: Service, propertyId: string, id: string) {
+  const { data } = await service
+    .from('engineers')
+    .select('id, user_id, roles(name)')
+    .eq('id', id)
+    .eq('property_id', propertyId)
+    .maybeSingle()
+  if (!data) return null
+  const roles = data.roles as { name?: string } | { name?: string }[] | null
+  const roleName = Array.isArray(roles) ? roles[0]?.name : roles?.name
+  return { id: data.id as string, userId: data.user_id as string | null, role: normalizeRoleName(roleName) }
+}
+
+export async function POST(request: NextRequest) {
+  const ctx = await memberManager()
+  if ('error' in ctx) return ctx.error
+  const { propertyId, service, actor } = ctx
 
   const body = await request.json() as {
     full_name?: string
@@ -26,7 +60,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const roleName = normalizeRoleName(body.role_name)
+  if (!assignableRolesFor(actor.role).some((role) => role === roleName)) {
+    return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
+  }
 
   // Check duplicate within this property
   const { data: dupe } = await service
@@ -34,13 +71,14 @@ export async function POST(request: NextRequest) {
     .select('id')
     .eq('property_id', propertyId)
     .eq('email', body.email.trim().toLowerCase())
-    .single()
+    .maybeSingle()
 
   if (dupe) {
     return NextResponse.json({ error: 'An engineer with this email already exists in this property.' }, { status: 409 })
   }
 
-  const roleId = body.role_name ? await resolveCanonicalRoleId(service, body.role_name) : null
+  const roleId = await resolveCanonicalRoleId(service, roleName)
+  if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
 
   const { data, error } = await service.from('engineers').insert({
     property_id: propertyId,
@@ -60,13 +98,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const propertyId = user.app_metadata?.property_id as string | undefined
-  if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
+  const ctx = await memberManager()
+  if ('error' in ctx) return ctx.error
+  const { user, propertyId, service, actor } = ctx
 
   const body = await request.json() as {
     id?: string
@@ -78,27 +112,40 @@ export async function PATCH(request: NextRequest) {
 
   if (!body.id) return NextResponse.json({ error: 'Engineer id is required.' }, { status: 400 })
 
-  const service = await createServiceClient()
+  const target = await loadTarget(service, propertyId, body.id)
+  if (!target) return NextResponse.json({ error: 'Engineer not found.' }, { status: 404 })
 
-  // Verify engineer belongs to this property
-  const { data: eng } = await service
-    .from('engineers')
-    .select('id')
-    .eq('id', body.id)
-    .eq('property_id', propertyId)
-    .single()
-
-  if (!eng) return NextResponse.json({ error: 'Engineer not found.' }, { status: 404 })
-
-  const updates: Record<string, unknown> = {}
-  if (body.role_name !== undefined) {
-    updates.role_id = body.role_name ? await resolveCanonicalRoleId(service, body.role_name) : null
+  if (!canManageMemberRole(actor.role, target.role)) {
+    return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
   }
-  if (body.is_active !== undefined) updates.is_active = body.is_active
+
+  const isSelf = target.userId === user.id
+  const updates: Record<string, unknown> = {}
+
+  if (body.role_name !== undefined) {
+    const roleName = normalizeRoleName(body.role_name)
+    if (roleName !== target.role) {
+      if (isSelf) return NextResponse.json({ error: 'You cannot change your own role.' }, { status: 403 })
+      if (!assignableRolesFor(actor.role).some((role) => role === roleName)) {
+        return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
+      }
+      const roleId = await resolveCanonicalRoleId(service, roleName)
+      if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
+      updates.role_id = roleId
+    }
+  }
+  if (body.is_active !== undefined) {
+    if (isSelf && body.is_active === false) {
+      return NextResponse.json({ error: 'You cannot deactivate your own account.' }, { status: 403 })
+    }
+    updates.is_active = body.is_active
+  }
   if (body.phone !== undefined) updates.phone = body.phone?.trim() || null
   if (body.certifications !== undefined) updates.certifications = body.certifications?.trim() || null
 
-  const { error } = await service.from('engineers').update(updates).eq('id', body.id)
+  if (Object.keys(updates).length === 0) return NextResponse.json({ success: true })
+
+  const { error } = await service.from('engineers').update(updates).eq('id', target.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -106,32 +153,27 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const propertyId = user.app_metadata?.property_id as string | undefined
-  if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
+  const ctx = await memberManager()
+  if ('error' in ctx) return ctx.error
+  const { user, propertyId, service, actor } = ctx
 
   const body = await request.json() as { id?: string }
   if (!body.id) return NextResponse.json({ error: 'Engineer id is required.' }, { status: 400 })
 
-  const service = await createServiceClient()
+  const target = await loadTarget(service, propertyId, body.id)
+  if (!target) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
+  if (target.userId === user.id) {
+    return NextResponse.json({ error: 'You cannot remove yourself.' }, { status: 403 })
+  }
+  if (!canManageMemberRole(actor.role, target.role)) {
+    return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
+  }
 
-  // Verify engineer belongs to this property before deleting
-  const { data: eng } = await service
-    .from('engineers')
-    .select('id')
-    .eq('id', body.id)
-    .eq('property_id', propertyId)
-    .single()
-
-  if (!eng) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
-
-  const { error } = await service.from('engineers').delete().eq('id', body.id)
+  const { error } = await service.from('engineers').delete().eq('id', target.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  if (target.userId) await revokePropertyAccess(service, target.userId, propertyId)
 
   return NextResponse.json({ success: true })
 }

@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { resolveCanonicalRoleId } from '@/lib/roles'
+import { ASSIGNABLE_MEMBER_ROLES, normalizeRoleName, resolveCanonicalRoleId } from '@/lib/roles'
+import { findAuthUserByEmail, grantPropertyAccess } from '@/lib/auth-users'
 
 interface Params {
   params: Promise<{ token: string }>
 }
 
+type InviteProperty = { id: string; name: string; slug: string }
+
 export async function POST(request: NextRequest, { params }: Params) {
   const { token } = await params
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
   const { password, full_name } = body as { password?: string; full_name?: string }
 
   const service = await createServiceClient()
 
-  // Look up the invitation
   const { data: invite } = await service
     .from('invitations')
-    .select('*, properties(id, name, slug)')
+    .select('id, email, invited_name, role_name, expires_at, used_at, properties(id, name, slug)')
     .eq('token', token)
-    .single()
+    .maybeSingle()
 
   if (!invite) return NextResponse.json({ error: 'Invalid invitation link.' }, { status: 404 })
   if (invite.used_at) return NextResponse.json({ error: 'This invitation has already been used.' }, { status: 410 })
@@ -26,62 +28,60 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This invitation link has expired.' }, { status: 410 })
   }
 
-  const property = invite.properties as { id: string; name: string; slug: string }
-  const email = invite.email as string
-  const inviteRoleName = (invite.role_name as string | null) ?? null
-  const roleId = await resolveCanonicalRoleId(service, inviteRoleName ?? 'admin')
+  const roleName = normalizeRoleName(invite.role_name as string | null)
+  if (!ASSIGNABLE_MEMBER_ROLES.some((role) => role === roleName)) {
+    return NextResponse.json(
+      { error: 'This invitation has no valid role. Ask your administrator to send a new invitation.' },
+      { status: 400 }
+    )
+  }
 
-  // Check if user already exists
-  const { data: existingList } = await service.auth.admin.listUsers()
-  const existingUser = existingList?.users?.find((u) => u.email === email)
+  const rawProperty = invite.properties as InviteProperty | InviteProperty[] | null
+  const property = Array.isArray(rawProperty) ? rawProperty[0] : rawProperty
+  if (!property) return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
+
+  const roleId = await resolveCanonicalRoleId(service, roleName)
+  if (!roleId) return NextResponse.json({ error: 'Could not resolve the invited role.' }, { status: 500 })
+
+  const email = (invite.email as string).trim().toLowerCase()
+  const existingUser = await findAuthUserByEmail(service, email)
+
+  if (!existingUser && (!password || password.length < 8)) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
+  }
+
+  // Claim the invitation atomically so a link cannot be used twice in parallel
+  const now = new Date().toISOString()
+  const { data: claimed } = await service
+    .from('invitations')
+    .update({ used_at: now })
+    .eq('id', invite.id)
+    .is('used_at', null)
+    .gt('expires_at', now)
+    .select('id')
+    .maybeSingle()
+
+  if (!claimed) return NextResponse.json({ error: 'This invitation has already been used.' }, { status: 410 })
+
+  const release = () => service.from('invitations').update({ used_at: null }).eq('id', invite.id)
+  const displayName = full_name?.trim() || (invite.invited_name as string | null) || email
+
+  let userId: string
+  let createdUser = false
 
   if (existingUser) {
-    // User already has an account — just add this property to their metadata
-    const meta = existingUser.app_metadata ?? {}
-    const currentIds: string[] = (meta.property_ids as string[] | undefined) ?? []
-    const currentSlugs: string[] = (meta.property_slugs as string[] | undefined) ?? []
-
-    if (!currentIds.includes(property.id)) {
-      await service.auth.admin.updateUserById(existingUser.id, {
-        app_metadata: {
-          ...meta,
-          property_ids: [...currentIds, property.id],
-          property_slugs: [...currentSlugs, property.slug],
-        },
-      })
-      // Ensure engineer record exists
-      const { data: existingEng } = await service
-        .from('engineers')
-        .select('id')
-        .eq('user_id', existingUser.id)
-        .eq('property_id', property.id)
-        .single()
-
-      if (!existingEng) {
-        await service.from('engineers').insert({
-          property_id: property.id,
-          user_id: existingUser.id,
-          role_id: roleId,
-          full_name: (full_name?.trim()) || (existingUser.user_metadata?.full_name as string) || email,
-          email: email.toLowerCase(),
-          is_active: true,
-        })
-      }
+    userId = existingUser.id
+    const { error } = await grantPropertyAccess(service, existingUser, property)
+    if (error) {
+      await release()
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
   } else {
-    // New user — password is required
-    if (!password || password.length < 8) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
-    }
-
-    const displayName = full_name?.trim() || invite.invited_name || email
-
     const { data: authData, error: authErr } = await service.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       app_metadata: {
-        role: 'superadmin',
         property_id: property.id,
         property_slug: property.slug,
         property_ids: [property.id],
@@ -90,25 +90,77 @@ export async function POST(request: NextRequest, { params }: Params) {
       user_metadata: { full_name: displayName },
     })
 
-    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 })
-
-    const { error: engErr } = await service.from('engineers').insert({
-      property_id: property.id,
-      user_id: authData.user.id,
-      role_id: roleId,
-      full_name: displayName,
-      email: email.toLowerCase(),
-      is_active: true,
-    })
-
-    if (engErr) {
-      await service.auth.admin.deleteUser(authData.user.id)
-      return NextResponse.json({ error: engErr.message }, { status: 500 })
+    if (authErr || !authData.user) {
+      await release()
+      return NextResponse.json({ error: authErr?.message ?? 'Could not create the account.' }, { status: 500 })
     }
+    userId = authData.user.id
+    createdUser = true
   }
 
-  // Mark invitation as used
-  await service.from('invitations').update({ used_at: new Date().toISOString() }).eq('token', token)
+  const memberError = await ensureMember(service, {
+    propertyId: property.id,
+    userId,
+    roleId,
+    email,
+    fullName: existingUser
+      ? full_name?.trim() || (existingUser.user_metadata?.full_name as string | undefined) || displayName
+      : displayName,
+  })
+
+  if (memberError) {
+    if (createdUser) await service.auth.admin.deleteUser(userId)
+    await release()
+    return NextResponse.json({ error: memberError }, { status: 500 })
+  }
 
   return NextResponse.json({ success: true, property_slug: property.slug }, { status: 200 })
+}
+
+/** Creates the member row, or reactivates/links an existing one with the invited role. */
+async function ensureMember(
+  service: Awaited<ReturnType<typeof createServiceClient>>,
+  input: { propertyId: string; userId: string; roleId: string; email: string; fullName: string }
+): Promise<string | null> {
+  const { data: byUser } = await service
+    .from('engineers')
+    .select('id')
+    .eq('property_id', input.propertyId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (byUser) {
+    const { error } = await service
+      .from('engineers')
+      .update({ role_id: input.roleId, is_active: true })
+      .eq('id', byUser.id)
+    return error?.message ?? null
+  }
+
+  // A member may have been added by email before they had an account
+  const { data: byEmail } = await service
+    .from('engineers')
+    .select('id')
+    .eq('property_id', input.propertyId)
+    .eq('email', input.email)
+    .is('user_id', null)
+    .maybeSingle()
+
+  if (byEmail) {
+    const { error } = await service
+      .from('engineers')
+      .update({ user_id: input.userId, role_id: input.roleId, is_active: true })
+      .eq('id', byEmail.id)
+    return error?.message ?? null
+  }
+
+  const { error } = await service.from('engineers').insert({
+    property_id: input.propertyId,
+    user_id: input.userId,
+    role_id: input.roleId,
+    full_name: input.fullName,
+    email: input.email,
+    is_active: true,
+  })
+  return error?.message ?? null
 }

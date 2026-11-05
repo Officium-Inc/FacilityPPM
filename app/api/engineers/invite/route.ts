@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendInviteEmail } from '@/lib/email'
-import { normalizeRoleName } from '@/lib/roles'
+import { MEMBER_MANAGER_ROLES, assignableRolesFor, normalizeRoleName } from '@/lib/roles'
+import { authorizePropertyRole } from '@/lib/work-order-access'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -11,6 +12,10 @@ export async function POST(request: NextRequest) {
 
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
+
+  const service = await createServiceClient()
+  const access = await authorizePropertyRole(service, user, propertyId, MEMBER_MANAGER_ROLES)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const body = await request.json() as {
     email?: string
@@ -22,9 +27,14 @@ export async function POST(request: NextRequest) {
   if (!body.email?.trim()) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
+  if (!roleName) {
+    return NextResponse.json({ error: 'Select a role for this invitation.' }, { status: 400 })
+  }
+  if (!assignableRolesFor(access.actor.role).some((role) => role === roleName)) {
+    return NextResponse.json({ error: 'You cannot invite members with this role.' }, { status: 403 })
+  }
 
   const email = body.email.trim().toLowerCase()
-  const service = await createServiceClient()
 
   // Get property info for email
   const { data: property } = await service
@@ -68,10 +78,10 @@ export async function POST(request: NextRequest) {
       property_id: propertyId,
       email,
       invited_name: body.name?.trim() || null,
-      role_name: roleName || null,
+      role_name: roleName,
       invited_by: user.email ?? null,
     })
-    .select('token')
+    .select('id, token')
     .single()
 
   if (inviteErr) return NextResponse.json({ error: inviteErr.message }, { status: 500 })
@@ -87,7 +97,7 @@ export async function POST(request: NextRequest) {
     })
   } catch {
     // Roll back invite if email fails
-    await service.from('invitations').delete().eq('token', invite.token)
+    await service.from('invitations').delete().eq('id', invite.id)
     return NextResponse.json({ error: 'Failed to send invitation email. Check email configuration.' }, { status: 500 })
   }
 

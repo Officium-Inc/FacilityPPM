@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting } from '@/types'
-import { createClient } from '@/lib/supabase/client'
 import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus, Calculator } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import { normalizeRoleName } from '@/lib/roles'
@@ -146,16 +145,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   }
 
   async function handleStatusChange(newStatus: string) {
-    setLoading(true)
-    setMessage(null)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('work_orders')
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq('id', workOrder.id)
-    if (error) setMessage({ type: 'error', text: error.message })
-    else router.refresh()
-    setLoading(false)
+    await apiPost(`/api/work-orders/${workOrder.id}/status`, { status: newStatus })
   }
 
   async function handleSendSignOff() {

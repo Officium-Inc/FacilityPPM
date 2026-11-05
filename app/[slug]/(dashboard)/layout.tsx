@@ -14,6 +14,7 @@ export default async function DashboardLayout({
   const { slug } = params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
   // Use service client to fetch property — middleware already verified the user
   // has this slug in their property_slugs, so bypassing RLS here is safe.
@@ -28,12 +29,11 @@ export default async function DashboardLayout({
     redirect(`/${slug}/suspended`)
   }
 
-  // Check if the user is an active member of this property and get their role
-  // (skip for provider role — they're not in the engineers table)
-  let userRole = 'viewer'
-  if (user && user.app_metadata?.role === 'provider') {
+  // Only active members of this property (or providers) may open the admin portal.
+  let userRole = ''
+  if (user.app_metadata?.role === 'provider') {
     userRole = 'admin'
-  } else if (user) {
+  } else {
     const { data: engineer } = await service
       .from('engineers')
       .select('is_active, roles(name)')
@@ -41,19 +41,22 @@ export default async function DashboardLayout({
       .eq('user_id', user.id)
       .maybeSingle()
 
-    // If they have an engineer record and it's inactive, sign them out
-    if (engineer && engineer.is_active === false) {
-      redirect('/api/auth/sign-out?next=/login?reason=deactivated')
+    if (!engineer) {
+      redirect('/api/auth/sign-out?next=/login&reason=no-access')
     }
-    if (engineer) {
-      const roleData = (engineer.roles as unknown as { name: string } | null)
-      userRole = normalizeRoleName(roleData?.name) || 'viewer'
+    if (engineer.is_active === false) {
+      redirect('/api/auth/sign-out?next=/login&reason=deactivated')
+    }
+    const roleData = (engineer.roles as unknown as { name: string } | null)
+    userRole = normalizeRoleName(roleData?.name)
+    if (!userRole) {
+      redirect('/api/auth/sign-out?next=/login&reason=no-access')
     }
   }
 
   // Auto-switch active property ONLY for active/trial properties, and only
   // when the user's current active slug differs from the one they navigated to.
-  if (user && user.app_metadata?.property_slug !== slug) {
+  if (user.app_metadata?.property_slug !== slug) {
     await service.auth.admin.updateUserById(user.id, {
       app_metadata: {
         ...user.app_metadata,

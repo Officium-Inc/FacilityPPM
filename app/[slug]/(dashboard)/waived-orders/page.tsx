@@ -56,7 +56,7 @@ export default async function WaivedOrdersPage({ params }: Props) {
         <h2 className="text-xl font-bold text-gray-900">Waived Orders</h2>
         <p className="text-sm text-gray-500 mt-0.5">Work orders with tenant-approved costs — Property Manager can waive associated costs</p>
       </div>
-      <WaivedOrdersClient workOrders={wos} slug={slug} />
+      <WaivedOrdersClient workOrders={wos} slug={slug} canWaive={userRole === 'property_manager'} />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -9,6 +10,10 @@ export async function POST(request: NextRequest) {
 
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
+
+  const service = await createServiceClient()
+  const access = await authorizeWorkOrderStaff(service, user, propertyId)
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const body = await request.json() as {
     schedule_id?: string
@@ -28,8 +33,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Scheduled date is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
-
+  // Referenced schedule and engineer must belong to this property
+  if (body.schedule_id) {
+    const { data: schedule } = await service
+      .from('ppm_schedules')
+      .select('id, assets!inner(buildings!inner(sites!inner(property_id)))')
+      .eq('id', body.schedule_id)
+      .eq('assets.buildings.sites.property_id', propertyId)
+      .maybeSingle()
+    if (!schedule) return NextResponse.json({ error: 'Schedule not found in this property.' }, { status: 400 })
+  }
+  if (body.engineer_id) {
+    const { data: engineer } = await service
+      .from('engineers')
+      .select('id')
+      .eq('id', body.engineer_id)
+      .eq('property_id', propertyId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (!engineer) return NextResponse.json({ error: 'Engineer not found in this property.' }, { status: 400 })
+  }
   // Check WO number uniqueness
   const { data: existing } = await service
     .from('work_orders')

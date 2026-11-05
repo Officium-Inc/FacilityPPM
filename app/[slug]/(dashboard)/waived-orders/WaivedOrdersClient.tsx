@@ -25,9 +25,11 @@ interface WoRow {
 interface Props {
   workOrders: WoRow[]
   slug: string
+  /** Only Property Managers can waive charges; others see the list read-only. */
+  canWaive: boolean
 }
 
-export default function WaivedOrdersClient({ workOrders, slug }: Props) {
+export default function WaivedOrdersClient({ workOrders, slug, canWaive }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [waivedMap, setWaivedMap] = useState<Record<string, { waived: boolean; reason?: string; by?: string; at?: string }>>(() =>
@@ -137,7 +139,9 @@ export default function WaivedOrdersClient({ workOrders, slug }: Props) {
                   </td>
                   <td className="px-5 py-3 text-gray-500">{formatPHT(wo.created_at)}</td>
                   <td className="px-5 py-3">
-                    {isWaived ? (
+                    {!canWaive ? (
+                      <span className="text-xs text-gray-400">View only</span>
+                    ) : isWaived ? (
                       <button
                         onClick={() => unwaive(wo.id)}
                         disabled={isLoading}

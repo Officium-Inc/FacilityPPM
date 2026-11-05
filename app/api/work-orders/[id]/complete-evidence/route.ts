@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { sanitizeWorkOrderFileUrls } from '@/lib/work-order-files'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
@@ -18,14 +19,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   const body = await request.json()
   const {
     workDescription,
-    completionPhotoUrls = [],
-    supportingDocUrls = [],
-    hoursLogged,
+    completionPhotoUrls: rawPhotoUrls,
+    supportingDocUrls: rawDocUrls,
+    hoursLogged: rawHoursLogged,
   } = body as {
     workDescription?: string
-    completionPhotoUrls?: string[]
-    supportingDocUrls?: string[]
-    hoursLogged?: number
+    completionPhotoUrls?: unknown
+    supportingDocUrls?: unknown
+    hoursLogged?: unknown
   }
 
   if (!workDescription?.trim()) {
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, wo_number, property_id')
+    .select('id, status, wo_number, property_id, engineer_id')
     .eq('id', id)
     .single()
 
@@ -45,9 +46,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in progress.' }, { status: 409 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
   const { actor } = access
+
+  const completionPhotoUrls = sanitizeWorkOrderFileUrls(rawPhotoUrls, wo.property_id, id)
+  const supportingDocUrls = sanitizeWorkOrderFileUrls(rawDocUrls, wo.property_id, id)
+  const hours = Number(rawHoursLogged)
+  const hoursLogged = Number.isFinite(hours) && hours >= 0 && hours <= 10000 ? hours : null
 
   const now = new Date().toISOString()
 
@@ -80,7 +86,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // The head engineer verifies the work first; the tenant sign-off link is only sent after that.
   const { error: updateErr } = await service.from('work_orders').update({
     status: 'svc_submitted',
-    hours_logged: hoursLogged ?? null,
+    hours_logged: hoursLogged,
     updated_at: now,
   }).eq('id', id)
 
@@ -96,7 +102,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     reason: workDescription,
     createdAt: now,
     metadata: {
-      hours_logged: hoursLogged ?? null,
+      hours_logged: hoursLogged,
       photo_count: completionPhotoUrls.length,
       document_count: supportingDocUrls.length,
     },

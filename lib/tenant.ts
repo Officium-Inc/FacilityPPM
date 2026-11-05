@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { normalizeRoleName } from '@/lib/roles'
+import { isTenantRequestOwner } from '@/lib/work-order-access'
 import type { Priority, WorkOrderStatus } from '@/types'
 
 export type TenantRequestFilter =
@@ -166,16 +167,11 @@ export async function getTenantPortalContext(slug: string): Promise<TenantPortal
 }
 
 export function isTenantOwnedRequest(row: TenantRequestRow, context: TenantPortalContext) {
-  if (row.requested_by_id) return row.requested_by_id === context.engineer.id
-
-  const email = (context.engineer.email || context.user.email || '').trim().toLowerCase()
-  if (!email) return false
-
-  if (row.tenant_email?.trim().toLowerCase() === email) return true
-
   const report = rowsOf(row.work_order_reports)[0]
-  const contact = report?.reported_by_contact?.trim().toLowerCase() ?? ''
-  return contact.includes(email)
+  return isTenantRequestOwner(
+    { requested_by_id: row.requested_by_id, tenant_email: row.tenant_email, reported_by_contact: report?.reported_by_contact },
+    { engineerId: context.engineer.id, email: context.engineer.email || context.user.email || null }
+  )
 }
 
 export function filterTenantRequests(

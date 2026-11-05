@@ -48,6 +48,7 @@ const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'out', 'dist', '.ver
 /** Project helpers with known security semantics (see references/supabase-authz-patterns.md). */
 const KNOWN_HELPERS = {
   authorizeWorkOrderStaff: { authz: true },
+  authorizePropertyRole: { authz: true },
   canViewWorkOrder: { authz: true },
   resolveTenantSubmitter: { authz: true },
   requireMondayPropertyAdmin: { authn: true, authz: true, service: true },

@@ -140,6 +140,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
           roles={roles ?? []}
           invitations={pendingInvitations ?? []}
           canManageMembers={canManageSettings}
+          actorRole={user?.app_metadata?.role === 'provider' ? 'provider' : userRole}
         />
       )}
     </div>

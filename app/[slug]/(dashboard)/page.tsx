@@ -34,7 +34,8 @@ export default async function DashboardPage({ params }: Props) {
       .limit(10),
     supabase
       .from('assets')
-      .select('id', { count: 'exact', head: true })
+      .select('id, buildings!inner(sites!inner(property_id))', { count: 'exact', head: true })
+      .eq('buildings.sites.property_id', propertyId)
       .eq('status', 'active'),
     supabase
       .from('engineers')
@@ -43,7 +44,8 @@ export default async function DashboardPage({ params }: Props) {
       .eq('is_active', true),
     supabase
       .from('ppm_schedules')
-      .select('next_due')
+      .select('next_due, assets!inner(buildings!inner(sites!inner(property_id)))')
+      .eq('assets.buildings.sites.property_id', propertyId)
       .eq('is_active', true)
       .not('next_due', 'is', null),
   ])

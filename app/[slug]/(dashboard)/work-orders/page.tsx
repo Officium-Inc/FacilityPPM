@@ -47,7 +47,8 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
       .order('scheduled_date', { ascending: true }),
     service
       .from('ppm_schedules')
-      .select('id, title, assets(id, name)')
+      .select('id, title, assets!inner(id, name, buildings!inner(sites!inner(property_id)))')
+      .eq('assets.buildings.sites.property_id', propertyId ?? '')
       .eq('is_active', true)
       .order('title'),
     service

@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createServiceClient } from '@/lib/supabase/server'
+import { findAuthUserByEmail } from '@/lib/auth-users'
 import AcceptInviteForm from './AcceptInviteForm'
 
 interface Props {
@@ -12,13 +13,14 @@ export default async function InvitePage({ params }: Props) {
 
   const { data: invite } = await service
     .from('invitations')
-    .select('*, properties(name)')
+    .select('email, invited_name, expires_at, used_at, properties(name)')
     .eq('token', token)
-    .single()
+    .maybeSingle()
 
   if (!invite) notFound()
 
-  const property = invite.properties as { name: string }
+  const rawProperty = invite.properties as { name: string } | { name: string }[] | null
+  const property = (Array.isArray(rawProperty) ? rawProperty[0] : rawProperty) ?? { name: 'your property' }
 
   if (invite.used_at) {
     return (
@@ -43,29 +45,8 @@ export default async function InvitePage({ params }: Props) {
     )
   }
 
-  // Check if email already has a Supabase auth account.
-  // Strategy: check engineers table for a linked user_id (fastest + most reliable),
-  // then fall back to listing auth users.
-  let isExistingUser = false
   const inviteEmail = (invite.email as string).toLowerCase()
-
-  // Check engineers table first — if any engineer record for this email already has a user_id,
-  // the person has an account.
-  const { data: existingEng } = await service
-    .from('engineers')
-    .select('user_id')
-    .eq('email', inviteEmail)
-    .not('user_id', 'is', null)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingEng?.user_id) {
-    isExistingUser = true
-  } else {
-    // Fall back to auth admin lookup (handles cases where user exists but has no engineer record yet)
-    const { data: userList } = await service.auth.admin.listUsers({ perPage: 1000 })
-    isExistingUser = userList?.users?.some((u) => u.email?.toLowerCase() === inviteEmail) ?? false
-  }
+  const isExistingUser = Boolean(await findAuthUserByEmail(service, inviteEmail))
 
   return (
     <AcceptInviteForm

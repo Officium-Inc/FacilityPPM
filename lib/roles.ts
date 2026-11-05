@@ -80,6 +80,41 @@ export function getRoleOptions(_roles: Array<{ name: string }> = []): RoleOption
   return ROLE_ORDER.map((value) => ({ value, label: formatRoleName(value) }))
 }
 
+/** Roles that can invite, edit and remove property members. */
+export const MEMBER_MANAGER_ROLES: readonly string[] = ['admin', 'property_manager']
+
+/** Roles that can be given to a property member. `viewer` is retired and no longer assignable. */
+export const ASSIGNABLE_MEMBER_ROLES: readonly CanonicalRoleName[] = [
+  'admin',
+  'property_manager',
+  'head_engineer',
+  'service group',
+  'tenant',
+]
+
+const PROPERTY_MANAGER_ASSIGNABLE: readonly CanonicalRoleName[] = ['head_engineer', 'service group', 'tenant']
+
+/** Roles `actorRole` may assign. Property Managers cannot create or promote Admins or other Property Managers. */
+export function assignableRolesFor(actorRole: string): readonly CanonicalRoleName[] {
+  if (actorRole === 'provider' || actorRole === 'admin') return ASSIGNABLE_MEMBER_ROLES
+  if (actorRole === 'property_manager') return PROPERTY_MANAGER_ASSIGNABLE
+  return []
+}
+
+/** Whether `actorRole` may edit, deactivate or remove a member whose current role is `targetRole`. */
+export function canManageMemberRole(actorRole: string, targetRole: string) {
+  if (actorRole === 'provider' || actorRole === 'admin') return true
+  if (actorRole === 'property_manager') {
+    const normalized = normalizeRoleName(targetRole)
+    return normalized !== 'admin' && normalized !== 'property_manager'
+  }
+  return false
+}
+
+export function getAssignableRoleOptions(actorRole: string): RoleOption[] {
+  return assignableRolesFor(actorRole).map((value) => ({ value, label: formatRoleName(value) }))
+}
+
 export function getCanonicalRoleRows<T extends RoleRow>(roles: T[]) {
   const byName = new Map<CanonicalRoleName, T>()
 

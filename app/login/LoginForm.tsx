@@ -12,6 +12,7 @@ export default function LoginForm() {
   const searchParams = useSearchParams()
   const passwordReset = searchParams.get('reset') === '1'
   const deactivated = searchParams.get('reason') === 'deactivated'
+  const noAccess = searchParams.get('reason') === 'no-access'
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -61,8 +62,13 @@ export default function LoginForm() {
       body: JSON.stringify({ propertySlug: destination }),
     })
     if (!activeCheck.ok) {
+      const result = await activeCheck.json().catch(() => ({}))
       await supabase.auth.signOut()
-      setError('Your account has been deactivated. Contact your administrator.')
+      setError(
+        result?.reason === 'no-access'
+          ? 'Your account does not have access to this property. Contact your administrator.'
+          : 'Your account has been deactivated. Contact your administrator.'
+      )
       setLoading(false)
       return
     }
@@ -116,6 +122,11 @@ export default function LoginForm() {
           {deactivated && mode === 'login' && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-5">
               Your account has been deactivated. Contact your administrator.
+            </div>
+          )}
+          {noAccess && mode === 'login' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 mb-5">
+              Your account does not have access to that property. Contact your administrator.
             </div>
           )}
           {mode === 'login' ? (

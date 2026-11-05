@@ -18,6 +18,8 @@ export interface WorkOrderActor {
   name: string
   email: string | null
   role: string
+  /** False when the user has no member row for the property or the member was deactivated. */
+  isActive: boolean
 }
 
 /** Appends a step to the work order timeline. Never throws: the audit trail must not block the workflow. */
@@ -48,12 +50,12 @@ export async function resolveWorkOrderActor(
   user: Pick<User, 'id' | 'email'>,
   propertyId: string | null | undefined
 ): Promise<WorkOrderActor> {
-  const fallback: WorkOrderActor = { id: null, name: user.email ?? 'Unknown', email: user.email ?? null, role: '' }
+  const fallback: WorkOrderActor = { id: null, name: user.email ?? 'Unknown', email: user.email ?? null, role: '', isActive: false }
   if (!propertyId) return fallback
 
   const { data } = await service
     .from('engineers')
-    .select('id, full_name, email, roles(name)')
+    .select('id, full_name, email, is_active, roles(name)')
     .eq('user_id', user.id)
     .eq('property_id', propertyId)
     .maybeSingle()
@@ -68,5 +70,6 @@ export async function resolveWorkOrderActor(
     name: data.full_name || user.email || 'Unknown',
     email: data.email || user.email || null,
     role: normalizeRoleName(roleName),
+    isActive: data.is_active !== false,
   }
 }

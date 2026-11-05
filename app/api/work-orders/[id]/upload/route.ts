@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { IMAGE_TYPES, optimizeImage } from '@/lib/image-upload'
+import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { WORK_ORDER_FILE_BUCKET, workOrderFilePath } from '@/lib/work-order-files'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -9,7 +11,7 @@ interface Params {
 const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg']
 const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES, 'application/pdf']
 const MAX_SIZE = 20 * 1024 * 1024 // 20 MB raw input limit
-const BUCKET = 'receipts'
+const BUCKET = WORK_ORDER_FILE_BUCKET
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
@@ -19,6 +21,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const service = await createServiceClient()
+  const { data: wo } = await service
+    .from('work_orders')
+    .select('id, property_id, engineer_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!wo?.property_id) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
+
+  // Staff, or the Service Group member assigned to this work order
+  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const formData = await request.formData()
   const file = formData.get('file') as File | null
@@ -59,8 +73,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       : file.type.split('/')[1] ?? 'bin'
   }
 
-  const fileName = `${id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-  const service = await createServiceClient()
+  const fileName = workOrderFilePath(wo.property_id, id, `${Date.now()}-${crypto.randomUUID()}.${ext}`)
 
   const { error: uploadError } = await service.storage
     .from(BUCKET)

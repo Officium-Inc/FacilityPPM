@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 
+// audit-allow-file: only reads/updates notifications addressed to the caller's own member row
+
 // GET /api/notifications — fetch unread (and recent read) notifications for the current user
 export async function GET(_req: NextRequest) {
   const supabase = await createClient()

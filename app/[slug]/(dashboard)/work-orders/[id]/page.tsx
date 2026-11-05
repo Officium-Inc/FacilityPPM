@@ -51,6 +51,14 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   if (woError) console.error('[WO detail] query error:', woError)
   if (!wo) notFound()
 
+  // The work order must belong to the property in the URL and be visible to this user
+  const [{ data: { user } }, { data: slugProperty }] = await Promise.all([
+    supabase.auth.getUser(),
+    service.from('properties').select('id').eq('slug', slug).maybeSingle(),
+  ])
+  if (!user || !slugProperty || wo.property_id !== slugProperty.id) notFound()
+  if (!(await canViewWorkOrder(service, user, wo))) notFound()
+
   // Fetch approval trail, engineers list, and comments
   const [{ data: trailData }, { data: engineersList }, { data: rawComments }] = await Promise.all([
     service.from('approval_trail').select('*').eq('work_order_id', id).order('created_at'),
@@ -89,16 +97,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     approvedCost: workOrder.costing_approved_by_name && costing[0]?.grand_total != null ? Number(costing[0].grand_total) : null,
   }
 
-  // Captured signature images are only shown to users who may view this work order
-  const { data: { user } } = await supabase.auth.getUser()
-  const canSeeSignatures = user
-    ? await canViewWorkOrder(service, user, {
-        property_id: workOrder.property_id,
-        requested_by_id: workOrder.requested_by_id,
-        tenant_email: workOrder.tenant_email,
-      })
-    : false
-  const formData = await loadWorkOrderForm(service, id, { includeSignatures: canSeeSignatures })
+  // Access was checked above, so captured signature images can be shown
+  const formData = await loadWorkOrderForm(service, id, { includeSignatures: true })
 
   return (
     <div className="-m-4 min-h-full sm:-m-6">

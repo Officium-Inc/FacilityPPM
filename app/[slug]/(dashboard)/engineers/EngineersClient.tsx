@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Pencil, Trash2, Mail, Clock, XCircle } from 'lucide-react'
-import { formatRoleName, getRoleOptions, normalizeRoleName } from '@/lib/roles'
+import { canManageMemberRole, formatRoleName, getAssignableRoleOptions, normalizeRoleName } from '@/lib/roles'
 
 interface Role { id: string; name: string }
 interface Engineer {
@@ -31,15 +31,17 @@ interface Props {
   roles: Role[]
   invitations: Invitation[]
   canManageMembers: boolean
+  /** The signed-in user's role; limits which roles they may assign (decision D6). */
+  actorRole: string
 }
 
 type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, roles, invitations: initialInvitations, canManageMembers }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actorRole }: Props) {
   const router = useRouter()
-  const roleOptions = getRoleOptions(roles)
+  const roleOptions = getAssignableRoleOptions(actorRole)
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [invite, setInvite] = useState(EMPTY_INVITE)
@@ -214,9 +216,10 @@ export default function EngineersClient({ slug: _slug, engineers, roles, invitat
               <select
                 value={invite.role_name}
                 onChange={(e) => setInv('role_name', e.target.value)}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               >
-                <option value="">— No role —</option>
+                <option value="" disabled>Select a role</option>
                 {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
               </select>
             </div>
@@ -264,14 +267,14 @@ export default function EngineersClient({ slug: _slug, engineers, roles, invitat
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && (
+                        {canManageMembers && canManageMemberRole(actorRole, eng.roles?.name ?? '') && (
                           <button onClick={() => openEdit(eng)} className="text-gray-400 hover:text-green-600 transition-colors" title="Edit">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && (
+                        {canManageMembers && canManageMemberRole(actorRole, eng.roles?.name ?? '') && (
                           <button onClick={() => setConfirmRemove({ id: eng.id, name: eng.full_name })} className="text-gray-400 hover:text-red-600 transition-colors" title="Remove">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -290,7 +293,9 @@ export default function EngineersClient({ slug: _slug, engineers, roles, invitat
                               <select value={editForm.role_name}
                                 onChange={(e) => setEditForm((f) => ({ ...f, role_name: e.target.value }))}
                                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                                <option value="">— No role —</option>
+                                {!roleOptions.some((role) => role.value === editForm.role_name) && (
+                                  <option value={editForm.role_name} disabled>{formatRoleName(editForm.role_name, 'No role')}</option>
+                                )}
                                 {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                               </select>
                             </div>

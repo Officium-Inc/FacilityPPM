@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
+import { canViewWorkOrder } from '@/lib/work-order-access'
 
 interface Params {
   params: Promise<{ workOrderId: string }>
 }
 
-export async function GET(request: NextRequest, { params }: Params) {
+/** Signed acknowledgement receipt: regenerated on demand for users who may view the work order. */
+export async function GET(_request: NextRequest, { params }: Params) {
   const { workOrderId } = await params
+
+  const auth = await createClient()
+  const { data: { user } } = await auth.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const supabase = await createServiceClient()
 
   const { data: wo, error } = await supabase
@@ -37,6 +44,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   const workOrder = wo as WorkOrder
+
+  if (!(await canViewWorkOrder(supabase, user, workOrder))) {
+    return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
+  }
 
   if (!workOrder.signed_at) {
     return NextResponse.json({ error: 'Work order has not been signed yet' }, { status: 400 })

@@ -49,15 +49,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
-  // Create invitation record
+  // Provider invitations create the property's Administrators
   const { data: invite, error: inviteErr } = await service
     .from('invitations')
     .insert({
       property_id: property.id,
       email: email.trim().toLowerCase(),
       invited_name: name?.trim() || null,
+      role_name: 'admin',
     })
-    .select('token')
+    .select('id, token')
     .single()
 
   if (inviteErr) return NextResponse.json({ error: inviteErr.message }, { status: 500 })
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     })
   } catch {
     // Roll back invite if email fails
-    await service.from('invitations').delete().eq('token', invite.token)
+    await service.from('invitations').delete().eq('id', invite.id)
     return NextResponse.json({ error: 'Failed to send invitation email.' }, { status: 500 })
   }
 

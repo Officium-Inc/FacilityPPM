@@ -49,8 +49,9 @@ Details, code templates and RLS templates: [supabase-authz-patterns.md](./refere
 
 ## Procedure — writing new code
 
-1. Locate the action in [portal-role-matrix.md](./references/portal-role-matrix.md). If it is missing or
-   marked ❓, stop and ask the user which roles may perform it before implementing.
+1. Locate the action in [portal-role-matrix.md](./references/portal-role-matrix.md). If it is missing, stop
+   and ask the user which roles may perform it, then add it to the matrix (and the decision log) before
+   implementing. Cells tagged `Dn` are defaults — follow them unless the user overrides.
 2. Server entry point: use the API route template in
    [supabase-authz-patterns.md](./references/supabase-authz-patterns.md#api-route-template). Reuse existing
    helpers (`authorizeWorkOrderStaff`, `canViewWorkOrder`, `resolveTenantSubmitter`,
@@ -96,9 +97,17 @@ Suppressing a reviewed false positive: add `// audit-allow: <reason>` inside the
   service client; `GET /api/work-orders/[id]/comments` and `POST /api/work-orders/[id]/upload` authenticate
   but never check that the work order belongs to the caller's property.
 - `evidence` and `receipts` storage buckets are public with bucket-wide `TO public` SELECT policies.
+- `app/[slug]/(dashboard)/work-orders/[id]/page.tsx` loads any work order by id with the service client and
+  never checks that it belongs to the property in the URL (cross-property read by changing the id).
+- `authorizeWorkOrderStaff` only rejects `tenant`/`viewer`: a user with no `engineers` row (empty role), a
+  deactivated member, and Service Group all pass as "staff".
+- `WorkOrderActions.handleStatusChange` updates `work_orders.status` from the browser, relying on RLS.
+- `app/[slug]/(dashboard)/layout.tsx` gives users without an `engineers` row the `viewer` role instead of
+  denying access.
 - `isTenantOwnedRequest` (`lib/tenant.ts`) falls back to substring email matching (`contact.includes(email)`).
 - `resolveWorkOrderActor` (`lib/work-order-events.ts`) does not check `engineers.is_active`.
-- Role names are inconsistent: `'service group'` contains a space while the others are snake_case.
+- Role names are inconsistent: `'service group'` contains a space while the others are snake_case
+  (the rewrite renames it to `service_group`).
 - Public tokens are stored and compared in plaintext (`.eq('sign_off_token', token)`).
 
 Verify each against the current code before reporting — this list reflects the codebase when the skill was written.

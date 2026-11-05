@@ -38,6 +38,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .select('id, full_name, email')
     .eq('id', engineerId)
     .eq('property_id', wo.property_id)
+    .eq('is_active', true)
     .maybeSingle()
 
   if (!assignee) return NextResponse.json({ error: 'Service team member not found.' }, { status: 404 })

@@ -53,7 +53,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     password,
     email_confirm: true,
     app_metadata: {
-      role: 'superadmin',
       property_id: property.id,
       property_slug: property.slug,
       property_ids: [property.id],

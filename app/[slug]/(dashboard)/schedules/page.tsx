@@ -9,10 +9,13 @@ interface Props {
 export default async function SchedulesPage({ params }: Props) {
   const { slug: _slug } = await params
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const propertyId = user?.app_metadata?.property_id as string | undefined
 
   const { data: schedules } = await supabase
     .from('ppm_schedules')
-    .select('*, assets(id, name, buildings(id, name, sites(id, name)))')
+    .select('*, assets!inner(id, name, buildings!inner(id, name, sites!inner(id, name, property_id)))')
+    .eq('assets.buildings.sites.property_id', propertyId ?? '00000000-0000-0000-0000-000000000000')
     .order('next_due', { ascending: true })
 
   const rows = (schedules as PpmSchedule[]) ?? []
