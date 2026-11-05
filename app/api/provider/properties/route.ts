@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 
 const RESERVED_SLUGS = new Set([
   'provider', 'sign-off', 'api', '_next', 'admin', 'static', 'login',
@@ -7,13 +7,8 @@ const RESERVED_SLUGS = new Set([
 ])
 
 export async function POST(request: NextRequest) {
-  // Verify provider auth
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user || user.app_metadata?.role !== 'provider') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
   const body = await request.json()
   const { name, slug, license_status } = body as {
@@ -42,7 +37,7 @@ export async function POST(request: NextRequest) {
   const validStatuses = ['active', 'trial', 'suspended']
   const status = validStatuses.includes(license_status ?? '') ? license_status : 'trial'
 
-  const service = await createServiceClient()
+  const service = provider.service
   const { data, error } = await service
     .from('properties')
     .insert({ name: name.trim(), slug: cleanSlug, license_status: status })

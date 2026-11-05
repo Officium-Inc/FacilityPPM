@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 import { sendInviteEmail } from '@/lib/email'
 
 interface Params {
   params: Promise<{ slug: string; inviteId: string }>
 }
 
-async function requireProvider() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'provider') return null
-  return user
-}
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { inviteId } = await params
 
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
 
-  const service = await createServiceClient()
+  if (!provider.ok) return provider.response
+
+  const service = provider.service
   const { error } = await service.from('invitations').delete().eq('id', inviteId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -32,11 +26,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 export async function PATCH(_req: NextRequest, { params }: Params) {
   const { slug, inviteId } = await params
 
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
 
-  const service = await createServiceClient()
+  if (!provider.ok) return provider.response
+
+  const service = provider.service
 
   const { data: invite, error: fetchErr } = await service
     .from('invitations')

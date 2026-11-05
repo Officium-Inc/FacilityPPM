@@ -1,6 +1,5 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import NewWorkOrderForm from './NewWorkOrderForm'
-import { notFound } from 'next/navigation'
+import { requirePage } from '@/lib/authz/guard'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -8,13 +7,8 @@ interface Props {
 
 export default async function NewWorkOrderPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
-  if (!propertyId) notFound()
-
-  const service = await createServiceClient()
+  const { service, property } = await requirePage(slug, 'maintenance.manage')
+  const propertyId = property.id
 
   const [{ data: rawSchedules }, { data: engineers }] = await Promise.all([
     service

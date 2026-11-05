@@ -1,5 +1,6 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import AssetsClient from './AssetsClient'
+import { requirePage } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -7,17 +8,14 @@ interface Props {
 
 export default async function AssetsPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
-  const service = await createServiceClient()
+  const { service, property, actor } = await requirePage(slug, 'maintenance.view')
+  const propertyId = property.id
 
   // Fetch all buildings belonging to this property (via site)
   const { data: buildings } = await service
     .from('buildings')
     .select('id, name, sites!inner(id, name, property_id)')
-    .eq('sites.property_id', propertyId ?? '')
+    .eq('sites.property_id', propertyId)
 
   // Fetch assets scoped to this property's buildings
   const buildingIds = (buildings ?? []).map((b) => b.id)
@@ -32,6 +30,7 @@ export default async function AssetsPage({ params }: Props) {
   return (
     <AssetsClient
       slug={slug}
+      canManage={can(actor, 'maintenance.manage')}
       assets={assets ?? []}
       buildings={(buildings ?? []).map((b) => ({
         id: b.id,

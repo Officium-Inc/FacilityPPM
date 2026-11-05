@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { sendCostingApprovalEmail } from '@/lib/email'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { normalizeLineItems, roundMoney, summarizeLineItems } from '@/lib/costing'
 
@@ -12,9 +13,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json()
   const {
@@ -54,11 +55,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     ? summarizeLineItems(lineItems)
     : { materialsTotal: money(rawMaterialsTotal), subcontractorTotal: money(rawSubcontractorTotal) }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, wo_number, property_id, properties(name)')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status, wo_number, properties(name)`)
     .eq('id', id)
     .single()
 
@@ -69,10 +70,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const grandTotal = roundMoney(labourHours * labourRate + materialsTotal + subcontractorTotal)
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.review', { record: wo })
+  if (!access.ok) return access.response
   const { actor } = access
-  const engineer = actor.id ? { id: actor.id } : null
+  const engineer = actorEngineerId(actor) ? { id: actorEngineerId(actor) } : null
   const costingPayload = {
     labour_hours: labourHours,
     labour_rate: labourRate,
@@ -137,9 +138,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'costing_submitted',
     step: 'Costing',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Sent for approval',
     reason: notes,
     metadata: { grand_total: grandTotal, tenant_email: tenantEmail.trim() },

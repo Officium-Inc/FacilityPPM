@@ -1,10 +1,11 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import { priorityLabel } from '@/lib/priority'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import NewServiceRequestModal from './NewServiceRequestModal'
+import { requirePage } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -17,14 +18,11 @@ function rowsOf<T>(value: T | T[] | null | undefined): T[] {
 
 export default async function ServiceRequestsPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
-  const service = await createServiceClient()
+  const { service, property, actor } = await requirePage(slug, 'workRequest.view')
+  const canSubmit = can(actor, 'workRequest.submitOnBehalf')
 
   // Query reactive work orders directly, embed fault reports as children
-  const { data: reactiveWOs } = await service
+  let reportQuery = service
     .from('work_orders')
     .select(`
       id,
@@ -36,9 +34,12 @@ export default async function ServiceRequestsPage({ params }: Props) {
         id, fault_description, location_notes, reported_by_name, urgency, created_at
       )
     `)
-    .eq('property_id', propertyId ?? '')
+    .eq('property_id', property.id)
     .eq('type', 'reactive')
-    .order('created_at', { ascending: false })
+  if (actor.kind === 'member' && actor.role === 'service_group') {
+    reportQuery = reportQuery.eq('engineer_id', actor.engineerId)
+  }
+  const { data: reactiveWOs } = await reportQuery.order('created_at', { ascending: false })
 
   type ReportRow = {
     id: string
@@ -73,16 +74,18 @@ export default async function ServiceRequestsPage({ params }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Service Reports</h2>
           <p className="text-sm text-gray-500 mt-0.5">{rows.length} submitted</p>
         </div>
-        <NewServiceRequestModal slug={slug} />
+        {canSubmit && <NewServiceRequestModal slug={slug} />}
       </div>
 
       {rows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <AlertTriangle className="w-8 h-8 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">No service reports submitted yet.</p>
-          <div className="mt-4">
-            <NewServiceRequestModal slug={slug} triggerLabel="Submit your first report" variant="link" />
-          </div>
+          {canSubmit && (
+            <div className="mt-4">
+              <NewServiceRequestModal slug={slug} triggerLabel="Submit your first report" variant="link" />
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { sanitizeWorkOrderFileUrls } from '@/lib/work-order-files'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
@@ -12,9 +13,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json()
   const {
@@ -33,11 +34,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work description is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, wo_number, property_id, engineer_id')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status, wo_number`)
     .eq('id', id)
     .single()
 
@@ -46,8 +47,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in progress.' }, { status: 409 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.execute', { record: wo })
+  if (!access.ok) return access.response
   const { actor } = access
 
   const completionPhotoUrls = sanitizeWorkOrderFileUrls(rawPhotoUrls, wo.property_id, id)
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     work_description: workDescription.trim(),
     completion_photo_urls: completionPhotoUrls,
     supporting_doc_urls: supportingDocUrls,
-    submitted_by_id: actor.id,
+    submitted_by_id: actorEngineerId(actor),
     submitted_at: now,
   }
 
@@ -95,9 +96,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'work_submitted',
     step: 'Work execution',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Submitted for verification',
     reason: workDescription,
     createdAt: now,

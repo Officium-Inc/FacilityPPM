@@ -1,13 +1,13 @@
-import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import LicenseBadge from '@/components/provider/LicenseBadge'
+import { requireProviderPage } from '@/lib/authz/guard'
 import type { Property } from '@/types'
 import { Plus, ExternalLink } from 'lucide-react'
 
 export default async function PropertiesPage() {
-  const supabase = await createClient()
+  const { service } = await requireProviderPage()
 
-  const { data: properties } = await supabase
+  const { data: properties } = await service
     .from('properties')
     .select('*')
     .order('created_at', { ascending: false })

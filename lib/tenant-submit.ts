@@ -1,67 +1,41 @@
-import type { SupabaseClient, User } from '@supabase/supabase-js'
-import { normalizeRoleName } from '@/lib/roles'
+import { NextResponse } from 'next/server'
+import { authorize, type Denied, type Session } from '@/lib/authz/guard'
+import { activePropertyId, type MemberActor } from '@/lib/authz/actor'
 
 export const SERVICE_REPORT_BUCKET = 'receipts'
 export const MAX_SERVICE_REPORT_PHOTOS = 6
 
-export interface TenantSubmitter {
-  propertyId: string
-  engineer: { id: string; full_name: string | null; email: string | null }
-}
-
-type SubmitterResult =
-  | ({ ok: true } & TenantSubmitter)
-  | { ok: false; status: number; error: string }
-
-/** Validates that the signed-in user is an active tenant member of the property they are submitting to. */
-export async function resolveTenantSubmitter(
-  service: SupabaseClient,
-  user: User,
+/**
+ * Authorizes a tenant submitting a work request to the property `slug` (or their active property):
+ * an active tenant member of that property.
+ */
+export async function authorizeTenantSubmit(
+  session: Session,
   slug?: string
-): Promise<SubmitterResult> {
-  let propertyId = user.app_metadata?.property_id as string | undefined
+): Promise<{ ok: true; actor: MemberActor; propertyId: string } | Denied> {
+  let propertyId = activePropertyId(session.user)
 
   if (slug) {
-    const userSlugs: string[] = (user.app_metadata?.property_slugs as string[] | undefined) ??
-      (user.app_metadata?.property_slug ? [user.app_metadata.property_slug as string] : [])
-    if (!userSlugs.includes(slug)) {
-      return { ok: false, status: 403, error: 'Property access denied.' }
-    }
-
-    const { data: property } = await service
+    const { data: property } = await session.service
       .from('properties')
       .select('id')
       .eq('slug', slug)
-      .single()
-
-    if (!property) return { ok: false, status: 404, error: 'Property not found.' }
-    propertyId = property.id
+      .maybeSingle()
+    if (!property) return { ok: false, response: NextResponse.json({ error: 'Property not found.' }, { status: 404 }) }
+    propertyId = property.id as string
   }
 
-  if (!propertyId) return { ok: false, status: 400, error: 'No active property.' }
-
-  const { data: engineer } = await service
-    .from('engineers')
-    .select('id, full_name, email, is_active, roles(name)')
-    .eq('property_id', propertyId)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!engineer || engineer.is_active === false) {
-    return { ok: false, status: 403, error: 'Tenant member not found.' }
+  if (!propertyId) {
+    return { ok: false, response: NextResponse.json({ error: 'No active property.' }, { status: 400 }) }
   }
 
-  const roles = engineer.roles as { name?: string } | { name?: string }[] | null
-  const roleName = Array.isArray(roles) ? roles[0]?.name : roles?.name
-  if (normalizeRoleName(roleName) !== 'tenant') {
-    return { ok: false, status: 403, error: 'Only tenant users can submit tenant service reports.' }
+  const access = await authorize(session, 'workRequest.submit', { propertyId })
+  if (!access.ok) return access
+  if (access.actor.kind !== 'member') {
+    return { ok: false, response: NextResponse.json({ error: 'Only tenants can submit work requests.' }, { status: 403 }) }
   }
 
-  return {
-    ok: true,
-    propertyId,
-    engineer: { id: engineer.id, full_name: engineer.full_name, email: engineer.email },
-  }
+  return { ok: true, actor: access.actor, propertyId }
 }
 
 export function serviceReportPhotoPrefix(propertyId: string) {
@@ -74,6 +48,6 @@ export function sanitizeServiceReportPhotoUrls(value: unknown, propertyId: strin
   if (!Array.isArray(value)) return []
   const prefix = serviceReportPhotoPrefix(propertyId)
   return value
-    .filter((url): url is string => typeof url === 'string' && url.startsWith(prefix))
+    .filter((url): url is string => typeof url === 'string' && url.startsWith(prefix) && !url.includes('..'))
     .slice(0, MAX_SERVICE_REPORT_PHOTOS)
 }

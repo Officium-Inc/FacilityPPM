@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Pencil, Trash2, Mail, Clock, XCircle } from 'lucide-react'
-import { canManageMemberRole, formatRoleName, getAssignableRoleOptions, normalizeRoleName } from '@/lib/roles'
+import { formatRoleName, normalizeRoleName, roleOptions as toRoleOptions } from '@/lib/roles'
+import { assignableRoles, canManageMember, type ActorLike } from '@/lib/authz/permissions'
 
 interface Role { id: string; name: string }
 interface Engineer {
@@ -31,17 +32,17 @@ interface Props {
   roles: Role[]
   invitations: Invitation[]
   canManageMembers: boolean
-  /** The signed-in user's role; limits which roles they may assign (decision D6). */
-  actorRole: string
+  /** The signed-in user; limits which roles they may assign and which members they may manage (D6). */
+  actor: ActorLike
 }
 
 type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actorRole }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actor }: Props) {
   const router = useRouter()
-  const roleOptions = getAssignableRoleOptions(actorRole)
+  const roleOptions = toRoleOptions(assignableRoles(actor))
   const [showAdd, setShowAdd] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [invite, setInvite] = useState(EMPTY_INVITE)
@@ -267,14 +268,14 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && canManageMemberRole(actorRole, eng.roles?.name ?? '') && (
+                        {canManageMembers && canManageMember(actor, eng.roles?.name ?? '') && (
                           <button onClick={() => openEdit(eng)} className="text-gray-400 hover:text-green-600 transition-colors" title="Edit">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && canManageMemberRole(actorRole, eng.roles?.name ?? '') && (
+                        {canManageMembers && canManageMember(actor, eng.roles?.name ?? '') && (
                           <button onClick={() => setConfirmRemove({ id: eng.id, name: eng.full_name })} className="text-gray-400 hover:text-red-600 transition-colors" title="Remove">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

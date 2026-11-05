@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { sanitizeWorkOrderFileUrls } from '@/lib/work-order-files'
 import { isPriority, priorityLabel } from '@/lib/priority'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
@@ -12,9 +13,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json()
   const {
@@ -52,12 +53,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Third-party contractor name is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   // Verify WO exists and is in inspecting state
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, report_id, property_id, engineer_id')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status, report_id`)
     .eq('id', id)
     .single()
 
@@ -67,8 +68,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   // Staff, or the Service Group member assigned to inspect it (decision D20)
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.inspect', { record: wo })
+  if (!access.ok) return access.response
   const { actor } = access
   const inspectionPhotoUrls = sanitizeWorkOrderFileUrls(rawInspectionPhotoUrls, wo.property_id, id)
 
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       scope_of_work: scopeOfWork?.trim() || null,
       inspection_photo_urls: inspectionPhotoUrls,
       urgency: priority,
-      inspected_by_id: actor.id,
+      inspected_by_id: actorEngineerId(actor),
       inspected_at: now,
     }).eq('id', wo.report_id)
   }
@@ -104,9 +105,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'inspection_completed',
     step: 'Inspection',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: isThirdParty ? 'Third-party contractor' : 'In-house',
     reason: inspectionNotes,
     createdAt: now,

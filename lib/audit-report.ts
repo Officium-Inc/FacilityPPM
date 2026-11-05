@@ -270,7 +270,11 @@ export async function loadAuditReportData(
       name: wo.cancelled_by_name ?? 'Engineer',
       email: null,
       role: null,
-      step: wo.cancelled_stage === 'costing' ? 'Costing cancelled' : 'Request cancelled at inspection',
+      step: wo.cancelled_stage === 'costing'
+        ? 'Costing cancelled'
+        : wo.cancelled_stage === 'submission'
+          ? 'Request withdrawn by tenant'
+          : 'Request cancelled at inspection',
       decision: 'Cancelled',
       reason: wo.cancellation_reason ?? null,
       at: wo.cancelled_at,

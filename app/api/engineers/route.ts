@@ -1,30 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import {
-  MEMBER_MANAGER_ROLES,
-  assignableRolesFor,
-  canManageMemberRole,
-  normalizeRoleName,
-  resolveCanonicalRoleId,
-} from '@/lib/roles'
-import { authorizePropertyRole } from '@/lib/work-order-access'
+import { resolveCanonicalRoleId, roleNameFromRelation } from '@/lib/roles'
+import { assignableRoles, canManageMember, toPropertyRole } from '@/lib/authz/permissions'
+import { authorize, requireSession, type Service } from '@/lib/authz/guard'
 import { revokePropertyAccess } from '@/lib/auth-users'
 
-type Service = Awaited<ReturnType<typeof createServiceClient>>
-
+/** Member management for the caller's active property: Administrators and Property Managers (D6). */
 async function memberManager() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const
+  const session = await requireSession()
+  if (!session.ok) return { error: session.response } as const
 
-  const propertyId = user.app_metadata?.property_id as string | undefined
+  const propertyId = session.user.app_metadata?.property_id as string | undefined
   if (!propertyId) return { error: NextResponse.json({ error: 'No active property' }, { status: 400 }) } as const
 
-  const service = await createServiceClient()
-  const access = await authorizePropertyRole(service, user, propertyId, MEMBER_MANAGER_ROLES)
-  if (!access.ok) return { error: NextResponse.json({ error: access.error }, { status: access.status }) } as const
+  const access = await authorize(session, 'members.manage', { propertyId })
+  if (!access.ok) return { error: access.response } as const
 
-  return { user, propertyId, service, actor: access.actor } as const
+  return { user: session.user, propertyId, service: session.service, actor: access.actor } as const
 }
 
 async function loadTarget(service: Service, propertyId: string, id: string) {
@@ -35,9 +26,7 @@ async function loadTarget(service: Service, propertyId: string, id: string) {
     .eq('property_id', propertyId)
     .maybeSingle()
   if (!data) return null
-  const roles = data.roles as { name?: string } | { name?: string }[] | null
-  const roleName = Array.isArray(roles) ? roles[0]?.name : roles?.name
-  return { id: data.id as string, userId: data.user_id as string | null, role: normalizeRoleName(roleName) }
+  return { id: data.id as string, userId: data.user_id as string | null, role: roleNameFromRelation(data.roles) }
 }
 
 export async function POST(request: NextRequest) {
@@ -60,8 +49,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
 
-  const roleName = normalizeRoleName(body.role_name)
-  if (!assignableRolesFor(actor.role).some((role) => role === roleName)) {
+  const role = toPropertyRole(body.role_name)
+  if (!role || !assignableRoles(actor).includes(role)) {
     return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
   }
 
@@ -74,10 +63,10 @@ export async function POST(request: NextRequest) {
     .maybeSingle()
 
   if (dupe) {
-    return NextResponse.json({ error: 'An engineer with this email already exists in this property.' }, { status: 409 })
+    return NextResponse.json({ error: 'A member with this email already exists in this property.' }, { status: 409 })
   }
 
-  const roleId = await resolveCanonicalRoleId(service, roleName)
+  const roleId = await resolveCanonicalRoleId(service, role)
   if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
 
   const { data, error } = await service.from('engineers').insert({
@@ -110,12 +99,12 @@ export async function PATCH(request: NextRequest) {
     certifications?: string
   }
 
-  if (!body.id) return NextResponse.json({ error: 'Engineer id is required.' }, { status: 400 })
+  if (!body.id) return NextResponse.json({ error: 'Member id is required.' }, { status: 400 })
 
   const target = await loadTarget(service, propertyId, body.id)
-  if (!target) return NextResponse.json({ error: 'Engineer not found.' }, { status: 404 })
+  if (!target) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
 
-  if (!canManageMemberRole(actor.role, target.role)) {
+  if (!canManageMember(actor, target.role)) {
     return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
   }
 
@@ -123,13 +112,13 @@ export async function PATCH(request: NextRequest) {
   const updates: Record<string, unknown> = {}
 
   if (body.role_name !== undefined) {
-    const roleName = normalizeRoleName(body.role_name)
-    if (roleName !== target.role) {
+    const role = toPropertyRole(body.role_name)
+    if (role !== toPropertyRole(target.role)) {
       if (isSelf) return NextResponse.json({ error: 'You cannot change your own role.' }, { status: 403 })
-      if (!assignableRolesFor(actor.role).some((role) => role === roleName)) {
+      if (!role || !assignableRoles(actor).includes(role)) {
         return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
       }
-      const roleId = await resolveCanonicalRoleId(service, roleName)
+      const roleId = await resolveCanonicalRoleId(service, role)
       if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
       updates.role_id = roleId
     }
@@ -158,14 +147,14 @@ export async function DELETE(request: NextRequest) {
   const { user, propertyId, service, actor } = ctx
 
   const body = await request.json() as { id?: string }
-  if (!body.id) return NextResponse.json({ error: 'Engineer id is required.' }, { status: 400 })
+  if (!body.id) return NextResponse.json({ error: 'Member id is required.' }, { status: 400 })
 
   const target = await loadTarget(service, propertyId, body.id)
   if (!target) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
   if (target.userId === user.id) {
     return NextResponse.json({ error: 'You cannot remove yourself.' }, { status: 403 })
   }
-  if (!canManageMemberRole(actor.role, target.role)) {
+  if (!canManageMember(actor, target.role)) {
     return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
   }
 

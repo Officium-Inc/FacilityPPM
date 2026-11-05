@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "audit:tenant": "node .github/skills/facilityppm-tenant-isolation/scripts/audit-tenant-isolation.mjs --strict"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.0",
@@ -33,6 +36,7 @@
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.0"
   }
 }

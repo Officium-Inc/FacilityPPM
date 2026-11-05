@@ -1,10 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 import KpiCard from '@/components/dashboard/KpiCard'
 import WorkOrderTable from '@/components/dashboard/WorkOrderTable'
 import EngineerWorkload from '@/components/dashboard/EngineerWorkload'
 import PpmCalendar from '@/components/dashboard/PpmCalendar'
 import { CheckCircle, ClipboardList, Package, Users } from 'lucide-react'
-import { normalizeRoleName } from '@/lib/roles'
+import { roleNameFromRelation } from '@/lib/roles'
+import { requirePage } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
 import type { WorkOrder } from '@/types'
 
 interface Props {
@@ -13,12 +14,16 @@ interface Props {
 
 export default async function DashboardPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
+  const { service, property, actor } = await requirePage(slug, 'portal.admin')
+  const propertyId = property.id
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
-  if (!propertyId) return null
+  // Service Group members only see the work assigned to them (D14)
+  const seesAllWork = can(actor, 'maintenance.view')
+  let workOrderQuery = service
+    .from('work_orders')
+    .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name), ppm_schedules(id, title, assets(id, name))`)
+    .eq('property_id', propertyId)
+  if (!seesAllWork && actor.kind === 'member') workOrderQuery = workOrderQuery.eq('engineer_id', actor.engineerId)
 
   const [
     { data: workOrders },
@@ -26,23 +31,20 @@ export default async function DashboardPage({ params }: Props) {
     { data: engineers },
     { data: schedules },
   ] = await Promise.all([
-    supabase
-      .from('work_orders')
-      .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name), ppm_schedules(id, title, assets(id, name))`)
-      .eq('property_id', propertyId)
+    workOrderQuery
       .order('created_at', { ascending: false })
       .limit(10),
-    supabase
+    service
       .from('assets')
       .select('id, buildings!inner(sites!inner(property_id))', { count: 'exact', head: true })
       .eq('buildings.sites.property_id', propertyId)
       .eq('status', 'active'),
-    supabase
+    service
       .from('engineers')
       .select('id, full_name, is_active, roles(name)')
       .eq('property_id', propertyId)
       .eq('is_active', true),
-    supabase
+    service
       .from('ppm_schedules')
       .select('next_due, assets!inner(buildings!inner(sites!inner(property_id)))')
       .eq('assets.buildings.sites.property_id', propertyId)
@@ -60,13 +62,8 @@ export default async function DashboardPage({ params }: Props) {
   ).length
 
   const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: unknown }>
-  const getEngRoleName = (roles: unknown): string => {
-    if (!roles) return ''
-    if (Array.isArray(roles)) return normalizeRoleName((roles as Array<{ name?: string }>)[0]?.name)
-    return normalizeRoleName((roles as { name?: string })?.name)
-  }
   const serviceGroupEngineers = allEngineers.filter(
-    (e) => getEngRoleName(e.roles) === 'service group'
+    (e) => roleNameFromRelation(e.roles) === 'service_group'
   )
 
   const engineerWorkloadMap: Record<string, number> = {}

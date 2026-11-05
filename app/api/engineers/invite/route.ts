@@ -1,28 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendInviteEmail } from '@/lib/email'
-import { MEMBER_MANAGER_ROLES, assignableRolesFor, normalizeRoleName } from '@/lib/roles'
-import { authorizePropertyRole } from '@/lib/work-order-access'
+import { assignableRoles, toPropertyRole } from '@/lib/authz/permissions'
+import { authorize, requireSession } from '@/lib/authz/guard'
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { user, service } = session
 
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
 
-  const service = await createServiceClient()
-  const access = await authorizePropertyRole(service, user, propertyId, MEMBER_MANAGER_ROLES)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'members.manage', { propertyId })
+  if (!access.ok) return access.response
 
   const body = await request.json() as {
     email?: string
     name?: string
     role_name?: string
   }
-  const roleName = normalizeRoleName(body.role_name)
+  const roleName = toPropertyRole(body.role_name)
 
   if (!body.email?.trim()) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
@@ -30,7 +27,7 @@ export async function POST(request: NextRequest) {
   if (!roleName) {
     return NextResponse.json({ error: 'Select a role for this invitation.' }, { status: 400 })
   }
-  if (!assignableRolesFor(access.actor.role).some((role) => role === roleName)) {
+  if (!assignableRoles(access.actor).includes(roleName)) {
     return NextResponse.json({ error: 'You cannot invite members with this role.' }, { status: 403 })
   }
 

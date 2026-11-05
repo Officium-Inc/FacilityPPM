@@ -1,5 +1,4 @@
-import type { SupabaseClient, User } from '@supabase/supabase-js'
-import { normalizeRoleName } from '@/lib/roles'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface WorkOrderEventInput {
   eventType: string
@@ -11,15 +10,6 @@ export interface WorkOrderEventInput {
   reason?: string | null
   metadata?: Record<string, unknown>
   createdAt?: string
-}
-
-export interface WorkOrderActor {
-  id: string | null
-  name: string
-  email: string | null
-  role: string
-  /** False when the user has no member row for the property or the member was deactivated. */
-  isActive: boolean
 }
 
 /** Appends a step to the work order timeline. Never throws: the audit trail must not block the workflow. */
@@ -42,34 +32,4 @@ export async function logWorkOrderEvent(
   })
 
   if (error) console.error('[work-order-events] failed to log event:', error.message)
-}
-
-/** Resolves the signed-in user to their engineer/member row for a property. */
-export async function resolveWorkOrderActor(
-  service: SupabaseClient,
-  user: Pick<User, 'id' | 'email'>,
-  propertyId: string | null | undefined
-): Promise<WorkOrderActor> {
-  const fallback: WorkOrderActor = { id: null, name: user.email ?? 'Unknown', email: user.email ?? null, role: '', isActive: false }
-  if (!propertyId) return fallback
-
-  const { data } = await service
-    .from('engineers')
-    .select('id, full_name, email, is_active, roles(name)')
-    .eq('user_id', user.id)
-    .eq('property_id', propertyId)
-    .maybeSingle()
-
-  if (!data) return fallback
-
-  const roles = data.roles as { name?: string } | { name?: string }[] | null
-  const roleName = Array.isArray(roles) ? roles[0]?.name : roles?.name
-
-  return {
-    id: data.id,
-    name: data.full_name || user.email || 'Unknown',
-    email: data.email || user.email || null,
-    role: normalizeRoleName(roleName),
-    isActive: data.is_active !== false,
-  }
 }

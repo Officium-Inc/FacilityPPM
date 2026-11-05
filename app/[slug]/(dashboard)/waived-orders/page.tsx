@@ -1,50 +1,22 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { normalizeRoleName } from '@/lib/roles'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { format } from 'date-fns'
 import WaivedOrdersClient from './WaivedOrdersClient'
+import { requirePage } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
 import type { WorkOrder } from '@/types'
 
 interface Props {
   params: Promise<{ slug: string }>
 }
 
-const ALLOWED_ROLES = ['admin', 'property_manager']
-
 export default async function WaivedOrdersPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
-  // Gate: only admin and property_manager
-  let userRole = 'viewer'
-  if (user?.app_metadata?.role === 'provider') {
-    userRole = 'admin'
-  } else if (user && propertyId) {
-    const service = await createServiceClient()
-    const { data: eng } = await service
-      .from('engineers')
-      .select('roles(name)')
-      .eq('property_id', propertyId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const roleData = (eng?.roles as unknown as { name: string } | null)
-    userRole = normalizeRoleName(roleData?.name) || 'viewer'
-  }
-
-  if (!ALLOWED_ROLES.includes(userRole)) {
-    redirect(`/${slug}`)
-  }
-
-  const service = await createServiceClient()
+  // Administrators and Property Managers see the list; only Property Managers waive (D8)
+  const { service, property, actor } = await requirePage(slug, 'workRequest.waivedList')
 
   // Show all work orders except those still in pre-cost-approval stages
   const { data: workOrders } = await service
     .from('work_orders')
     .select('id, wo_number, status, priority, type, created_at, is_cost_waived, cost_waived_at, cost_waived_by_name, cost_waived_reason, engineers!work_orders_engineer_id_fkey(full_name)')
-    .eq('property_id', propertyId ?? '')
+    .eq('property_id', property.id)
     .not('status', 'in', '("new_report","inspecting","costing","pending_approval")')
     .order('created_at', { ascending: false })
 
@@ -56,7 +28,7 @@ export default async function WaivedOrdersPage({ params }: Props) {
         <h2 className="text-xl font-bold text-gray-900">Waived Orders</h2>
         <p className="text-sm text-gray-500 mt-0.5">Work orders with tenant-approved costs — Property Manager can waive associated costs</p>
       </div>
-      <WaivedOrdersClient workOrders={wos} slug={slug} canWaive={userRole === 'property_manager'} />
+      <WaivedOrdersClient workOrders={wos} slug={slug} canWaive={can(actor, 'workRequest.waive')} />
     </div>
   )
 }

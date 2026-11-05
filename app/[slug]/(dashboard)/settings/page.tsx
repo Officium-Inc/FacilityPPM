@@ -1,7 +1,7 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { normalizeRoleName } from '@/lib/roles'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { requirePage } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
 import EngineersClient from '../engineers/EngineersClient'
 import ApiKeysClient from './ApiKeysClient'
 import SettingsHubClient from './SettingsHubClient'
@@ -12,8 +12,6 @@ interface Props {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ tab?: string }>
 }
-
-const MANAGE_ROLES = ['admin', 'property_manager']
 
 const TABS = {
   members: {
@@ -40,50 +38,48 @@ export default async function SettingsPage({ params, searchParams }: Props) {
   const { slug } = await params
   const { tab } = await searchParams
   const activeTab: TabKey | null = tab && tab in TABS ? (tab as TabKey) : null
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
+  const { user, service, property: currentProperty, actor } = await requirePage(slug, 'portal.admin')
+  const propertyId = currentProperty.id
 
-  const service = await createServiceClient()
-
-  // Determine user role for this property
-  let userRole = 'viewer'
   let myEngineer: { full_name: string; email: string; phone: string | null } | null = null
-  if (user?.app_metadata?.role === 'provider') {
-    userRole = 'admin'
-  } else if (user && propertyId) {
+  if (actor.kind === 'member') {
     const { data: eng } = await service
       .from('engineers')
-      .select('full_name, email, phone, roles(name)')
-      .eq('property_id', propertyId)
-      .eq('user_id', user.id)
+      .select('full_name, email, phone')
+      .eq('id', actor.engineerId)
       .maybeSingle()
-    const roleData = (eng?.roles as unknown as { name: string } | null)
-    userRole = normalizeRoleName(roleData?.name) || 'viewer'
     myEngineer = eng ?? null
   }
 
-  const canManageSettings = MANAGE_ROLES.includes(userRole)
+  const canViewMembers = can(actor, 'members.view')
+  const canManageMembers = can(actor, 'members.manage')
+  const canManageIntegrations = can(actor, 'property.integrations.manage')
+  const canEditProfile = can(actor, 'property.profile.edit')
+  const navActor = actor.kind === 'provider' ? { kind: 'provider' as const } : { kind: 'member' as const, role: actor.role }
 
   const [{ data: engineers }, { data: roles }, { data: pendingInvitations }, { data: property }] = await Promise.all([
-    service
-      .from('engineers')
-      .select('*, roles(id, name)')
-      .eq('property_id', propertyId ?? '')
-      .order('full_name'),
+    canViewMembers
+      ? service
+        .from('engineers')
+        .select('*, roles(id, name)')
+        .eq('property_id', propertyId)
+        .order('full_name')
+      : Promise.resolve({ data: [] }),
     service.from('roles').select('id, name').order('name'),
-    service
-      .from('invitations')
-      .select('id, email, invited_name, role_name, invited_by, created_at, expires_at')
-      .eq('property_id', propertyId ?? '')
-      .is('used_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false }),
+    canViewMembers
+      ? service
+        .from('invitations')
+        .select('id, email, invited_name, role_name, invited_by, created_at, expires_at')
+        .eq('property_id', propertyId)
+        .is('used_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
     service
       .from('properties')
       // `*` so the page keeps working before migration 018 adds the work order form fields
       .select('*')
-      .eq('id', propertyId ?? '')
+      .eq('id', propertyId)
       .maybeSingle(),
   ])
 
@@ -98,7 +94,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
           slug={slug}
           memberCount={engineers?.length ?? 0}
           pendingInviteCount={pendingInvitations?.length ?? 0}
-          canManageSettings={canManageSettings}
+          canManageSettings={canManageMembers}
         />
       </div>
     )
@@ -119,29 +115,31 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       </div>
 
       {activeTab === 'api-keys' ? (
-        <ApiKeysClient canManageIntegrations={canManageSettings} />
+        <ApiKeysClient canManageIntegrations={canManageIntegrations} />
       ) : activeTab === 'profile' ? (
         <ProfileClient
-          fullName={myEngineer?.full_name ?? (user?.user_metadata?.full_name as string | undefined) ?? ''}
-          email={myEngineer?.email ?? user?.email ?? ''}
+          fullName={myEngineer?.full_name ?? (user.user_metadata?.full_name as string | undefined) ?? ''}
+          email={myEngineer?.email ?? user.email ?? ''}
           phone={myEngineer?.phone ?? ''}
-          roleName={user?.app_metadata?.role === 'provider' ? 'provider' : userRole}
+          roleName={actor.kind === 'provider' ? 'provider' : actor.role}
         />
       ) : activeTab === 'company' ? (
         property ? (
-          <CompanyProfileClient property={property} canManage={canManageSettings} />
+          <CompanyProfileClient property={property} canManage={canEditProfile} />
         ) : (
           <p className="text-sm text-gray-500">No active property found.</p>
         )
-      ) : (
+      ) : canViewMembers ? (
         <EngineersClient
           slug={slug}
           engineers={engineers ?? []}
           roles={roles ?? []}
           invitations={pendingInvitations ?? []}
-          canManageMembers={canManageSettings}
-          actorRole={user?.app_metadata?.role === 'provider' ? 'provider' : userRole}
+          canManageMembers={canManageMembers}
+          actor={navActor}
         />
+      ) : (
+        <p className="text-sm text-gray-500">Your role cannot view the member list.</p>
       )}
     </div>
   )

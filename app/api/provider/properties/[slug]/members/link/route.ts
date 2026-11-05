@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -8,12 +8,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const provider = await requireProvider()
 
-  if (!user || user.app_metadata?.role !== 'provider') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!provider.ok) return provider.response
 
   const body = await request.json() as {
     email?: string
@@ -26,7 +23,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const service = provider.service
 
   const { data: property, error: propErr } = await service
     .from('properties')

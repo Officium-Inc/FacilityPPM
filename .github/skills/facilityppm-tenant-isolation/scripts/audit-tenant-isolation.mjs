@@ -45,14 +45,13 @@ const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 const SEVERITY_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, INFO: 3 }
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'out', 'dist', '.vercel'])
 
-/** Project helpers with known security semantics (see references/supabase-authz-patterns.md). */
+/** Project guards with known security semantics (lib/authz/guard.ts and wrappers around it). */
 const KNOWN_HELPERS = {
-  authorizeWorkOrderStaff: { authz: true },
-  authorizePropertyRole: { authz: true },
-  canViewWorkOrder: { authz: true },
-  resolveTenantSubmitter: { authz: true },
+  requireSession: { authn: true, service: true },
+  authorize: { authz: true },
+  requireProvider: { authn: true, authz: true, service: true },
+  authorizeTenantSubmit: { authz: true },
   requireMondayPropertyAdmin: { authn: true, authz: true, service: true },
-  getTenantPortalContext: { authn: true, authz: true, service: true },
 }
 
 const RX = {

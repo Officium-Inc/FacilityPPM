@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider, type Service } from '@/lib/authz/guard'
 import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
@@ -9,13 +9,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { slug } = await params
 
-  // Verify provider auth
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const provider = await requireProvider()
 
-  if (!user || user.app_metadata?.role !== 'provider') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!provider.ok) return provider.response
 
   const body = await request.json()
   const { full_name, email, password } = body as {
@@ -32,7 +28,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const service = provider.service
 
   // Look up the property
   const { data: property, error: propErr } = await service
@@ -97,7 +93,7 @@ async function addExistingUserToProperty({
   full_name,
   email,
 }: {
-  service: Awaited<ReturnType<typeof createServiceClient>>
+  service: Service
   roleId: string | null
   property: { id: string; slug: string; name: string }
   full_name: string

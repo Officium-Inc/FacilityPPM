@@ -1,14 +1,13 @@
 import ProviderSidebar from '@/components/provider/Sidebar'
 import ProviderMain from '@/components/provider/ProviderMain'
-import { createClient } from '@/lib/supabase/server'
+import { requireProviderPage } from '@/lib/authz/guard'
 
 export default async function ProviderDashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await requireProviderPage()
 
   return (
     <div className="flex h-dvh overflow-hidden bg-gray-50">

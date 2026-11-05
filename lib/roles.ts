@@ -1,10 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+/** Canonical role names stored in `roles.name`. `viewer` is retired (D1): it is only kept so old rows display. */
 export const ROLE_ORDER = [
   'admin',
   'property_manager',
   'head_engineer',
-  'service group',
+  'service_group',
   'tenant',
   'viewer',
 ] as const
@@ -22,23 +23,29 @@ export interface RoleRow {
 }
 
 const ROLE_LABELS: Record<CanonicalRoleName, string> = {
-  admin: 'Admin',
+  admin: 'Administrator',
   property_manager: 'Property Manager',
   head_engineer: 'Head Engineer',
-  'service group': 'Service Group',
+  service_group: 'Service Group',
   tenant: 'Tenant',
-  viewer: 'Viewer',
+  viewer: 'Viewer (retired)',
 }
 
+/** Keys are role names lower-cased with `_`/`-` turned into spaces. */
 const ROLE_ALIASES: Record<string, CanonicalRoleName> = {
   admin: 'admin',
   administrator: 'admin',
   'property manager': 'property_manager',
   'head engineer': 'head_engineer',
   engineer: 'head_engineer',
-  'service group': 'service group',
+  'service group': 'service_group',
   tenant: 'tenant',
   viewer: 'viewer',
+}
+
+/** Names a canonical role may still have in databases where migration 020 has not run yet. */
+const LEGACY_ROLE_NAMES: Partial<Record<CanonicalRoleName, string[]>> = {
+  service_group: ['service group'],
 }
 
 function roleKey(roleName: string) {
@@ -72,47 +79,20 @@ export function isCanonicalRoleName(roleName?: string | null): roleName is Canon
 
 export function formatRoleName(roleName?: string | null, fallback = '-') {
   if (!roleName?.trim()) return fallback
+  if (roleName === 'provider') return 'Provider'
   const normalized = normalizeRoleName(roleName)
   return ROLE_LABELS[normalized as CanonicalRoleName] ?? toTitleCase(normalized)
 }
 
-export function getRoleOptions(_roles: Array<{ name: string }> = []): RoleOption[] {
-  return ROLE_ORDER.map((value) => ({ value, label: formatRoleName(value) }))
+/** Reads `roles(name)` from an embedded Supabase relation (object or single-element array). */
+export function roleNameFromRelation(roles: unknown) {
+  if (!roles) return ''
+  const row = Array.isArray(roles) ? (roles[0] as { name?: string } | undefined) : (roles as { name?: string })
+  return normalizeRoleName(row?.name)
 }
 
-/** Roles that can invite, edit and remove property members. */
-export const MEMBER_MANAGER_ROLES: readonly string[] = ['admin', 'property_manager']
-
-/** Roles that can be given to a property member. `viewer` is retired and no longer assignable. */
-export const ASSIGNABLE_MEMBER_ROLES: readonly CanonicalRoleName[] = [
-  'admin',
-  'property_manager',
-  'head_engineer',
-  'service group',
-  'tenant',
-]
-
-const PROPERTY_MANAGER_ASSIGNABLE: readonly CanonicalRoleName[] = ['head_engineer', 'service group', 'tenant']
-
-/** Roles `actorRole` may assign. Property Managers cannot create or promote Admins or other Property Managers. */
-export function assignableRolesFor(actorRole: string): readonly CanonicalRoleName[] {
-  if (actorRole === 'provider' || actorRole === 'admin') return ASSIGNABLE_MEMBER_ROLES
-  if (actorRole === 'property_manager') return PROPERTY_MANAGER_ASSIGNABLE
-  return []
-}
-
-/** Whether `actorRole` may edit, deactivate or remove a member whose current role is `targetRole`. */
-export function canManageMemberRole(actorRole: string, targetRole: string) {
-  if (actorRole === 'provider' || actorRole === 'admin') return true
-  if (actorRole === 'property_manager') {
-    const normalized = normalizeRoleName(targetRole)
-    return normalized !== 'admin' && normalized !== 'property_manager'
-  }
-  return false
-}
-
-export function getAssignableRoleOptions(actorRole: string): RoleOption[] {
-  return assignableRolesFor(actorRole).map((value) => ({ value, label: formatRoleName(value) }))
+export function roleOptions(roles: readonly string[]): RoleOption[] {
+  return roles.map((value) => ({ value, label: formatRoleName(value) }))
 }
 
 export function getCanonicalRoleRows<T extends RoleRow>(roles: T[]) {
@@ -133,6 +113,7 @@ export function getCanonicalRoleRows<T extends RoleRow>(roles: T[]) {
     .filter((role): role is T => Boolean(role))
 }
 
+/** Returns the id of the canonical role row, creating it if it is missing. */
 export async function resolveCanonicalRoleId(
   service: SupabaseClient,
   roleName?: string | null
@@ -140,13 +121,14 @@ export async function resolveCanonicalRoleId(
   const normalizedRoleName = normalizeRoleName(roleName)
   if (!isCanonicalRoleName(normalizedRoleName)) return null
 
+  const names = [normalizedRoleName, ...(LEGACY_ROLE_NAMES[normalizedRoleName] ?? [])]
   const { data: existing } = await service
     .from('roles')
-    .select('id')
-    .eq('name', normalizedRoleName)
-    .maybeSingle()
+    .select('id, name')
+    .in('name', names)
 
-  if (existing) return existing.id
+  const match = existing?.find((row) => row.name === normalizedRoleName) ?? existing?.[0]
+  if (match) return match.id
 
   const { data: created, error } = await service
     .from('roles')

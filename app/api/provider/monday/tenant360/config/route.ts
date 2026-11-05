@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 
-async function requireProvider() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  return user?.app_metadata?.role === 'provider'
-}
 
 export async function GET() {
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
   return NextResponse.json(
     { error: 'Monday setup moved to each property Settings API Keys tab.' },

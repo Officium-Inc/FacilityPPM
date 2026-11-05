@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { generateRecordHash } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
-import { canViewWorkOrder } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
 
 interface Params {
   params: Promise<{ workOrderId: string }>
@@ -16,11 +15,9 @@ interface Params {
 export async function GET(_request: NextRequest, { params }: Params) {
   const { workOrderId } = await params
 
-  const auth = await createClient()
-  const { data: { user } } = await auth.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const supabase = await createServiceClient()
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const supabase = session.service
 
   const { data: wo, error } = await supabase
     .from('work_orders')
@@ -45,9 +42,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   const workOrder = wo as WorkOrder
 
-  if (!(await canViewWorkOrder(supabase, user, workOrder))) {
-    return NextResponse.json({ error: 'Work order not found' }, { status: 404 })
-  }
+  const access = await authorize(session, 'workRequest.view', { record: workOrder })
+  if (!access.ok) return access.response
 
   if (!workOrder.signed_at) {
     return NextResponse.json({ error: 'Work order has not been signed yet' }, { status: 400 })

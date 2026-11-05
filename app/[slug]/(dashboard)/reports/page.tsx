@@ -1,26 +1,25 @@
-import { createClient } from '@/lib/supabase/server'
+import { requirePage } from '@/lib/authz/guard'
 
 interface Props {
   params: Promise<{ slug: string }>
 }
 
 export default async function ReportsPage({ params }: Props) {
-  const { slug: _slug } = await params
-  const supabase = await createClient()
+  const { slug } = await params
+  const { service, property } = await requirePage(slug, 'maintenance.view')
+  const propertyId = property.id
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
-
+  const count = () => service.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId)
   const [
     { count: total },
     { count: verified },
     { count: overdue },
     { count: cancelled },
   ] = await Promise.all([
-    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? ''),
-    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'completed'),
-    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'overdue'),
-    supabase.from('work_orders').select('*', { count: 'exact', head: true }).eq('property_id', propertyId ?? '').eq('status', 'cancelled'),
+    count(),
+    count().eq('status', 'completed'),
+    count().eq('status', 'overdue'),
+    count().eq('status', 'cancelled'),
   ])
 
   const completionRate = total ? Math.round(((verified ?? 0) / total) * 100) : 0

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { ASSIGNABLE_MEMBER_ROLES, normalizeRoleName, resolveCanonicalRoleId } from '@/lib/roles'
+import { resolveCanonicalRoleId } from '@/lib/roles'
+import { toPropertyRole } from '@/lib/authz/permissions'
 import { findAuthUserByEmail, grantPropertyAccess } from '@/lib/auth-users'
 
 interface Params {
@@ -28,8 +29,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This invitation link has expired.' }, { status: 410 })
   }
 
-  const roleName = normalizeRoleName(invite.role_name as string | null)
-  if (!ASSIGNABLE_MEMBER_ROLES.some((role) => role === roleName)) {
+  const roleName = toPropertyRole(invite.role_name as string | null)
+  if (!roleName) {
     return NextResponse.json(
       { error: 'This invitation has no valid role. Ask your administrator to send a new invitation.' },
       { status: 400 }

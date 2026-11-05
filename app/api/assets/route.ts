@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { user, service } = session
 
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
 
-  const service = await createServiceClient()
-  const access = await authorizeWorkOrderStaff(service, user, propertyId)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'maintenance.manage', { propertyId })
+  if (!access.ok) return access.response
 
   const body = await request.json() as {
     building_id?: string

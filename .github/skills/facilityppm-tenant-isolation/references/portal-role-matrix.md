@@ -14,7 +14,7 @@ Legend: ✅ allowed · 🔒 allowed with the scope noted · ❌ forbidden
 | Admin Portal | Administrator | `admin` | `engineers.role_id → roles.name` per property | One property |
 | Admin Portal | Property Manager | `property_manager` | same | One property |
 | Admin Portal | Head Engineer | `head_engineer` | same | One property |
-| Admin Portal | Service Group | `service_group` (legacy value `'service group'`, renamed in the rewrite) | same | Work assigned to them |
+| Admin Portal | Service Group | `service_group` (stored as `'service group'` before migration 020) | same | Work assigned to them |
 | Tenant Portal | Tenant | `tenant` | same, plus `engineers.company_id` | Their company's floor(s) |
 | — | Viewer (legacy) | `viewer` | `lib/roles.ts` | **Retired** (D1) — no access |
 
@@ -57,8 +57,10 @@ Always resolve the role **for the property being acted on**, not the "active" on
 |---|---|---|---|---|---|
 | Submit a work request | 🔒 on behalf of a company (D7) | 🔒 on behalf (D7) | 🔒 on behalf (D7) | ❌ | 🔒 own company, own floor(s) |
 | View work requests | ✅ property | ✅ property | ✅ property | 🔒 assigned (D14) | 🔒 own company (D10) |
-| Review: inspect, prepare/revise costing, verify | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Waive charges | ✅ | ✅ | ❌ (D8) | ❌ | ❌ |
+| Review: start inspection, prepare/revise costing, verify | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Record inspection findings | ✅ | ✅ | ✅ | 🔒 assigned (D20) | ❌ |
+| Waive charges (and remove a waiver) | ❌ (D8) | ✅ (D8) | ❌ (D8) | ❌ | ❌ |
+| View the Waived Orders list | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Assign engineers / Service Group | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Start work, update progress, upload completion evidence | ✅ | ✅ | ✅ | 🔒 assigned (D14) | ❌ |
 | Cancel | ✅ | ✅ | ✅ (D9) | ❌ | 🔒 own company, status `new_report` only (D9) |
@@ -105,7 +107,7 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D5 | Admin and Property Manager manage tenant companies and tenant users | Spec: Admin Portal users "add tenants"; PM "manages the building" |
 | D6 | PM manages Head Engineer / Service Group / tenants but not Admins or other PMs | Prevents privilege escalation by PMs |
 | D7 | Admin, PM, Head Engineer may submit on behalf of a tenant company (must pick company + floor) | Current admin "Service Report" page does this |
-| D8 | Waiving charges is Admin + PM | Matches current `WAIVED_ORDER_ROLES` |
+| D8 | Waiving charges is **Property Manager only** (user override 2026-11-05); Admins and PMs can view the Waived Orders list | Product owner decision |
 | D9 | Head Engineer may cancel; tenants may cancel their company's request only while `new_report` | Head Engineer leads the job; tenants can withdraw before inspection starts |
 | D10 | Tenants see all requests of their company, not only their own submissions | Spec frames the portal per company |
 | D11 | A company can occupy several floors; a floor has at most one current company | Spec: each floor is occupied by a different company |
@@ -116,3 +118,7 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D16 | Tests: Vitest for the permission matrix and route guards; RLS verified with a SQL script on a staging project | No test runner exists today |
 | D17 | Licenses = existing `license_status` (`active`/`trial`/`suspended`) + new `license_expires_at`; expired is treated as suspended; changes audit-logged | Spec: "add and revoke licenses" |
 | D18 | "Account" = a property account. Terminate = suspend license, deactivate all members, ban their auth users; hard delete stays a separate typed-confirmation action | Spec: "create and terminate accounts"; termination must be reversible by default |
+| D19 | Existing tenant users are **not** auto-linked to companies (user decision 2026-11-05). Until an Admin/PM links them, they see a "not linked to a company" page and no requests; linking also sets `company_id` on their earlier requests; work orders without a company stay staff-only | Avoids guessing company membership from free text |
+| D20 | The Service Group member assigned to inspect a request may record the inspection findings | The workflow assigns a Service Group member as inspector |
+
+The matrix in code is `lib/authz/permissions.ts`; `tests/authz/permissions.test.ts` mirrors this file row by row.

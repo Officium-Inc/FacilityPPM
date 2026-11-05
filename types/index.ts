@@ -174,7 +174,7 @@ export interface WorkOrder {
   cancelled_at: string | null
   cancelled_by_name: string | null
   cancellation_reason: string | null
-  cancelled_stage: 'inspection' | 'costing' | null
+  cancelled_stage: 'submission' | 'inspection' | 'costing' | null
   audit_report_url: string | null
   // Audit fields
   original_wo_number: string | null

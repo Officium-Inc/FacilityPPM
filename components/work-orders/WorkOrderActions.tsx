@@ -24,10 +24,35 @@ interface WorkOrderActionsProps {
   workOrder: WorkOrder
   engineers?: Engineer[]
   slug: string
+  /** What the signed-in user may do with this work order (from lib/authz). The API enforces the same rules. */
+  permissions: WorkOrderActionPermissions
   /** Previously saved estimate, used to prefill the costing form when it is revised. */
   existingCosting?: Pick<WorkOrderCosting, 'labour_hours' | 'labour_rate' | 'materials_total' | 'subcontractor_total' | 'line_items' | 'notes'> | null
   /** Context about the job being assigned, shown read-only in the Assign Work Order modal. */
   jobSummary?: AssignJobSummary
+}
+
+export interface WorkOrderActionPermissions {
+  review: boolean
+  inspect: boolean
+  assign: boolean
+  execute: boolean
+  cancel: boolean
+}
+
+/** Which permission the actions shown at each status need. Statuses not listed only show read-only info. */
+const STATUS_PERMISSION: Partial<Record<WorkOrder['status'], keyof WorkOrderActionPermissions>> = {
+  new_report: 'review',
+  inspecting: 'inspect',
+  costing: 'review',
+  pending_approval: 'review',
+  assigned: 'assign',
+  in_progress: 'execute',
+  svc_submitted: 'review',
+  verified: 'review',
+  signed: 'review',
+  scheduled: 'review',
+  on_hold: 'review',
 }
 
 const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
@@ -44,7 +69,7 @@ function uploadKindLabel(url: string) {
   return 'File'
 }
 
-export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, existingCosting = null, jobSummary = {} }: WorkOrderActionsProps) {
+export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, permissions, existingCosting = null, jobSummary = {} }: WorkOrderActionsProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -106,7 +131,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
     return normalizeRoleName((roles as { name?: string })?.name)
   }
   const tenants = engineers.filter(e => getRoleName(e.roles) === 'tenant' && e.is_active)
-  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service group' && e.is_active)
+  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service_group' && e.is_active)
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -151,6 +176,18 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   async function handleSendSignOff() {
     const ok = await apiPost(`/api/work-orders/${workOrder.id}/send-sign-off`, {})
     if (ok) setMessage({ type: 'success', text: 'Sign-off link sent to tenant.' })
+  }
+
+  const requiredPermission = STATUS_PERMISSION[status]
+  if (requiredPermission && !permissions[requiredPermission]) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
+        <h3 className="font-semibold text-gray-900 text-sm">Actions</h3>
+        <p className="text-xs text-gray-500">
+          You can view this work order. Actions at this stage are handled by the property team.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -219,13 +256,15 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
               title="Third-party contractor will do the work"
               description="Record the contractor, then continue to costing and tenant approval."
             />
-            <OutcomeOption
-              checked={inspectionOutcome === 'cancel'}
-              onSelect={() => setInspectionOutcome('cancel')}
-              title="Cancel request"
-              description="Close this report. The tenant is notified."
-              tone="danger"
-            />
+            {permissions.cancel && (
+              <OutcomeOption
+                checked={inspectionOutcome === 'cancel'}
+                onSelect={() => setInspectionOutcome('cancel')}
+                title="Cancel request"
+                description="Close this report. The tenant is notified."
+                tone="danger"
+              />
+            )}
           </div>
 
           {inspectionOutcome === 'third_party' && (

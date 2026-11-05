@@ -1,8 +1,8 @@
-import { createServiceClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import LicenseBadge from '@/components/provider/LicenseBadge'
 import PropertyManageClient from './PropertyManageClient'
+import { requireProviderPage } from '@/lib/authz/guard'
 import type { Property, Engineer, Role } from '@/types'
 import { ArrowLeft } from 'lucide-react'
 
@@ -12,7 +12,7 @@ interface Props {
 
 export default async function PropertyManagePage({ params }: Props) {
   const { slug } = await params
-  const service = await createServiceClient()
+  const { service } = await requireProviderPage()
 
   const { data: property } = await service
     .from('properties')

@@ -20,11 +20,12 @@ interface Props {
   slug: string
   assets: Asset[]
   buildings: Building[]
+  canManage: boolean
 }
 
 const EMPTY = { building_id: '', name: '', category: '', make: '', model: '', serial_no: '', location: '' }
 
-export default function AssetsClient({ slug: _slug, assets, buildings }: Props) {
+export default function AssetsClient({ slug: _slug, assets, buildings, canManage }: Props) {
   const router = useRouter()
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(EMPTY)
@@ -66,17 +67,19 @@ export default function AssetsClient({ slug: _slug, assets, buildings }: Props) 
           <h2 className="text-xl font-bold text-gray-900">Asset Registry</h2>
           <p className="text-sm text-gray-500 mt-0.5">{assets.length} assets</p>
         </div>
-        <button
-          onClick={() => { setShowAdd(true); setError(null) }}
-          className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Add Asset
-        </button>
+        {canManage && (
+          <button
+            onClick={() => { setShowAdd(true); setError(null) }}
+            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Asset
+          </button>
+        )}
       </div>
 
       {/* Add Asset Form */}
-      {showAdd && (
+      {canManage && showAdd && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-gray-900 text-sm">Add New Asset</h3>

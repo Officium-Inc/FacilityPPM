@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { isPriority } from '@/lib/priority'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 
@@ -12,9 +13,9 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json()
   const {
@@ -33,11 +34,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Engineer is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, property_id, wo_number')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status, wo_number`)
     .eq('id', id)
     .single()
 
@@ -46,10 +47,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not in assignment stage.' }, { status: 409 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.assign', { record: wo })
+  if (!access.ok) return access.response
   const { actor } = access
-  const headEngineer = actor.id ? { id: actor.id } : null
+  const headEngineer = actorEngineerId(actor) ? { id: actorEngineerId(actor) } : null
 
   const { data: assignee } = await service
     .from('engineers')
@@ -90,9 +91,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'assigned',
     step: 'Assignment',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Assigned',
     reason: `Assigned to ${assignee?.full_name ?? 'service team member'}${dueDate ? `, due ${dueDate}` : ''}`,
     metadata: { assignee_name: assignee?.full_name ?? null, assignee_email: assignee?.email ?? null, due_date: dueDate ?? null },

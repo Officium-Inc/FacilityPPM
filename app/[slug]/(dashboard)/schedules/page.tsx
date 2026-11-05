@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
+import { requirePage } from '@/lib/authz/guard'
 import type { PpmSchedule } from '@/types'
 
 interface Props {
@@ -7,15 +7,13 @@ interface Props {
 }
 
 export default async function SchedulesPage({ params }: Props) {
-  const { slug: _slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const propertyId = user?.app_metadata?.property_id as string | undefined
+  const { slug } = await params
+  const { service, property } = await requirePage(slug, 'maintenance.view')
 
-  const { data: schedules } = await supabase
+  const { data: schedules } = await service
     .from('ppm_schedules')
     .select('*, assets!inner(id, name, buildings!inner(id, name, sites!inner(id, name, property_id)))')
-    .eq('assets.buildings.sites.property_id', propertyId ?? '00000000-0000-0000-0000-000000000000')
+    .eq('assets.buildings.sites.property_id', property.id)
     .order('next_due', { ascending: true })
 
   const rows = (schedules as PpmSchedule[]) ?? []

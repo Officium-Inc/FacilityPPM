@@ -1,8 +1,9 @@
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { normalizeRoleName } from '@/lib/roles'
-import { isTenantRequestOwner } from '@/lib/work-order-access'
+import { requirePage, type Service } from '@/lib/authz/guard'
+import { userPropertyIds, type MemberActor } from '@/lib/authz/actor'
+import { can } from '@/lib/authz/permissions'
 import type { Priority, WorkOrderStatus } from '@/types'
 
 export type TenantRequestFilter =
@@ -28,11 +29,12 @@ export interface TenantEngineer {
 
 export interface TenantPortalContext {
   user: User
+  actor: MemberActor
   property: TenantProperty
   engineer: TenantEngineer
   role: string
   userProperties: Array<{ id: string; name: string; slug: string }>
-  service: Awaited<ReturnType<typeof createServiceClient>>
+  service: Service
 }
 
 export interface TenantRequestReport {
@@ -63,6 +65,8 @@ export interface TenantRequestRow {
   sign_off_token: string | null
   audit_report_url: string | null
   cancellation_reason: string | null
+  company_id?: string | null
+  engineer_id?: string | null
   work_order_reports: TenantRequestReport | TenantRequestReport[] | null
 }
 
@@ -99,29 +103,13 @@ export function rowsOf<T>(value: T | T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [value]
 }
 
-function roleNameFromRelation(roles: unknown) {
-  if (!roles) return ''
-  if (Array.isArray(roles)) {
-    return normalizeRoleName((roles[0] as { name?: string } | undefined)?.name)
-  }
-  return normalizeRoleName((roles as { name?: string } | null)?.name)
-}
-
-export async function getTenantPortalContext(slug: string): Promise<TenantPortalContext> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const service = await createServiceClient()
-  const { data: property } = await service
-    .from('properties')
-    .select('id, name, slug, license_status')
-    .eq('slug', slug)
-    .single()
-
-  if (!property || property.license_status === 'suspended') {
-    redirect(`/${slug}/suspended`)
-  }
+/**
+ * Tenant Portal guard and context (per request). Only active tenant members of the property get in;
+ * staff are sent to the Admin Portal, others signed out.
+ */
+export const getTenantPortalContext = cache(async (slug: string): Promise<TenantPortalContext> => {
+  const { user, service, property, actor } = await requirePage(slug, 'portal.tenant')
+  if (actor.kind !== 'member') redirect(`/${slug}`)
 
   if (user.app_metadata?.property_slug !== slug) {
     await service.auth.admin.updateUserById(user.id, {
@@ -133,45 +121,31 @@ export async function getTenantPortalContext(slug: string): Promise<TenantPortal
     })
   }
 
-  const { data: engineer } = await service
-    .from('engineers')
-    .select('id, full_name, email, is_active, roles(name)')
-    .eq('property_id', property.id)
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (engineer && engineer.is_active === false) {
-    redirect('/api/auth/sign-out?next=/login?reason=deactivated')
-  }
-
-  const role = roleNameFromRelation(engineer?.roles)
-  if (!engineer || role !== 'tenant') {
-    redirect(`/${slug}`)
-  }
-
-  const propertyIds: string[] = (user.app_metadata?.property_ids as string[] | undefined) ??
-    (user.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])
-
+  const propertyIds = userPropertyIds(user)
   const { data: userProperties } = propertyIds.length > 0
     ? await service.from('properties').select('id, name, slug').in('id', propertyIds)
     : { data: [] }
 
   return {
     user,
+    actor,
     property: property as TenantProperty,
-    engineer: engineer as TenantEngineer,
-    role,
+    engineer: { id: actor.engineerId, full_name: actor.name, email: actor.email ?? '', is_active: true },
+    role: actor.role,
     userProperties: userProperties ?? [],
     service,
   }
-}
+})
 
 export function isTenantOwnedRequest(row: TenantRequestRow, context: TenantPortalContext) {
   const report = rowsOf(row.work_order_reports)[0]
-  return isTenantRequestOwner(
-    { requested_by_id: row.requested_by_id, tenant_email: row.tenant_email, reported_by_contact: report?.reported_by_contact },
-    { engineerId: context.engineer.id, email: context.engineer.email || context.user.email || null }
-  )
+  return can(context.actor, 'workRequest.view', {
+    property_id: row.property_id,
+    requested_by_id: row.requested_by_id,
+    tenant_email: row.tenant_email,
+    reported_by_contact: report?.reported_by_contact,
+    company_id: row.company_id ?? null,
+  })
 }
 
 export function filterTenantRequests(

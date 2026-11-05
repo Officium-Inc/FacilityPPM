@@ -22,14 +22,17 @@ interface Props {
   workOrderId: string
   initialComments: WoComment[]
   mentionables: MentionableEngineer[]
+  /** Read-only (e.g. provider support view) when false. */
+  canComment?: boolean
 }
 
 const ROLE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   head_engineer:    { bg: 'bg-green-100',  text: 'text-green-800',  label: 'Head Engineer' },
-  'service group':  { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Service Group' },
+  service_group:    { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Service Group' },
   tenant:           { bg: 'bg-blue-100',   text: 'text-blue-800',   label: 'Tenant' },
-  admin:            { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Admin' },
+  admin:            { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Administrator' },
   property_manager: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Property Manager' },
+  provider:         { bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Provider' },
   viewer:           { bg: 'bg-gray-100',   text: 'text-gray-600',   label: 'Viewer' },
 }
 
@@ -54,7 +57,7 @@ function CommentBody({ text }: { text: string }) {
   )
 }
 
-export default function WoCommentsSection({ workOrderId, initialComments, mentionables }: Props) {
+export default function WoCommentsSection({ workOrderId, initialComments, mentionables, canComment = true }: Props) {
   const [comments, setComments] = useState<WoComment[]>(initialComments)
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -226,6 +229,7 @@ export default function WoCommentsSection({ workOrderId, initialComments, mentio
       </div>
 
       {/* Compose with @mention autocomplete */}
+      {canComment && (
       <div className="relative">
         {/* Mention suggestions popup */}
         {mentionQuery !== null && suggestions.length > 0 && (
@@ -266,6 +270,7 @@ export default function WoCommentsSection({ workOrderId, initialComments, mentio
         {error && <p className="text-xs text-red-500 mt-1.5">{error}</p>}
         <p className="text-xs text-gray-400 mt-1.5">Enter to send · Shift+Enter for newline · @ to mention</p>
       </div>
+      )}
     </div>
   )
 }

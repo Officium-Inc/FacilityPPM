@@ -1,6 +1,5 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import FaultReportForm from './FaultReportForm'
+import { requirePage } from '@/lib/authz/guard'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -8,9 +7,7 @@ interface Props {
 
 export default async function NewFaultReportPage({ params }: Props) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  await requirePage(slug, 'workRequest.submitOnBehalf')
 
   return (
     <div className="max-w-2xl space-y-6">

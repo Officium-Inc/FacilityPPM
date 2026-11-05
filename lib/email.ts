@@ -352,11 +352,11 @@ export async function sendCancellationEmail({
   toName?: string | null
   woNumber: string
   propertyName: string
-  stage: 'inspection' | 'costing'
+  stage: 'submission' | 'inspection' | 'costing'
   reason: string
 }) {
   const greeting = toName ? `Dear ${escapeHtml(toName)},` : 'Dear Tenant,'
-  const stageLabel = stage === 'costing' ? 'cost estimate' : 'inspection'
+  const stageLabel = stage === 'costing' ? 'cost estimate' : stage === 'submission' ? 'request' : 'inspection'
 
   const transporter = createTransporter()
   await transporter.sendMail({

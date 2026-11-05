@@ -1,4 +1,3 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import ChecklistItemComponent from '@/components/work-orders/ChecklistItem'
 import WorkOrderActions from '@/components/work-orders/WorkOrderActions'
@@ -6,7 +5,9 @@ import WorkOrderStickyHeader from '@/components/work-orders/WorkOrderStickyHeade
 import WoCommentsSection from '@/components/work-orders/WoCommentsSection'
 import WorkOrderFormView from '@/components/work-orders/WorkOrderFormView'
 import { loadWorkOrderForm } from '@/lib/work-order-form'
-import { canViewWorkOrder } from '@/lib/work-order-access'
+import { getPropertyBySlug, requirePageRecord } from '@/lib/authz/guard'
+import { can } from '@/lib/authz/permissions'
+import { createServiceClient } from '@/lib/supabase/server'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
 import { priorityLabel } from '@/lib/priority'
@@ -25,7 +26,9 @@ function rowsOf<T>(value: T | T[] | null | undefined): T[] {
 
 export default async function WorkOrderDetailPage({ params }: Props) {
   const { slug, id } = await params
-  const supabase = await createClient()
+  // Only load work orders of the property in the URL; access is then checked against the row itself
+  const slugProperty = await getPropertyBySlug(slug)
+  if (!slugProperty) notFound()
   const service = await createServiceClient()
 
   const { data: wo, error: woError } = await service
@@ -46,18 +49,20 @@ export default async function WorkOrderDetailPage({ params }: Props) {
       work_order_completion_evidence!work_order_completion_evidence_work_order_id_fkey(*)
     `)
     .eq('id', id)
-    .single()
+    .eq('property_id', slugProperty.id)
+    .maybeSingle()
 
   if (woError) console.error('[WO detail] query error:', woError)
+  const { actor } = await requirePageRecord(slug, 'workRequest.view', wo)
   if (!wo) notFound()
-
-  // The work order must belong to the property in the URL and be visible to this user
-  const [{ data: { user } }, { data: slugProperty }] = await Promise.all([
-    supabase.auth.getUser(),
-    service.from('properties').select('id').eq('slug', slug).maybeSingle(),
-  ])
-  if (!user || !slugProperty || wo.property_id !== slugProperty.id) notFound()
-  if (!(await canViewWorkOrder(service, user, wo))) notFound()
+  const permissions = {
+    review: can(actor, 'workRequest.review', wo),
+    inspect: can(actor, 'workRequest.inspect', wo),
+    assign: can(actor, 'workRequest.assign', wo),
+    execute: can(actor, 'workRequest.execute', wo),
+    cancel: can(actor, 'workRequest.cancel', wo),
+  }
+  const canComment = can(actor, 'workRequest.comment', wo)
 
   // Fetch approval trail, engineers list, and comments
   const [{ data: trailData }, { data: engineersList }, { data: rawComments }] = await Promise.all([
@@ -376,7 +381,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
           })()}
 
           {/* ── Comments ────────────────────────────────────────── */}
-          <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} mentionables={mentionables} />
+          <WoCommentsSection workOrderId={workOrder.id} initialComments={comments} mentionables={mentionables} canComment={canComment} />
         </div>
 
           <div className="order-1 min-w-0 xl:order-2 xl:sticky xl:top-[var(--wo-sticky-header-height,10rem)]">
@@ -385,6 +390,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               workOrder={workOrder}
               engineers={engineers}
               slug={slug}
+              permissions={permissions}
               jobSummary={assignJobSummary}
               existingCosting={costing[0] ? {
                 labour_hours: Number(costing[0].labour_hours ?? 0),

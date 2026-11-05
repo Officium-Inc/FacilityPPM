@@ -1,32 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
-/** Waiving (and un-waiving) charges is a Property Manager decision (decision D8). */
-const WAIVE_ROLES = ['property_manager']
-
+/** Waiving (and un-waiving) charges is a Property Manager decision (D8). */
 async function authorizeWaive(id: string) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) } as const
+  const session = await requireSession()
+  if (!session.ok) return { error: session.response } as const
+  const { service } = session
 
-  const service = await createServiceClient()
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, property_id, is_cost_waived')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, is_cost_waived`)
     .eq('id', id)
     .maybeSingle()
 
   if (!wo) return { error: NextResponse.json({ error: 'Work order not found.' }, { status: 404 }) } as const
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { roles: WAIVE_ROLES })
-  if (!access.ok) return { error: NextResponse.json({ error: access.error }, { status: access.status }) } as const
+  const access = await authorize(session, 'workRequest.waive', { record: wo })
+  if (!access.ok) return { error: access.response } as const
 
   return { service, wo, actor: access.actor } as const
 }
@@ -57,9 +55,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'cost_waived',
     step: 'Charges waived',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Waived',
     reason,
     createdAt: now,
@@ -93,9 +89,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'cost_waiver_removed',
     step: 'Charges waiver removed',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Waiver removed',
     createdAt: now,
   })

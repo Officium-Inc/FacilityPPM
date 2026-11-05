@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 
 interface Params {
   params: Promise<{ slug: string }>
 }
 
-async function requireProvider() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'provider') return null
-  return user
-}
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { slug } = await params
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
   const body = await request.json()
   const { license_status, name } = body as { license_status?: string; name?: string }
@@ -34,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const service = provider.service
   const { error } = await service.from('properties').update(updates).eq('slug', slug)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -43,11 +36,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { slug } = await params
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
-  const service = await createServiceClient()
+  const service = provider.service
 
   // Fetch property to get id + auth users to clean up
   const { data: property } = await service

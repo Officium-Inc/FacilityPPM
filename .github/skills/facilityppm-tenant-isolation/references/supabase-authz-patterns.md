@@ -26,47 +26,43 @@ browser can reach**; route handlers are a second layer, not a substitute.
 - Changing `app_metadata`: only server-side via `service.auth.admin.updateUserById()` after authz; merge
   arrays (never overwrite `property_ids`); never let a property admin set `role: 'provider'`.
 
-## Existing authorization helpers
+## Authorization module (`lib/authz/`)
 
-| Helper | File | Checks |
+| Export | File | Use |
 |---|---|---|
-| `authorizeWorkOrderStaff(service, user, propertyId)` | `lib/work-order-access.ts` | provider, or property member with non-tenant/non-viewer role |
-| `canViewWorkOrder(service, user, wo)` | `lib/work-order-access.ts` | provider, staff of property, or tenant who submitted it |
-| `resolveTenantSubmitter(service, user, slug?)` | `lib/tenant-submit.ts` | slug ∈ `property_slugs`, active tenant member |
-| `requireMondayPropertyAdmin()` | `lib/monday/auth.ts` | authn + provider or `admin`/`property_manager` |
-| `getTenantPortalContext(slug)` | `lib/tenant.ts` | authn, license, active tenant member (pages) |
-| `resolveWorkOrderActor(service, user, propertyId)` | `lib/work-order-events.ts` | resolves role only — **not** an authz check by itself; no `is_active` check |
-| local `requireProvider()` | `app/api/provider/**` | authn + `app_metadata.role === 'provider'` |
-
-For the rewrite, prefer one central helper, e.g. `authorize(user, { propertyId, roles, record })`, that
-returns `{ ok, actor }` or `{ ok: false, status, error }` and enforces membership, `is_active`, license,
-role and record scope (company / assignment) in one place.
+| `PERMISSIONS`, `can(actor, action, record?)`, `assignableRoles`, `canManageMember` | `permissions.ts` | The matrix in code; pure, also used by client components for menus/buttons |
+| `resolveMembership` / `resolveActor`, `actorLog`, `userPropertyIds` | `actor.ts` | Provider, or active member with a current role (reads the `engineers` row, not only the JWT) |
+| `requireSession()`, `authorize(session, action, { record \| propertyId })`, `requireProvider()` | `guard.ts` | Route handlers; checks membership, `is_active`, license and the role's scope on the record |
+| `requirePage(slug, action)`, `requirePageRecord(slug, action, record)`, `requireProviderPage()` | `guard.ts` | Server components; redirect/404 instead of rendering |
+| `WORK_ORDER_SCOPE_COLUMNS` | `records.ts` | Columns every work order query selects before authorizing |
+| `authorizeTenantSubmit(session, slug)` | `lib/tenant-submit.ts` | Tenant work request submission |
+| `requireMondayPropertyAdmin()` | `lib/monday/auth.ts` | Monday integration settings |
 
 ## API route template
 
 ```ts
 import { NextResponse, type NextRequest } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  // 1. Authenticate (server-validated)
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // 1. Authenticate (server-validated getUser) and get a service client
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { service } = session
 
-  // 2. Load the target record's scope with the service client (ids only)
-  const service = await createServiceClient()
-  const { data: wo } = await service.from('work_orders').select('id, property_id').eq('id', id).maybeSingle()
+  // 2. Load the target record with its scope columns
+  const { data: wo } = await service.from('work_orders').select(`${WORK_ORDER_SCOPE_COLUMNS}, status`).eq('id', id).maybeSingle()
   if (!wo) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // 3. Authorize against the RECORD's property + the caller's role there
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  // 3. Authorize the action against the RECORD (its property + the role's scope there)
+  const access = await authorize(session, 'workRequest.review', { record: wo })
+  if (!access.ok) return access.response
 
   // 4. Validate input; never take property_id / role / company_id from the body
   const body = await request.json().catch(() => null)
@@ -75,7 +71,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // 5. Privileged write, constrained to the authorized record
   const { error } = await service.from('work_orders').update({ /* allowed fields */ }).eq('id', wo.id)
   if (error) return NextResponse.json({ error: 'Update failed' }, { status: 500 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, by: actorLog(access.actor).actorName })
 }
 ```
 

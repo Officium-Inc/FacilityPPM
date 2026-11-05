@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { MEMBER_MANAGER_ROLES, canManageMemberRole } from '@/lib/roles'
-import { authorizePropertyRole } from '@/lib/work-order-access'
+import { canManageMember } from '@/lib/authz/permissions'
+import { authorize, requireSession } from '@/lib/authz/guard'
 
 interface Params {
   params: Promise<{ inviteId: string }>
@@ -10,16 +9,15 @@ interface Params {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { inviteId } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { user, service } = session
 
   const propertyId = user.app_metadata?.property_id as string | undefined
   if (!propertyId) return NextResponse.json({ error: 'No active property' }, { status: 400 })
 
-  const service = await createServiceClient()
-  const access = await authorizePropertyRole(service, user, propertyId, MEMBER_MANAGER_ROLES)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'members.manage', { propertyId })
+  if (!access.ok) return access.response
 
   // Verify the invitation belongs to this property
   const { data: inv } = await service
@@ -30,7 +28,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .maybeSingle()
 
   if (!inv) return NextResponse.json({ error: 'Invitation not found.' }, { status: 404 })
-  if (!canManageMemberRole(access.actor.role, inv.role_name ?? '')) {
+  if (!canManageMember(access.actor, inv.role_name)) {
     return NextResponse.json({ error: 'You cannot manage invitations for this role.' }, { status: 403 })
   }
 

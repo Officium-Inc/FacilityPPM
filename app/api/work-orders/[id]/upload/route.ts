@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { IMAGE_TYPES, optimizeImage } from '@/lib/image-upload'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { WORK_ORDER_FILE_BUCKET, workOrderFilePath } from '@/lib/work-order-files'
 
 interface Params {
@@ -16,23 +16,21 @@ const BUCKET = WORK_ORDER_FILE_BUCKET
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
 
-  const service = await createServiceClient()
+  if (!session.ok) return session.response
+
+  const { service } = session
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, property_id, engineer_id')
+    .select(WORK_ORDER_SCOPE_COLUMNS)
     .eq('id', id)
     .maybeSingle()
   if (!wo?.property_id) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
 
   // Staff, or the Service Group member assigned to this work order
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id, { assignedEngineerId: wo.engineer_id })
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.execute', { record: wo })
+  if (!access.ok) return access.response
 
   const formData = await request.formData()
   const file = formData.get('file') as File | null

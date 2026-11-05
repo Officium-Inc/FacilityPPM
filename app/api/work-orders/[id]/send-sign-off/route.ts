@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorize, requireSession } from '@/lib/authz/guard'
 import { generateSignOffToken, getSignOffExpiry } from '@/lib/token'
 import { sendSignOffEmail } from '@/lib/email'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
 interface Params {
@@ -11,15 +10,10 @@ interface Params {
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
-  const supabase = await createClient()
+  const session = await requireSession()
+  if (!session.ok) return session.response
 
-  // Verify auth
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const service = await createServiceClient()
+  const { service } = session
 
   // Fetch work order
   const { data: wo, error: fetchErr } = await service
@@ -43,8 +37,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not waiting for tenant sign-off' }, { status: 400 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.review', { record: wo })
+  if (!access.ok) return access.response
 
   const token = generateSignOffToken()
   const expiresAt = getSignOffExpiry()
@@ -65,7 +59,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // Log to audit
   await service.from('audit_log').insert({
     property_id: (wo as { property_id?: string | null }).property_id ?? null,
-    user_id: user.id,
+    user_id: session.user.id,
     action: 'work_order.sign_off_link_sent',
     entity_type: 'work_order',
     entity_id: id,

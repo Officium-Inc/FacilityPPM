@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
-import { resolveTenantSubmitter, sanitizeServiceReportPhotoUrls } from '@/lib/tenant-submit'
+import { authorizeTenantSubmit, sanitizeServiceReportPhotoUrls } from '@/lib/tenant-submit'
+import { requireSession } from '@/lib/authz/guard'
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { user, service } = session
 
   const body = await request.json()
   const {
@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Description of work requested is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
-  const submitter = await resolveTenantSubmitter(service, user, slug)
-  if (!submitter.ok) return NextResponse.json({ error: submitter.error }, { status: submitter.status })
+  const submitter = await authorizeTenantSubmit(session, slug)
+  if (!submitter.ok) return submitter.response
 
-  const { propertyId, engineer } = submitter
+  const { propertyId, actor } = submitter
+  const engineer = { id: actor.engineerId, full_name: actor.name, email: actor.email }
   const reportedByLabel = reportedByName?.trim() || engineer.full_name || user.email || 'Tenant'
   const contact = reportedByContact?.trim() || engineer.email || user.email || null
   const woNumber = `REPT-${Date.now().toString(36).toUpperCase()}`

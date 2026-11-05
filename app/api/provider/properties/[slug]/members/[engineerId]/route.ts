@@ -1,29 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireProvider } from '@/lib/authz/guard'
 import { resolveCanonicalRoleId } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ slug: string; engineerId: string }>
 }
 
-async function requireProvider() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'provider') return null
-  return user
-}
 
 // PATCH: Update a member's role or active status
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { engineerId } = await params
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
   const body = await request.json()
   const { role_id, is_active } = body as { role_id?: string; is_active?: boolean }
 
-  const service = await createServiceClient()
+  const service = provider.service
   const updates: Record<string, unknown> = {}
   if (role_id !== undefined) {
     if (role_id) {
@@ -51,11 +44,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 // DELETE: Remove a member from the property
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { slug, engineerId } = await params
-  if (!await requireProvider()) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const provider = await requireProvider()
+  if (!provider.ok) return provider.response
 
-  const service = await createServiceClient()
+  const service = provider.service
 
   // Get the engineer to find their user_id and property_id
   const { data: engineer } = await service

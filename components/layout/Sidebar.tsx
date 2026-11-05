@@ -16,33 +16,32 @@ import {
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { normalizeRoleName } from '@/lib/roles'
+import { can, type ActorLike } from '@/lib/authz/permissions'
 
 type NavItem = { href: string; label: string; icon: React.ElementType }
 
-const WORK_ORDER_ROLES = ['admin', 'head_engineer']
-const WAIVED_ORDER_ROLES = ['admin', 'property_manager']
-const MEMBERS_MANAGE_ROLES = ['admin', 'property_manager']
-
-function buildNav(slug: string, userRole: string): NavItem[] {
+/** Menu entries follow the permission matrix; pages and APIs enforce the same rules server-side. */
+function buildNav(slug: string, actor: ActorLike): NavItem[] {
   const base = `/${slug}`
-  const normalizedRole = normalizeRoleName(userRole)
   const nav: NavItem[] = [
     { href: base, label: 'Dashboard', icon: LayoutDashboard },
   ]
 
-  if (WORK_ORDER_ROLES.includes(normalizedRole)) {
+  if (can(actor, 'workRequest.view')) {
     nav.push({ href: `${base}/work-orders`, label: 'Work Orders', icon: ClipboardList })
-    nav.push({ href: `${base}/assets`, label: 'Assets', icon: Package })
   }
-
-  if (WAIVED_ORDER_ROLES.includes(normalizedRole)) {
+  if (can(actor, 'workRequest.submitOnBehalf') || (actor.kind === 'provider' && can(actor, 'workRequest.view'))) {
+    nav.push({ href: `${base}/fault-reports`, label: 'Service Reports', icon: AlertTriangle })
+  }
+  if (can(actor, 'workRequest.waivedList')) {
     nav.push({ href: `${base}/waived-orders`, label: 'Waived Orders', icon: Ban })
   }
+  if (can(actor, 'maintenance.view')) {
+    nav.push({ href: `${base}/assets`, label: 'Assets', icon: Package })
+    nav.push({ href: `${base}/schedules`, label: 'Schedules', icon: CalendarClock })
+    nav.push({ href: `${base}/reports`, label: 'Reports', icon: BarChart3 })
+  }
 
-  nav.push({ href: `${base}/fault-reports`, label: 'Service Report', icon: AlertTriangle })
-  nav.push({ href: `${base}/schedules`, label: 'Schedules', icon: CalendarClock })
-  nav.push({ href: `${base}/reports`, label: 'Reports', icon: BarChart3 })
   nav.push({ href: `${base}/settings`, label: 'Settings', icon: Settings })
 
   return nav
@@ -50,18 +49,18 @@ function buildNav(slug: string, userRole: string): NavItem[] {
 
 export default function Sidebar({
   slug,
-  userRole,
+  actor,
   propertyName,
 }: {
   slug: string
-  userRole: string
+  actor: ActorLike
   propertyName: string
 }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const base = `/${slug}`
-  const nav = buildNav(slug, userRole)
+  const nav = buildNav(slug, actor)
   const sidebarSubtitle = propertyName || slug
 
   useEffect(() => {

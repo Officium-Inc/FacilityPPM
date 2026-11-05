@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { userPropertyIds } from '@/lib/work-order-access'
+import { userPropertyIds } from '@/lib/authz/actor'
 
 /** Login check: the user must be an active member of the property they are about to open. */
 export async function POST(request: NextRequest) {

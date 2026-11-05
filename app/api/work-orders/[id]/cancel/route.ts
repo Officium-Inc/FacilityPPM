@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { sendCancellationEmail } from '@/lib/email'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
@@ -9,41 +10,49 @@ interface Params {
   params: Promise<{ id: string }>
 }
 
-const CANCELLABLE_STATUSES = ['inspecting', 'costing', 'pending_approval']
+/** Staff cancel during inspection or costing; tenants may withdraw their request before inspection starts (D9). */
+const STAFF_CANCELLABLE_STATUSES = ['inspecting', 'costing', 'pending_approval']
+const TENANT_CANCELLABLE_STATUSES = ['new_report']
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
 
-  const { reason } = await request.json() as { reason?: string }
+  const { reason } = await request.json().catch(() => ({})) as { reason?: string }
   if (!reason?.trim()) {
     return NextResponse.json({ error: 'A cancellation reason is required.' }, { status: 400 })
   }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, wo_number, property_id, requested_by_id, tenant_name, tenant_email, properties(name, slug)')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status, wo_number, tenant_name, properties(name, slug)`)
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   if (!wo) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
-  if (!CANCELLABLE_STATUSES.includes(wo.status)) {
+
+  const access = await authorize(session, 'workRequest.cancel', { record: wo })
+  if (!access.ok) return access.response
+  const { actor } = access
+
+  const isTenant = actor.kind === 'member' && actor.role === 'tenant'
+  const cancellable = isTenant ? TENANT_CANCELLABLE_STATUSES : STAFF_CANCELLABLE_STATUSES
+  if (!cancellable.includes(wo.status)) {
     return NextResponse.json(
-      { error: 'A request can only be cancelled during inspection or costing.' },
+      {
+        error: isTenant
+          ? 'You can only cancel a request before the inspection starts.'
+          : 'A request can only be cancelled during inspection or costing.',
+      },
       { status: 409 }
     )
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
-  const { actor } = access
-
-  const stage = wo.status === 'inspecting' ? 'inspection' : 'costing'
+  const stage = wo.status === 'new_report' ? 'submission' : wo.status === 'inspecting' ? 'inspection' : 'costing'
   const cleanReason = reason.trim()
   const now = new Date().toISOString()
 
@@ -65,10 +74,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   await logWorkOrderEvent(service, id, {
     eventType: 'cancelled',
-    step: stage === 'costing' ? 'Costing cancelled' : 'Request cancelled at inspection',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    step: stage === 'costing' ? 'Costing cancelled' : stage === 'submission' ? 'Request withdrawn by tenant' : 'Request cancelled at inspection',
+    ...actorLog(actor),
     decision: 'Cancelled',
     reason: cleanReason,
     createdAt: now,
@@ -78,7 +85,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const property = wo.properties as { name?: string; slug?: string } | { name?: string; slug?: string }[] | null
   const propertyInfo = Array.isArray(property) ? property[0] : property
 
-  if (wo.requested_by_id) {
+  // A tenant withdrawing their own request does not need to be told about it
+  if (wo.requested_by_id && !isTenant) {
     const { error: notifyError } = await service.from('notifications').insert({
       property_id: wo.property_id,
       engineer_id: wo.requested_by_id,
@@ -90,7 +98,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (notifyError) console.error('[cancel] failed to create notification:', notifyError.message)
   }
 
-  if (wo.tenant_email) {
+  if (wo.tenant_email && !isTenant) {
     try {
       await sendCancellationEmail({
         toEmail: wo.tenant_email,

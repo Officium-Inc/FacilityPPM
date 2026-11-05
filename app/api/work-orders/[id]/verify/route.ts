@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
 import { generateRecordHash, generateSignOffToken, getSignOffExpiry } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
@@ -7,7 +9,6 @@ import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
 import { sendSignOffEmail } from '@/lib/email'
 import { generateAndStoreAuditReport } from '@/lib/audit-report'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
@@ -23,18 +24,18 @@ interface Params {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json()
   const { notes, tenantEmail, tenantName } = body as { notes?: string; tenantEmail?: string; tenantName?: string }
 
-  const service = await createServiceClient()
+  const { service } = session
 
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, wo_number, status, property_id, engineer_id, tenant_email, tenant_name, properties(name)')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, wo_number, status, tenant_name, properties(name)`)
     .eq('id', id)
     .single()
 
@@ -43,8 +44,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Work order is not waiting for final verification.' }, { status: 409 })
   }
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.review', { record: wo })
+  if (!access.ok) return access.response
   const { actor } = access
 
   const isLegacySigned = wo.status === 'signed'
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { error } = await service.from('work_orders').update({
     status: isLegacySigned ? 'completed' : 'verified',
-    head_engineer_id: actor.id,
+    head_engineer_id: actorEngineerId(actor),
     head_engineer_verified_at: now,
     head_engineer_notes: cleanNotes,
     ...(isLegacySigned
@@ -89,9 +90,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'final_verified',
     step: 'Final verification',
-    actorName: actor.name,
-    actorEmail: actor.email,
-    actorRole: actor.role,
+    ...actorLog(actor),
     decision: 'Approved',
     reason: cleanNotes,
     createdAt: now,

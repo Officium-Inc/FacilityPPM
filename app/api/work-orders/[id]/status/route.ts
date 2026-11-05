@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { authorizeWorkOrderStaff } from '@/lib/work-order-access'
+import { authorize, requireSession } from '@/lib/authz/guard'
+import { actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 
 interface Params {
@@ -16,24 +17,24 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+
+  if (!session.ok) return session.response
 
   const body = await request.json().catch(() => ({})) as { status?: string }
   const nextStatus = body.status ?? ''
 
-  const service = await createServiceClient()
+  const { service } = session
   const { data: wo } = await service
     .from('work_orders')
-    .select('id, status, property_id')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, status`)
     .eq('id', id)
     .maybeSingle()
 
   if (!wo) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
 
-  const access = await authorizeWorkOrderStaff(service, user, wo.property_id)
-  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status })
+  const access = await authorize(session, 'workRequest.review', { record: wo })
+  if (!access.ok) return access.response
 
   if (!(ALLOWED_TRANSITIONS[wo.status] ?? []).includes(nextStatus)) {
     return NextResponse.json({ error: `Cannot change status from ${wo.status} to ${nextStatus || 'nothing'}.` }, { status: 409 })
@@ -51,9 +52,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   await logWorkOrderEvent(service, id, {
     eventType: 'status_changed',
     step: 'Status change',
-    actorName: access.actor.name,
-    actorEmail: access.actor.email,
-    actorRole: access.actor.role,
+    ...actorLog(access.actor),
     decision: nextStatus,
     createdAt: now,
     metadata: { from: wo.status, to: nextStatus },

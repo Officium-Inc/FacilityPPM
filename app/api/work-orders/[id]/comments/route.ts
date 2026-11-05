@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { User } from '@supabase/supabase-js'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendMentionEmail } from '@/lib/email'
-import { canViewWorkOrder, isProviderUser } from '@/lib/work-order-access'
-import { resolveWorkOrderActor } from '@/lib/work-order-events'
+import { authorize, requireSession, type Service, type Session } from '@/lib/authz/guard'
+import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
+import type { Action } from '@/lib/authz/permissions'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -11,29 +11,28 @@ interface Params {
 
 const MAX_COMMENT_LENGTH = 4000
 
-type Service = Awaited<ReturnType<typeof createServiceClient>>
-
-/** Loads the work order and checks the caller may see it; comments follow the work order's visibility. */
-async function authorizeComments(service: Service, user: User, id: string) {
-  const { data: wo } = await service
+/** Loads the work order and authorizes `action` on it; comments follow the work order's visibility. */
+async function authorizeComments(session: Session, id: string, action: Action) {
+  const { data: wo } = await session.service
     .from('work_orders')
-    .select('id, wo_number, property_id, requested_by_id, tenant_email, engineer_id, properties(slug, name)')
+    .select(`${WORK_ORDER_SCOPE_COLUMNS}, wo_number, properties(slug, name)`)
     .eq('id', id)
     .maybeSingle()
 
-  if (!wo || !(await canViewWorkOrder(service, user, wo))) return null
-  return wo
+  if (!wo) return { response: NextResponse.json({ error: 'Work order not found.' }, { status: 404 }) } as const
+  const access = await authorize(session, action, { record: wo })
+  if (!access.ok) return { response: access.response } as const
+  return { wo, actor: access.actor } as const
 }
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { service } = session
 
-  const service = await createServiceClient()
-  const wo = await authorizeComments(service, user, id)
-  if (!wo) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
+  const result = await authorizeComments(session, id, 'workRequest.view')
+  if ('response' in result) return result.response
 
   const { data, error } = await service
     .from('work_order_comments')
@@ -47,9 +46,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const service: Service = session.service
 
   const body = await req.json().catch(() => ({}))
   const message = typeof body?.message === 'string' ? body.message.trim() : ''
@@ -58,22 +57,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: `Comments are limited to ${MAX_COMMENT_LENGTH} characters.` }, { status: 400 })
   }
 
-  const service = await createServiceClient()
-  const wo = await authorizeComments(service, user, id)
-  if (!wo?.property_id) return NextResponse.json({ error: 'Work order not found.' }, { status: 404 })
+  const result = await authorizeComments(session, id, 'workRequest.comment')
+  if ('response' in result) return result.response
+  const { wo, actor } = result
   const propertyId = wo.property_id as string
 
-  const actor = isProviderUser(user)
-    ? { id: null, name: user.email ?? 'Provider', role: 'provider' }
-    : await resolveWorkOrderActor(service, user, propertyId)
-  const authorEngineer = actor.id ? { id: actor.id } : null
+  const authorEngineerId = actorEngineerId(actor)
   const authorName = actor.name
 
   const { error } = await service.from('work_order_comments').insert({
     work_order_id: id,
     property_id: propertyId,
     author_name: authorName,
-    author_role: actor.role,
+    author_role: actorLog(actor).actorRole,
     message,
   })
 
@@ -93,7 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select('id, full_name, email')
       .eq('property_id', propertyId)
       .eq('is_active', true)
-      .neq('id', authorEngineer?.id ?? '00000000-0000-0000-0000-000000000000')
+      .neq('id', authorEngineerId ?? '00000000-0000-0000-0000-000000000000')
 
     if (allEngineers && allEngineers.length > 0) {
       const property = wo.properties as { slug?: string; name?: string } | { slug?: string; name?: string }[] | null

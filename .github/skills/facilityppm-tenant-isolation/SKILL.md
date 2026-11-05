@@ -52,11 +52,11 @@ Details, code templates and RLS templates: [supabase-authz-patterns.md](./refere
 1. Locate the action in [portal-role-matrix.md](./references/portal-role-matrix.md). If it is missing, stop
    and ask the user which roles may perform it, then add it to the matrix (and the decision log) before
    implementing. Cells tagged `Dn` are defaults — follow them unless the user overrides.
-2. Server entry point: use the API route template in
-   [supabase-authz-patterns.md](./references/supabase-authz-patterns.md#api-route-template). Reuse existing
-   helpers (`authorizeWorkOrderStaff`, `canViewWorkOrder`, `resolveTenantSubmitter`,
-   `requireMondayPropertyAdmin`, `getTenantPortalContext`) or add a new one in `lib/` — do not scatter
-   ad-hoc role string comparisons across routes.
+2. Server entry point: route handlers call `requireSession()` then `authorize(session, '<action>', { record })`
+   (or `{ propertyId }`) from `lib/authz/guard.ts`; Provider Dashboard routes call `requireProvider()`; pages call
+   `requirePage(slug, '<action>')` / `requirePageRecord(...)`. Work order queries select
+   `WORK_ORDER_SCOPE_COLUMNS` (`lib/authz/records.ts`) before authorizing. New actions go into
+   `lib/authz/permissions.ts` **and** `tests/authz/permissions.test.ts`. Never compare role strings in routes.
 3. Database change: add a new numbered migration in `supabase/migrations/` that enables RLS and adds
    role-aware policies in the same file (templates in the reference). Load `supabase-postgres-best-practices`.
 4. UI: hide controls the role cannot use, but treat that as UX only — the server check is the control.
