@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     email?: string
     name?: string
     role_name?: string
+    company_id?: string
   }
   const roleName = toPropertyRole(body.role_name)
 
@@ -29,6 +30,23 @@ export async function POST(request: NextRequest) {
   }
   if (!assignableRoles(access.actor).includes(roleName)) {
     return NextResponse.json({ error: 'You cannot invite members with this role.' }, { status: 403 })
+  }
+
+  // Tenant users are invited into one of the property's companies
+  let companyId: string | null = null
+  if (roleName === 'tenant') {
+    if (!body.company_id) {
+      return NextResponse.json({ error: 'Select the company this tenant user belongs to.' }, { status: 400 })
+    }
+    const { data: company } = await service
+      .from('tenant_companies')
+      .select('id')
+      .eq('id', body.company_id)
+      .eq('property_id', propertyId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (!company) return NextResponse.json({ error: 'Company not found in this property.' }, { status: 400 })
+    companyId = company.id as string
   }
 
   const email = body.email.trim().toLowerCase()
@@ -76,6 +94,7 @@ export async function POST(request: NextRequest) {
       email,
       invited_name: body.name?.trim() || null,
       role_name: roleName,
+      company_id: companyId,
       invited_by: user.email ?? null,
     })
     .select('id, token')

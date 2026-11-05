@@ -49,6 +49,7 @@ const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'out', 'dist', '.ver
 const KNOWN_HELPERS = {
   requireSession: { authn: true, service: true },
   authorize: { authz: true },
+  authorizeForSlug: { authz: true },
   requireProvider: { authn: true, authz: true, service: true },
   authorizeTenantSubmit: { authz: true },
   requireMondayPropertyAdmin: { authn: true, authz: true, service: true },

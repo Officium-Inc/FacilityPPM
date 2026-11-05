@@ -57,7 +57,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
   const canEditProfile = can(actor, 'property.profile.edit')
   const navActor = actor.kind === 'provider' ? { kind: 'provider' as const } : { kind: 'member' as const, role: actor.role }
 
-  const [{ data: engineers }, { data: roles }, { data: pendingInvitations }, { data: property }] = await Promise.all([
+  const [{ data: engineers }, { data: roles }, { data: pendingInvitations }, { data: property }, { data: companies }] = await Promise.all([
     canViewMembers
       ? service
         .from('engineers')
@@ -81,6 +81,12 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       .select('*')
       .eq('id', propertyId)
       .maybeSingle(),
+    service
+      .from('tenant_companies')
+      .select('id, name')
+      .eq('property_id', propertyId)
+      .eq('is_active', true)
+      .order('name'),
   ])
 
   if (!activeTab) {
@@ -137,6 +143,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
           invitations={pendingInvitations ?? []}
           canManageMembers={canManageMembers}
           actor={navActor}
+          companies={companies ?? []}
         />
       ) : (
         <p className="text-sm text-gray-500">Your role cannot view the member list.</p>

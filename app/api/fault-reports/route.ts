@@ -3,6 +3,7 @@ import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { authorize, requireSession } from '@/lib/authz/guard'
 import { actorLog } from '@/lib/authz/actor'
 import { isPriority } from '@/lib/priority'
+import { resolveRequestFloor } from '@/lib/floors'
 
 /** Staff record a service report on behalf of a tenant. Tenants use /api/service-requests. */
 const WORK_ORDER_TYPES = ['ppm', 'reactive', 'statutory', 'project']
@@ -28,6 +29,8 @@ export async function POST(request: NextRequest) {
     urgency: rawUrgency,
     type: rawType,
     priority: rawPriority,
+    companyId: rawCompanyId,
+    floorId: rawFloorId,
   } = body as {
     faultDescription?: string
     locationNotes?: string
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
     urgency?: string
     type?: string
     priority?: string
+    companyId?: string
+    floorId?: string
   }
 
   if (!faultDescription?.trim()) {
@@ -49,6 +54,24 @@ export async function POST(request: NextRequest) {
   const priority = isPriority(rawPriority) ? rawPriority : urgency
   const type = rawType && WORK_ORDER_TYPES.includes(rawType) ? rawType : 'reactive'
 
+  // On-behalf reports name the tenant company (and floor) so the company sees them in its portal
+  let companyId: string | null = null
+  let floorId: string | null = null
+  if (rawCompanyId) {
+    const { data: company } = await service
+      .from('tenant_companies')
+      .select('id')
+      .eq('id', rawCompanyId)
+      .eq('property_id', propertyId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (!company) return NextResponse.json({ error: 'Company not found in this property.' }, { status: 400 })
+    const floor = await resolveRequestFloor(service, propertyId, company.id as string, rawFloorId)
+    if (!floor.ok) return NextResponse.json({ error: floor.error }, { status: 400 })
+    companyId = company.id as string
+    floorId = floor.floorId
+  }
+
   // Generate WO number (REPT- prefix for fault reports)
   const woNumber = `REPT-${Date.now().toString(36).toUpperCase()}`
 
@@ -57,6 +80,8 @@ export async function POST(request: NextRequest) {
     .from('work_orders')
     .insert({
       property_id: propertyId,
+      company_id: companyId,
+      floor_id: floorId,
       wo_number: woNumber,
       type,
       status: 'new_report',

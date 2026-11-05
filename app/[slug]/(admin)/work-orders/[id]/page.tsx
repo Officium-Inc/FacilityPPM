@@ -36,6 +36,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     .select(`
       *,
       engineers!work_orders_engineer_id_fkey(id, full_name, email, phone),
+      tenant_companies(name),
+      floors(label),
       ppm_schedules(
         id, title, frequency,
         assets(
@@ -86,6 +88,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   const report = rowsOf(joined.work_order_reports as ReportRow | ReportRow[] | null)
   const costing = rowsOf(joined.work_order_costings as CostingRow | CostingRow[] | null)
   const evidence = rowsOf(joined.work_order_completion_evidence as EvidenceRow | EvidenceRow[] | null)
+  const companyName = rowsOf(joined.tenant_companies as { name: string } | { name: string }[] | null)[0]?.name ?? null
+  const floorLabel = rowsOf(joined.floors as { label: string } | { label: string }[] | null)[0]?.label ?? null
   const approvalTrail = (trailData ?? []) as ApprovalTrailEntry[]
   const engineers = (engineersList ?? []) as unknown as Engineer[]
   const comments = (rawComments ?? []) as WoComment[]
@@ -96,8 +100,8 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
   // Read-only context shown in the Assign Work Order modal, sourced from the originating tenant report + approved cost
   const assignJobSummary = {
-    location: [asset?.name, report[0]?.location_notes, site?.name].filter(Boolean).join(' — ') || null,
-    requestedBy: report[0]?.tenant_lessee || report[0]?.reported_by_name || null,
+    location: [asset?.name, floorLabel, report[0]?.location_notes, site?.name].filter(Boolean).join(' — ') || null,
+    requestedBy: companyName || report[0]?.tenant_lessee || report[0]?.reported_by_name || null,
     reportedIssue: report[0]?.fault_description ?? null,
     approvedCost: workOrder.costing_approved_by_name && costing[0]?.grand_total != null ? Number(costing[0].grand_total) : null,
   }
@@ -118,7 +122,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               <h3 className="font-semibold text-gray-900 text-sm mb-3">Service Report</h3>
               <dl className="space-y-2 text-sm">
                 <Detail label="Description" value={report[0].fault_description ?? '—'} />
-                {report[0].tenant_lessee ? <Detail label="Tenant / Lessee" value={report[0].tenant_lessee} /> : null}
+                {companyName ? <Detail label="Company" value={companyName} /> : null}
+                {floorLabel ? <Detail label="Floor" value={floorLabel} /> : null}
+                {report[0].tenant_lessee && report[0].tenant_lessee !== companyName ? <Detail label="Tenant / Lessee" value={report[0].tenant_lessee} /> : null}
                 {report[0].location_notes ? <Detail label="Location" value={report[0].location_notes} /> : null}
                 <Detail label="Contact Person" value={report[0].reported_by_name ?? '—'} />
                 {report[0].reported_by_contact ? <Detail label="Telephone / Email" value={report[0].reported_by_contact} /> : null}

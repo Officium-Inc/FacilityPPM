@@ -34,13 +34,15 @@ interface Props {
   canManageMembers: boolean
   /** The signed-in user; limits which roles they may assign and which members they may manage (D6). */
   actor: ActorLike
+  /** Active tenant companies; tenant invitations must name one. */
+  companies: Array<{ id: string; name: string }>
 }
 
 type ConfirmRemove = { id: string; name: string } | null
 
-const EMPTY_INVITE = { email: '', name: '', role_name: '' }
+const EMPTY_INVITE = { email: '', name: '', role_name: '', company_id: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actor }: Props) {
+export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actor, companies }: Props) {
   const router = useRouter()
   const roleOptions = toRoleOptions(assignableRoles(actor))
   const [showAdd, setShowAdd] = useState(false)
@@ -79,7 +81,12 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
     const res = await fetch('/api/engineers/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: invite.email, name: invite.name || undefined, role_name: invite.role_name || undefined }),
+      body: JSON.stringify({
+        email: invite.email,
+        name: invite.name || undefined,
+        role_name: invite.role_name || undefined,
+        company_id: invite.role_name === 'tenant' ? invite.company_id || undefined : undefined,
+      }),
     })
     const data = await res.json()
 
@@ -224,6 +231,20 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
                 {roleOptions.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
               </select>
             </div>
+            {invite.role_name === 'tenant' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Company *</label>
+                <select
+                  value={invite.company_id}
+                  onChange={(e) => setInv('company_id', e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="" disabled>{companies.length ? 'Select the tenant company' : 'Add a company in Floors & Tenants first'}</option>
+                  {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="flex items-end">
               <button
                 type="submit" disabled={loading}

@@ -13,6 +13,7 @@ import {
   BarChart3,
   AlertTriangle,
   Ban,
+  Building2,
   Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,9 @@ function buildNav(slug: string, actor: ActorLike): NavItem[] {
   }
   if (can(actor, 'workRequest.waivedList')) {
     nav.push({ href: `${base}/waived-orders`, label: 'Waived Orders', icon: Ban })
+  }
+  if (can(actor, 'floors.view')) {
+    nav.push({ href: `${base}/floors`, label: 'Floors & Tenants', icon: Building2 })
   }
   if (can(actor, 'maintenance.view')) {
     nav.push({ href: `${base}/assets`, label: 'Assets', icon: Package })

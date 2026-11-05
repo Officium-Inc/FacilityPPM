@@ -18,18 +18,29 @@ const EMPTY_FORM = {
   reportedByContact: '',
   urgency: 'medium',
   type: 'reactive',
+  companyId: '',
+  floorId: '',
 }
 
 const INPUT = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
 
+export interface OnBehalfCompany {
+  id: string
+  name: string
+  floors: Array<{ id: string; label: string }>
+}
+
 interface Props {
   slug: string
+  /** Active tenant companies with their current floors; reports for a company show in its Tenant Portal. */
+  companies?: OnBehalfCompany[]
   triggerLabel?: string
   variant?: 'primary' | 'link'
 }
 
 export default function NewServiceRequestModal({
   slug,
+  companies = [],
   triggerLabel = 'New Service Report',
   variant = 'primary',
 }: Props) {
@@ -38,11 +49,17 @@ export default function NewServiceRequestModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const companyFloors = companies.find((company) => company.id === form.companyId)?.floors ?? []
 
   function set(key: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setForm((value) => ({ ...value, [key]: e.target.value }))
     }
+  }
+
+  function selectCompany(companyId: string) {
+    const floors = companies.find((company) => company.id === companyId)?.floors ?? []
+    setForm((value) => ({ ...value, companyId, floorId: floors.length === 1 ? floors[0].id : '' }))
   }
 
   function openModal() {
@@ -70,7 +87,12 @@ export default function NewServiceRequestModal({
     const res = await fetch('/api/fault-reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, priority: form.urgency }),
+      body: JSON.stringify({
+        ...form,
+        priority: form.urgency,
+        companyId: form.companyId || undefined,
+        floorId: form.floorId || undefined,
+      }),
     })
 
     const data = await res.json()
@@ -141,6 +163,33 @@ export default function NewServiceRequestModal({
                   className={`${INPUT} resize-none`}
                 />
               </Field>
+
+              {companies.length > 0 && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label="Tenant company" hint="shown in the company's Tenant Portal">
+                    <select value={form.companyId} onChange={(e) => selectCompany(e.target.value)} className={INPUT}>
+                      <option value="">No company (staff only)</option>
+                      {companies.map((company) => (
+                        <option key={company.id} value={company.id}>{company.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Floor">
+                    <select
+                      value={form.floorId}
+                      onChange={set('floorId')}
+                      disabled={!form.companyId || companyFloors.length === 0}
+                      required={companyFloors.length > 1}
+                      className={INPUT}
+                    >
+                      <option value="">{form.companyId && companyFloors.length === 0 ? 'Company has no floor' : 'Select floor'}</option>
+                      {companyFloors.map((floor) => (
+                        <option key={floor.id} value={floor.id}>{floor.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              )}
 
               <Field label="Location / Unit" hint="Site, building, floor, or unit number">
                 <input

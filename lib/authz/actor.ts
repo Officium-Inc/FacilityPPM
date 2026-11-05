@@ -61,7 +61,7 @@ export async function resolveMembership(
 
   const { data } = await service
     .from('engineers')
-    .select('id, full_name, email, is_active, company_id, roles(name)')
+    .select('id, full_name, email, is_active, company_id, roles(name), company:tenant_companies(is_active)')
     .eq('user_id', user.id)
     .eq('property_id', propertyId)
     .maybeSingle()
@@ -71,6 +71,11 @@ export async function resolveMembership(
 
   const role = toPropertyRole(roleNameFromRelation(data.roles))
   if (!role) return { status: 'no-access' }
+
+  // A tenant of a deactivated company is treated as not linked (no request access)
+  const companyRow = data.company as { is_active?: boolean } | { is_active?: boolean }[] | null
+  const companyActive = (Array.isArray(companyRow) ? companyRow[0] : companyRow)?.is_active === true
+  const companyId = role === 'tenant' && companyActive ? ((data.company_id as string | null) ?? null) : null
 
   return {
     status: 'ok',
@@ -82,7 +87,7 @@ export async function resolveMembership(
       propertyId,
       engineerId: data.id as string,
       role,
-      companyId: role === 'tenant' ? ((data.company_id as string | null) ?? null) : null,
+      companyId,
     },
   }
 }

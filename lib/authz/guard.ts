@@ -92,6 +92,19 @@ export async function authorize(
   return { ok: true, actor }
 }
 
+/** Authorizes `action` in the property identified by the route's `slug` (unknown slugs answer 404). */
+export async function authorizeForSlug(
+  session: Session,
+  slug: string,
+  action: Action
+): Promise<(Authorized & { propertyId: string }) | Denied> {
+  const { data: property } = await session.service.from('properties').select('id').eq('slug', slug).maybeSingle()
+  if (!property) return deny(404, 'Property not found.')
+  const access = await authorize(session, action, { propertyId: property.id as string })
+  if (!access.ok) return access
+  return { ...access, propertyId: property.id as string }
+}
+
 /** Provider Dashboard routes. */
 export async function requireProvider(): Promise<(Session & { actor: ProviderActor }) | Denied> {
   const session = await requireSession()

@@ -40,7 +40,16 @@ const TYPES = [
 
 const SELECT = 'text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent min-w-[140px]'
 
-export default function WorkOrderFilters({ total, filtered }: { total: number; filtered: number }) {
+export default function WorkOrderFilters({
+  total,
+  filtered,
+  companies = [],
+}: {
+  total: number
+  filtered: number
+  /** Tenant companies of the property; adds a company filter when present. */
+  companies?: Array<{ id: string; name: string }>
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -50,8 +59,9 @@ export default function WorkOrderFilters({ total, filtered }: { total: number; f
   const status = searchParams.get('status') ?? ''
   const priority = searchParams.get('priority') ?? ''
   const type = searchParams.get('type') ?? ''
+  const company = searchParams.get('company') ?? ''
 
-  const hasFilters = q || status || priority || type
+  const hasFilters = q || status || priority || type || company
 
   const updateParam = useCallback((key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -81,7 +91,7 @@ export default function WorkOrderFilters({ total, filtered }: { total: number; f
             type="text"
             value={q}
             onChange={(e) => updateParam('q', e.target.value)}
-            placeholder="Search WO #, asset…"
+            placeholder="Search WO #, asset, company…"
             className="w-full text-sm border border-gray-200 rounded-lg pl-9 pr-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
           />
           {q && (
@@ -108,6 +118,15 @@ export default function WorkOrderFilters({ total, filtered }: { total: number; f
         <select value={type} onChange={(e) => updateParam('type', e.target.value)} className={SELECT}>
           {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
+
+        {/* Company */}
+        {companies.length > 0 && (
+          <select value={company} onChange={(e) => updateParam('company', e.target.value)} className={SELECT}>
+            <option value="">All Companies</option>
+            <option value="none">No company (staff only)</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
 
         {/* Clear */}
         {hasFilters && (

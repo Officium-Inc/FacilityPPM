@@ -6,6 +6,7 @@ import StatusBadge from '@/components/work-orders/StatusBadge'
 import NewServiceRequestModal from './NewServiceRequestModal'
 import { requirePage } from '@/lib/authz/guard'
 import { can } from '@/lib/authz/permissions'
+import { loadFloorsAndCompanies } from '@/lib/floors'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -20,6 +21,11 @@ export default async function ServiceRequestsPage({ params }: Props) {
   const { slug } = await params
   const { service, property, actor } = await requirePage(slug, 'workRequest.view')
   const canSubmit = can(actor, 'workRequest.submitOnBehalf')
+  const { companies } = await loadFloorsAndCompanies(service, property.id)
+  const companyNames = new Map(companies.map((company) => [company.id, company.name]))
+  const onBehalfCompanies = companies
+    .filter((company) => company.is_active)
+    .map((company) => ({ id: company.id, name: company.name, floors: company.floors.map((floor) => ({ id: floor.id, label: floor.label })) }))
 
   // Query reactive work orders directly, embed fault reports as children
   let reportQuery = service
@@ -30,6 +36,8 @@ export default async function ServiceRequestsPage({ params }: Props) {
       status,
       priority,
       created_at,
+      company_id,
+      floors(label),
       work_order_reports!work_order_reports_work_order_id_fkey(
         id, fault_description, location_notes, reported_by_name, urgency, created_at
       )
@@ -55,6 +63,8 @@ export default async function ServiceRequestsPage({ params }: Props) {
     status: string
     priority: string | null
     created_at: string
+    company_id: string | null
+    floors: { label: string } | { label: string }[] | null
     work_order_reports: ReportRow | ReportRow[] | null
   }
 
@@ -74,7 +84,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Service Reports</h2>
           <p className="text-sm text-gray-500 mt-0.5">{rows.length} submitted</p>
         </div>
-        {canSubmit && <NewServiceRequestModal slug={slug} />}
+        {canSubmit && <NewServiceRequestModal slug={slug} companies={onBehalfCompanies} />}
       </div>
 
       {rows.length === 0 ? (
@@ -83,7 +93,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
           <p className="text-gray-500 text-sm">No service reports submitted yet.</p>
           {canSubmit && (
             <div className="mt-4">
-              <NewServiceRequestModal slug={slug} triggerLabel="Submit your first report" variant="link" />
+              <NewServiceRequestModal slug={slug} companies={onBehalfCompanies} triggerLabel="Submit your first report" variant="link" />
             </div>
           )}
         </div>
@@ -93,7 +103,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {['WO #', 'Description', 'Location', 'Reported By', 'Priority', 'Status', 'Submitted'].map((h) => (
+                  {['WO #', 'Description', 'Company / Floor', 'Location', 'Reported By', 'Priority', 'Status', 'Submitted'].map((h) => (
                     <th key={h} className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {h}
                     </th>
@@ -103,6 +113,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
               <tbody className="divide-y divide-gray-100">
                 {rows.map((wo) => {
                   const r = rowsOf(wo.work_order_reports)[0]
+                  const floor = rowsOf(wo.floors)[0]
                   return (
                     <tr key={wo.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-3">
@@ -114,6 +125,16 @@ export default async function ServiceRequestsPage({ params }: Props) {
                         </Link>
                       </td>
                       <td className="px-5 py-3 text-gray-700 max-w-xs truncate">{r?.fault_description ?? '—'}</td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {wo.company_id ? (
+                          <>
+                            <div>{companyNames.get(wo.company_id) ?? '—'}</div>
+                            {floor && <div className="text-xs text-gray-400">{floor.label}</div>}
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400">Staff only</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-gray-600">{r?.location_notes ?? '—'}</td>
                       <td className="px-5 py-3 text-gray-600">{r?.reported_by_name ?? '—'}</td>
                       <td className="px-5 py-3">
