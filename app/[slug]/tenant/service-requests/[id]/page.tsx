@@ -28,6 +28,8 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
     .select(`
       id,
       property_id,
+      company_id,
+      floor_id,
       requested_by_id,
       wo_number,
       status,
@@ -54,6 +56,7 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
       )
     `)
     .eq('id', id)
+    .eq('property_id', context.property.id)
     .maybeSingle()
 
   const request = data as unknown as TenantRequestRow | null

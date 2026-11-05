@@ -5,6 +5,7 @@ import {
   assignableRoles,
   can,
   canManageMember,
+  isUnlinkedTenant,
   toPropertyRole,
   type Action,
   type ActorLike,
@@ -48,7 +49,7 @@ const PROPERTY = 'prop-1'
 const OTHER_PROPERTY = 'prop-2'
 
 function member(role: PropertyRole, overrides: Partial<Extract<ActorLike, { kind: 'member' }>> = {}): ActorLike {
-  return { kind: 'member', role, propertyId: PROPERTY, engineerId: `eng-${role}`, email: `${role}@example.com`, companyId: null, ...overrides }
+  return { kind: 'member', role, propertyId: PROPERTY, engineerId: `eng-${role}`, email: `${role}@example.com`, companyId: 'co-1', ...overrides }
 }
 
 const provider: ActorLike = { kind: 'provider' }
@@ -73,12 +74,14 @@ describe('permission matrix', () => {
           property_id: PROPERTY,
           engineer_id: `eng-${role}`,
           requested_by_id: `eng-${role}`,
+          company_id: 'co-1',
           tenant_email: null,
         }
         const otherRecord = {
           property_id: PROPERTY,
           engineer_id: 'someone-else',
           requested_by_id: 'someone-else',
+          company_id: 'co-2',
           tenant_email: 'other@example.com',
         }
 
@@ -102,17 +105,22 @@ describe('record scoping', () => {
     expect(can(sg, 'workRequest.execute', { property_id: PROPERTY, engineer_id: 'eng-8' })).toBe(false)
   })
 
-  it('matches tenant email exactly, never as a substring', () => {
-    const tenant = member('tenant', { engineerId: 'eng-t', email: 'a@b.co' })
-    expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, tenant_email: 'A@B.CO ' })).toBe(true)
-    expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, reported_by_contact: 'xa@b.com' })).toBe(false)
-    expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, reported_by_contact: 'a@b.co' })).toBe(true)
-  })
-
-  it('scopes linked tenants to their company', () => {
-    const tenant = member('tenant', { engineerId: 'eng-t', companyId: 'co-1' })
+  it('scopes tenants to their company, never by email or submitter alone', () => {
+    const tenant = member('tenant', { engineerId: 'eng-t', email: 'a@b.co', companyId: 'co-1' })
     expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, company_id: 'co-1', requested_by_id: 'other' })).toBe(true)
     expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, company_id: 'co-2', requested_by_id: 'eng-t' })).toBe(false)
+    expect(can(tenant, 'workRequest.view', { property_id: PROPERTY, company_id: null, tenant_email: 'a@b.co' })).toBe(false)
+  })
+
+  it('gives tenants not linked to a company no request access (D19)', () => {
+    const unlinked = member('tenant', { companyId: null })
+    expect(isUnlinkedTenant(unlinked)).toBe(true)
+    expect(can(unlinked, 'portal.tenant')).toBe(true)
+    expect(can(unlinked, 'workRequest.submit')).toBe(false)
+    expect(can(unlinked, 'workRequest.view')).toBe(false)
+    expect(can(unlinked, 'workRequest.view', { property_id: PROPERTY, company_id: null, requested_by_id: 'eng-tenant' })).toBe(false)
+    expect(isUnlinkedTenant(member('tenant'))).toBe(false)
+    expect(isUnlinkedTenant(member('admin', { companyId: null }))).toBe(false)
   })
 
   it('denies members without a property id when a record is given', () => {

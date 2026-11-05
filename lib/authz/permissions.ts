@@ -94,18 +94,17 @@ export function toPropertyRole(roleName: string | null | undefined): PropertyRol
   return (PROPERTY_ROLES as readonly string[]).includes(normalized) ? (normalized as PropertyRole) : null
 }
 
-const normalizeEmail = (value: string | null | undefined) => (value ?? '').trim().toLowerCase()
-
 /**
- * A tenant's records: their company's requests once companies are linked (D10), otherwise only requests
- * they submitted or that are addressed to their exact email.
+ * A tenant's records are their company's records (D10). Tenants not linked to a company yet see none (D19),
+ * and work orders without a company are staff-only.
  */
 export function isTenantRecord(actor: MemberActorLike, record: ScopedRecord) {
-  if (actor.companyId && record.company_id) return record.company_id === actor.companyId
-  if (actor.engineerId && record.requested_by_id === actor.engineerId) return true
-  const email = normalizeEmail(actor.email)
-  if (!email) return false
-  return normalizeEmail(record.tenant_email) === email || normalizeEmail(record.reported_by_contact) === email
+  return Boolean(actor.companyId) && record.company_id === actor.companyId
+}
+
+/** Whether the actor is a tenant who still has to be linked to a company by the property team (D19). */
+export function isUnlinkedTenant(actor: ActorLike | null | undefined) {
+  return actor?.kind === 'member' && actor.role === 'tenant' && !actor.companyId
 }
 
 /**
@@ -119,6 +118,8 @@ export function can(actor: ActorLike | null | undefined, action: Action, record?
 
   const scope = rule.roles[actor.role]
   if (!scope) return false
+  // Company-scoped permissions need a company; unlinked tenants get none (D19)
+  if (scope === 'company' && !actor.companyId) return false
   if (!record) return true
   if (!actor.propertyId || record.property_id !== actor.propertyId) return false
 

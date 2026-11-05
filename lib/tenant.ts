@@ -167,11 +167,16 @@ export async function getTenantServiceRequests(
   context: TenantPortalContext,
   filter: TenantRequestFilter = 'my-requests'
 ) {
+  // Tenants see their company's requests (D10); unlinked tenants see none (D19)
+  if (!context.actor.companyId) return []
+
   const { data, error } = await context.service
     .from('work_orders')
     .select(`
       id,
       property_id,
+      company_id,
+      floor_id,
       requested_by_id,
       wo_number,
       status,
@@ -190,6 +195,7 @@ export async function getTenantServiceRequests(
       )
     `)
     .eq('property_id', context.property.id)
+    .eq('company_id', context.actor.companyId)
     .eq('type', 'reactive')
     .order('created_at', { ascending: false })
 

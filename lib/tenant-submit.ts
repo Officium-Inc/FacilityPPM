@@ -12,7 +12,7 @@ export const MAX_SERVICE_REPORT_PHOTOS = 6
 export async function authorizeTenantSubmit(
   session: Session,
   slug?: string
-): Promise<{ ok: true; actor: MemberActor; propertyId: string } | Denied> {
+): Promise<{ ok: true; actor: MemberActor; propertyId: string; companyId: string } | Denied> {
   let propertyId = activePropertyId(session.user)
 
   if (slug) {
@@ -30,12 +30,26 @@ export async function authorizeTenantSubmit(
   }
 
   const access = await authorize(session, 'workRequest.submit', { propertyId })
-  if (!access.ok) return access
-  if (access.actor.kind !== 'member') {
+  if (!access.ok) {
+    if (access.response.status === 403) {
+      const membership = await authorize(session, 'portal.tenant', { propertyId })
+      if (membership.ok && membership.actor.kind === 'member' && !membership.actor.companyId) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "Your account isn't linked to a company yet. Contact your property administrator." },
+            { status: 403 }
+          ),
+        }
+      }
+    }
+    return access
+  }
+  if (access.actor.kind !== 'member' || !access.actor.companyId) {
     return { ok: false, response: NextResponse.json({ error: 'Only tenants can submit work requests.' }, { status: 403 }) }
   }
 
-  return { ok: true, actor: access.actor, propertyId }
+  return { ok: true, actor: access.actor, propertyId, companyId: access.actor.companyId }
 }
 
 export function serviceReportPhotoPrefix(propertyId: string) {

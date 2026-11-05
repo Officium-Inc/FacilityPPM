@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { authorizeTenantSubmit, sanitizeServiceReportPhotoUrls } from '@/lib/tenant-submit'
 import { requireSession } from '@/lib/authz/guard'
+import { resolveRequestFloor } from '@/lib/floors'
 
 export async function POST(request: NextRequest) {
   const session = await requireSession()
@@ -11,6 +12,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const {
     slug,
+    floorId,
     faultDescription,
     locationNotes,
     reportedByName,
@@ -19,6 +21,7 @@ export async function POST(request: NextRequest) {
     photoUrls = [],
   } = body as {
     slug?: string
+    floorId?: string
     faultDescription?: string
     locationNotes?: string
     reportedByName?: string
@@ -34,7 +37,11 @@ export async function POST(request: NextRequest) {
   const submitter = await authorizeTenantSubmit(session, slug)
   if (!submitter.ok) return submitter.response
 
-  const { propertyId, actor } = submitter
+  const { propertyId, actor, companyId } = submitter
+  // The company and floor come from the tenant's membership, never from the request body alone
+  const floor = await resolveRequestFloor(service, propertyId, companyId, floorId)
+  if (!floor.ok) return NextResponse.json({ error: floor.error }, { status: 400 })
+
   const engineer = { id: actor.engineerId, full_name: actor.name, email: actor.email }
   const reportedByLabel = reportedByName?.trim() || engineer.full_name || user.email || 'Tenant'
   const contact = reportedByContact?.trim() || engineer.email || user.email || null
@@ -46,6 +53,8 @@ export async function POST(request: NextRequest) {
     .from('work_orders')
     .insert({
       property_id: propertyId,
+      company_id: companyId,
+      floor_id: floor.floorId,
       requested_by_id: engineer.id,
       tenant_name: engineer.full_name || user.email || 'Tenant',
       tenant_email: engineer.email || user.email || null,

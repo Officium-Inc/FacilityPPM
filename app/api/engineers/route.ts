@@ -121,6 +121,8 @@ export async function PATCH(request: NextRequest) {
       const roleId = await resolveCanonicalRoleId(service, role)
       if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
       updates.role_id = roleId
+      // Only tenant members belong to a company
+      if (role !== 'tenant') updates.company_id = null
     }
   }
   if (body.is_active !== undefined) {

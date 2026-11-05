@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: invite } = await service
     .from('invitations')
-    .select('id, email, invited_name, role_name, expires_at, used_at, properties(id, name, slug)')
+    .select('id, email, invited_name, role_name, company_id, expires_at, used_at, properties(id, name, slug)')
     .eq('token', token)
     .maybeSingle()
 
@@ -103,6 +103,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     propertyId: property.id,
     userId,
     roleId,
+    // Tenant invitations name the company the new member belongs to
+    companyId: roleName === 'tenant' ? ((invite.company_id as string | null) ?? null) : null,
     email,
     fullName: existingUser
       ? full_name?.trim() || (existingUser.user_metadata?.full_name as string | undefined) || displayName
@@ -121,8 +123,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 /** Creates the member row, or reactivates/links an existing one with the invited role. */
 async function ensureMember(
   service: Awaited<ReturnType<typeof createServiceClient>>,
-  input: { propertyId: string; userId: string; roleId: string; email: string; fullName: string }
+  input: { propertyId: string; userId: string; roleId: string; companyId: string | null; email: string; fullName: string }
 ): Promise<string | null> {
+  const membership = { role_id: input.roleId, company_id: input.companyId, is_active: true }
+
   const { data: byUser } = await service
     .from('engineers')
     .select('id')
@@ -133,7 +137,7 @@ async function ensureMember(
   if (byUser) {
     const { error } = await service
       .from('engineers')
-      .update({ role_id: input.roleId, is_active: true })
+      .update(membership)
       .eq('id', byUser.id)
     return error?.message ?? null
   }
@@ -150,18 +154,17 @@ async function ensureMember(
   if (byEmail) {
     const { error } = await service
       .from('engineers')
-      .update({ user_id: input.userId, role_id: input.roleId, is_active: true })
+      .update({ ...membership, user_id: input.userId })
       .eq('id', byEmail.id)
     return error?.message ?? null
   }
 
   const { error } = await service.from('engineers').insert({
+    ...membership,
     property_id: input.propertyId,
     user_id: input.userId,
-    role_id: input.roleId,
     full_name: input.fullName,
     email: input.email,
-    is_active: true,
   })
   return error?.message ?? null
 }

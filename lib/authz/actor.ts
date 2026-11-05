@@ -61,7 +61,7 @@ export async function resolveMembership(
 
   const { data } = await service
     .from('engineers')
-    .select('id, full_name, email, is_active, roles(name)')
+    .select('id, full_name, email, is_active, company_id, roles(name)')
     .eq('user_id', user.id)
     .eq('property_id', propertyId)
     .maybeSingle()
@@ -82,7 +82,7 @@ export async function resolveMembership(
       propertyId,
       engineerId: data.id as string,
       role,
-      companyId: null,
+      companyId: role === 'tenant' ? ((data.company_id as string | null) ?? null) : null,
     },
   }
 }

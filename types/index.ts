@@ -5,6 +5,8 @@ export interface Property {
   slug: string
   name: string
   license_status: LicenseStatus
+  /** When set and in the past, the license is treated as suspended (D17). */
+  license_expires_at?: string | null
   address: string | null
   city: string | null
   country: string | null
@@ -79,8 +81,39 @@ export interface Asset {
 
 export interface Role {
   id: string
-  name: 'admin' | 'head_engineer' | 'property_manager' | 'service group' | 'viewer' | 'tenant' | string
+  name: 'admin' | 'head_engineer' | 'property_manager' | 'service_group' | 'tenant' | string
   permissions: Record<string, unknown>
+}
+
+export interface Floor {
+  id: string
+  property_id: string
+  building_id: string | null
+  label: string
+  level: number | null
+  sort_order: number
+  created_at: string
+}
+
+export interface TenantCompany {
+  id: string
+  property_id: string
+  name: string
+  contact_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface FloorOccupancy {
+  id: string
+  property_id: string
+  floor_id: string
+  company_id: string
+  starts_on: string
+  ends_on: string | null
+  created_at: string
 }
 
 export interface Engineer {
@@ -88,6 +121,8 @@ export interface Engineer {
   property_id: string | null
   user_id: string | null
   role_id: string | null
+  /** Tenant members belong to one company; null for staff and for tenants not linked yet (D19). */
+  company_id?: string | null
   full_name: string
   email: string
   phone: string | null
@@ -128,6 +163,9 @@ export interface WorkOrder {
   schedule_id: string | null
   engineer_id: string | null
   requested_by_id: string | null
+  /** The tenant company the request belongs to (set server-side); null for staff-only work orders. */
+  company_id?: string | null
+  floor_id?: string | null
   wo_number: string
   type: WorkOrderType
   status: WorkOrderStatus
