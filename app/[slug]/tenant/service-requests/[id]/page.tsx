@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Ban, ClipboardCheck, FileDown } from 'lucide-react'
+import { ArrowLeft, Ban, CheckCircle, ClipboardCheck, FileDown } from 'lucide-react'
 import StatusBadge from '@/components/work-orders/StatusBadge'
 import WorkOrderFormView from '@/components/work-orders/WorkOrderFormView'
+import TenantCancelRequest from '@/components/tenant/TenantCancelRequest'
 import { loadWorkOrderForm } from '@/lib/work-order-form'
 import {
   getTenantApprovalHref,
@@ -12,15 +13,25 @@ import {
   rowsOf,
   type TenantRequestRow,
 } from '@/lib/tenant'
+import { can } from '@/lib/authz/permissions'
 import { getPriorityOption } from '@/lib/priority'
 import { formatPHT } from '@/lib/utils'
 
 interface Props {
   params: Promise<{ slug: string; id: string }>
+  searchParams: Promise<{ done?: string; action?: string }>
 }
 
-export default async function TenantServiceRequestDetailPage({ params }: Props) {
+const DONE_MESSAGES: Record<string, string> = {
+  'costing:approve': 'Cost estimate approved. The engineering team will schedule the work.',
+  'costing:reject': 'Cost estimate rejected. The engineering team will revise it.',
+  signed: 'Thank you. The work has been signed off.',
+  'sign-off-rejected': 'Your rejection was sent to the engineering team. They will follow up on the work.',
+}
+
+export default async function TenantServiceRequestDetailPage({ params, searchParams }: Props) {
   const { slug, id } = await params
+  const { done, action } = await searchParams
   const context = await getTenantPortalContext(slug)
 
   const { data } = await context.service
@@ -43,6 +54,7 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
       sign_off_token,
       audit_report_url,
       cancellation_reason,
+      floors(label),
       work_order_reports!work_order_reports_work_order_id_fkey(
         id,
         fault_description,
@@ -67,8 +79,9 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
   const report = rowsOf(request.work_order_reports)[0]
   const isApproval = isAwaitingTenant(request)
   const approvalHref = getTenantApprovalHref(slug, request)
-  const detailHref = `/${slug}/tenant/service-requests/${request.id}`
-  const hasApprovalLink = approvalHref !== detailHref
+  const canWithdraw = request.status === 'new_report' && can(context.actor, 'workRequest.cancel', request)
+  const floorLabel = rowsOf((data as { floors?: { label: string } | { label: string }[] | null }).floors)[0]?.label ?? null
+  const doneMessage = done ? DONE_MESSAGES[done === 'costing' ? `costing:${action}` : done] : undefined
   const priority = getPriorityOption(report?.urgency ?? request.priority)
   const auditHref = request.status === 'completed'
     ? request.audit_report_url ?? `/api/pdf/${request.id}/audit`
@@ -94,6 +107,15 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
           <StatusBadge status={request.status} />
         </div>
       </div>
+
+      {doneMessage && (
+        <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-700" />
+          <p>{doneMessage}</p>
+        </div>
+      )}
+
+      {canWithdraw && <TenantCancelRequest workOrderId={request.id} />}
 
       {request.status === 'cancelled' && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4">
@@ -121,20 +143,18 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
               <div>
                 <h3 className="text-sm font-semibold text-amber-900">Action needed</h3>
                 <p className="mt-0.5 text-sm text-amber-800">
-                  This report is waiting for your approval or sign-off.
+                  {request.status === 'pending_approval'
+                    ? 'The cost estimate for this report is waiting for your approval.'
+                    : 'The work is done and waiting for your sign-off.'}
                 </p>
               </div>
             </div>
-            {hasApprovalLink ? (
-              <Link
-                href={approvalHref}
-                className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
-              >
-                Review Report
-              </Link>
-            ) : (
-              <p className="text-sm font-medium text-amber-800">Approval link pending</p>
-            )}
+            <Link
+              href={approvalHref}
+              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-700"
+            >
+              {request.status === 'pending_approval' ? 'Review Estimate' : 'Review & Sign Off'}
+            </Link>
           </div>
         </div>
       )}
@@ -172,6 +192,8 @@ export default async function TenantServiceRequestDetailPage({ params }: Props) 
             value={priority ? `${priority.label} (${priority.sla})` : 'Not assessed yet - an engineer will set this after inspection'}
           />
           <Detail label="Last Updated" value={formatPHT(request.updated_at, true)} />
+          {floorLabel && <Detail label="Floor" value={floorLabel} />}
+          {report?.reported_by_name && <Detail label="Submitted By" value={report.reported_by_name} />}
         </dl>
       </div>
 

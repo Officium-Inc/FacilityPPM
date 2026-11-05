@@ -53,6 +53,11 @@ const KNOWN_HELPERS = {
   requireProvider: { authn: true, authz: true, service: true },
   authorizeTenantSubmit: { authz: true },
   requireMondayPropertyAdmin: { authn: true, authz: true, service: true },
+  // lib/approval-rules.ts + lib/approvals.ts: link expiry (when enforced) and one conditional, single-use decision
+  costingDecisionBlocker: { tokenExpiry: true, tokenSingleUse: true },
+  signOffDecisionBlocker: { tokenExpiry: true, tokenSingleUse: true },
+  decideCosting: { tokenExpiry: true, tokenSingleUse: true },
+  decideSignOff: { tokenExpiry: true, tokenSingleUse: true },
 }
 
 const RX = {
@@ -231,8 +236,8 @@ function analyzeEntryFile(abs, kind) {
     if (isTokenRoute) {
       const missing = []
       if (!RX.tokenLookup.test(body)) missing.push('token lookup')
-      if (!RX.tokenExpiry.test(body)) missing.push('expiry check')
-      if (!RX.tokenSingleUse.test(body)) missing.push('single-use check')
+      if (!RX.tokenExpiry.test(body) && !helperHas('tokenExpiry')) missing.push('expiry check')
+      if (!RX.tokenSingleUse.test(body) && !helperHas('tokenSingleUse')) missing.push('single-use check')
       if (missing.length) report('MEDIUM', `Public token route missing: ${missing.join(', ')}.`)
       else if (!RX.tokenHashed.test(body)) report('LOW', 'Public token route compares the raw token; store and compare a SHA-256 hash, and make single-use atomic.')
       continue

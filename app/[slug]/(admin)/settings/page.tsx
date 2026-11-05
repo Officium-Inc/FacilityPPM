@@ -5,7 +5,7 @@ import { can } from '@/lib/authz/permissions'
 import EngineersClient from '../engineers/EngineersClient'
 import ApiKeysClient from './ApiKeysClient'
 import SettingsHubClient from './SettingsHubClient'
-import ProfileClient from './ProfileClient'
+import ProfileClient from '@/components/settings/ProfileClient'
 import CompanyProfileClient from './CompanyProfileClient'
 
 interface Props {

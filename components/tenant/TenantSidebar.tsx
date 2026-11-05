@@ -5,18 +5,15 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Ban,
+  Building2,
   CheckCircle,
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
   Clock,
-  FileCheck2,
-  FileText,
   LayoutDashboard,
   Menu,
-  ReceiptText,
   Settings,
-  Users,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -35,6 +32,7 @@ export default function TenantSidebar({
   const [mobileOpen, setMobileOpen] = useState(false)
   const base = `/${slug}/tenant`
 
+  // Work permits, gate passes, bills and visitors are not built yet, so they stay out of the menu
   const nav = useMemo<NavItem[]>(() => [
     { href: base, label: 'Dashboard', icon: LayoutDashboard },
     {
@@ -42,24 +40,14 @@ export default function TenantSidebar({
       label: 'Service Report',
       icon: ClipboardList,
       children: [
-        { href: `${base}/service-requests/my-requests`, label: 'My Reports', icon: ClipboardList },
+        { href: `${base}/service-requests/my-requests`, label: 'All Reports', icon: ClipboardList },
         { href: `${base}/service-requests/pending`, label: 'Pending', icon: Clock },
         { href: `${base}/service-requests/for-my-approval`, label: 'For My Approval', icon: ClipboardCheck },
         { href: `${base}/service-requests/complete`, label: 'Complete', icon: CheckCircle },
         { href: `${base}/service-requests/cancelled`, label: 'Cancelled', icon: Ban },
       ],
     },
-    {
-      href: `${base}/request-forms`,
-      label: 'Request Forms',
-      icon: FileText,
-      children: [
-        { href: `${base}/request-forms/work-permit`, label: 'Work Permit', icon: FileCheck2 },
-        { href: `${base}/request-forms/gate-pass`, label: 'Gate Pass', icon: FileText },
-      ],
-    },
-    { href: `${base}/bills`, label: 'Bills', icon: ReceiptText },
-    { href: `${base}/visitors`, label: 'Visitors', icon: Users },
+    { href: `${base}/company`, label: 'My Company', icon: Building2 },
     { href: `${base}/settings`, label: 'Settings', icon: Settings },
   ], [base])
 

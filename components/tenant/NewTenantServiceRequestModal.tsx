@@ -14,12 +14,18 @@ export default function NewTenantServiceRequestModal({
   slug,
   defaultName,
   defaultContact,
+  companyName,
+  floors = [],
   triggerLabel = 'New Service Report',
   variant = 'primary',
 }: {
   slug: string
   defaultName?: string
   defaultContact?: string
+  /** The tenant's company; requests are always filed for it. */
+  companyName?: string
+  /** The company's current floors; one floor is used automatically, several need a choice. */
+  floors?: Array<{ id: string; label: string }>
   triggerLabel?: string
   variant?: 'primary' | 'link'
 }) {
@@ -34,16 +40,17 @@ export default function NewTenantServiceRequestModal({
 
   function emptyForm(name?: string, contact?: string) {
     return {
-      tenantLessee: '',
+      tenantLessee: companyName ?? '',
       reportedByName: name ?? '',
       reportedByContact: contact ?? '',
       locationNotes: '',
       faultDescription: '',
+      floorId: floors.length === 1 ? floors[0].id : '',
     }
   }
 
   function set(key: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       setForm((value) => ({ ...value, [key]: e.target.value }))
     }
   }
@@ -110,6 +117,10 @@ export default function NewTenantServiceRequestModal({
       setError('Please describe the work requested.')
       return
     }
+    if (floors.length > 1 && !form.floorId) {
+      setError('Select the floor where the work is needed.')
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -117,10 +128,10 @@ export default function NewTenantServiceRequestModal({
     const res = await fetch('/api/service-requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, photoUrls, slug }),
+      body: JSON.stringify({ ...form, floorId: form.floorId || undefined, photoUrls, slug }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setError(data.error ?? 'Failed to submit service report.')
       setLoading(false)
@@ -182,15 +193,28 @@ export default function NewTenantServiceRequestModal({
               <section className="space-y-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Report Details</h3>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field label="Tenant / Lessee">
+                  <Field label={companyName ? 'Company' : 'Tenant / Lessee'}>
                     <input
                       type="text"
                       value={form.tenantLessee}
                       onChange={set('tenantLessee')}
+                      readOnly={Boolean(companyName)}
                       placeholder="Company or tenant name"
-                      className={INPUT}
+                      className={cn(INPUT, companyName && 'bg-gray-50 text-gray-600')}
                     />
                   </Field>
+                  {floors.length > 0 && (
+                    <Field label="Floor" required={floors.length > 1}>
+                      {floors.length === 1 ? (
+                        <input type="text" value={floors[0].label} readOnly className={cn(INPUT, 'bg-gray-50 text-gray-600')} />
+                      ) : (
+                        <select value={form.floorId} onChange={set('floorId')} className={INPUT} required>
+                          <option value="">Select floor…</option>
+                          {floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.label}</option>)}
+                        </select>
+                      )}
+                    </Field>
+                  )}
                   <Field label="Contact Person">
                     <input
                       type="text"
@@ -214,7 +238,7 @@ export default function NewTenantServiceRequestModal({
                       type="text"
                       value={form.locationNotes}
                       onChange={set('locationNotes')}
-                      placeholder="e.g. Tower A, Floor 12, Unit 1205"
+                      placeholder={floors.length > 0 ? 'e.g. Unit 1205, pantry' : 'e.g. Tower A, Floor 12, Unit 1205'}
                       className={INPUT}
                     />
                   </Field>

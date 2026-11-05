@@ -64,8 +64,8 @@ Always resolve the role **for the property being acted on**, not the "active" on
 | Assign engineers / Service Group | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Start work, update progress, upload completion evidence | ✅ | ✅ | ✅ | 🔒 assigned (D14) | ❌ |
 | Cancel | ✅ | ✅ | ✅ (D9) | ❌ | 🔒 own company, status `new_report` only (D9) |
-| Approve / reject costing | ❌ | ❌ | ❌ | ❌ | 🔒 own company, in portal or token link (D13) |
-| Sign off / reject completion | ❌ | ❌ | ❌ | ❌ | 🔒 own company, in portal or token link (D13) |
+| Approve / reject costing | ❌ | ❌ | ❌ | ❌ | 🔒 own company, in portal or token link (D13, D21, D22) |
+| Sign off / reject completion | ❌ | ❌ | ❌ | ❌ | 🔒 own company, in portal or token link (D13, D21, D22) |
 | Comment | ✅ | ✅ | ✅ | 🔒 assigned | 🔒 own company |
 | Download PDFs (report, receipt, costing, audit) | ✅ | ✅ | ✅ | 🔒 assigned | 🔒 own company |
 
@@ -120,5 +120,7 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D18 | "Account" = a property account. Terminate = suspend license, deactivate all members, ban their auth users; hard delete stays a separate typed-confirmation action | Spec: "create and terminate accounts"; termination must be reversible by default |
 | D19 | Existing tenant users are **not** auto-linked to companies (user decision 2026-11-05). Until an Admin/PM links them, they see a "not linked to a company" page and no requests; linking also sets `company_id` on their earlier requests; work orders without a company stay staff-only | Avoids guessing company membership from free text |
 | D20 | The Service Group member assigned to inspect a request may record the inspection findings | The workflow assigns a Service Group member as inspector |
+| D21 | Any active tenant of the request's company may approve the estimate or sign off in the portal; the decision is recorded under the signed-in member's name (not a typed name). Link expiry applies only to emailed links | Company-scoped access (D10); identity comes from the session |
+| D22 | A costing or sign-off decision is accepted only while the work order is still waiting for it (`pending_approval`, or `verified` / legacy `svc_submitted` with a link) and is written with a conditional update, so it can be recorded once | Stops an old link from re-opening a waived or re-costed order, and stops double submissions |
 
 The matrix in code is `lib/authz/permissions.ts`; `tests/authz/permissions.test.ts` mirrors this file row by row.

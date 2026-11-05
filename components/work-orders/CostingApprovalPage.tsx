@@ -8,16 +8,26 @@ import SignaturePad from '@/components/sign-off/SignaturePad'
 import { CheckCircle, FileText, XCircle } from 'lucide-react'
 
 interface Props {
-  token: string
+  /** API route that records the decision (public token route or the signed-in tenant route). */
+  endpoint: string
+  /** Where to go after deciding; `action=approve|reject` is appended. */
+  successHref: string
   woNumber: string
   propertyName: string
   costing: WorkOrderCosting | null
+  /** Rendered inside the Tenant Portal instead of as a standalone page. */
+  embedded?: boolean
+  defaultName?: string
 }
 
-export default function CostingApprovalPage({ token, woNumber, propertyName, costing }: Props) {
+function withAction(href: string, action: string) {
+  return `${href}${href.includes('?') ? '&' : '?'}action=${action}`
+}
+
+export default function CostingApprovalPage({ endpoint, successHref, woNumber, propertyName, costing, embedded, defaultName }: Props) {
   const router = useRouter()
   const [view, setView] = useState<'review' | 'approve' | 'reject'>('review')
-  const [name, setName] = useState('')
+  const [name, setName] = useState(defaultName ?? '')
   const [signature, setSignature] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
@@ -36,7 +46,7 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
     setLoading(true)
     setError(null)
 
-    const res = await fetch(`/api/costing-approval/${token}`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -47,21 +57,23 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
       }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setError(data.error ?? 'Submission failed.')
       setLoading(false)
       return
     }
 
-    router.push(`/costing-approval/${token}/success?action=${action}`)
+    router.push(withAction(successHref, action))
+    router.refresh()
   }
 
   const grandTotal = costing?.grand_total ?? 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={embedded ? undefined : 'min-h-screen bg-gray-50'}>
       {/* Header */}
+      {!embedded && (
       <div className="bg-green-800 text-white py-5 px-6">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center">
@@ -73,8 +85,9 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
           </div>
         </div>
       </div>
+      )}
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      <div className={embedded ? 'space-y-6' : 'max-w-2xl mx-auto px-4 py-8 space-y-6'}>
         {/* Summary */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-bold text-gray-900 text-lg mb-1">Work Order {woNumber}</h2>
@@ -161,8 +174,9 @@ export default function CostingApprovalPage({ token, woNumber, propertyName, cos
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            readOnly={Boolean(embedded && defaultName)}
             placeholder="Enter your full name"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent read-only:bg-gray-50"
           />
         </div>
 

@@ -51,7 +51,8 @@ export default async function CostingApprovalTokenPage({ params }: Props) {
 
   return (
     <CostingApprovalPage
-      token={token}
+      endpoint={`/api/costing-approval/${encodeURIComponent(token)}`}
+      successHref={`/costing-approval/${encodeURIComponent(token)}/success`}
       woNumber={data.wo_number}
       propertyName={data.properties?.name ?? ''}
       costing={(data.work_order_costings?.[0] ?? null) as WorkOrderCosting | null}

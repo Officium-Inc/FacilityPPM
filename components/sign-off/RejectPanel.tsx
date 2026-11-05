@@ -6,11 +6,12 @@ import type { ChecklistItem } from '@/types'
 import { XCircle } from 'lucide-react'
 
 interface RejectPanelProps {
-  token: string
+  endpoint: string
+  rejectedHref: string
   checklist: ChecklistItem[]
 }
 
-export default function RejectPanel({ token, checklist }: RejectPanelProps) {
+export default function RejectPanel({ endpoint, rejectedHref, checklist }: RejectPanelProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
@@ -32,7 +33,7 @@ export default function RejectPanel({ token, checklist }: RejectPanelProps) {
     setLoading(true)
     setError(null)
 
-    const res = await fetch(`/api/sign-off/${token}`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -42,14 +43,15 @@ export default function RejectPanel({ token, checklist }: RejectPanelProps) {
       }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setError(data.error ?? 'Failed to submit rejection.')
       setLoading(false)
       return
     }
 
-    router.push(`/sign-off/${token}/rejected`)
+    router.push(rejectedHref)
+    router.refresh()
   }
 
   if (!open) {

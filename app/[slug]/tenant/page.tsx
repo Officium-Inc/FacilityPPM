@@ -6,6 +6,7 @@ import NewTenantServiceRequestModal from '@/components/tenant/NewTenantServiceRe
 import {
   getTenantApprovalHref,
   getTenantPortalContext,
+  getTenantRequestModalProps,
   getTenantServiceRequests,
   isAwaitingTenant,
   rowsOf,
@@ -19,7 +20,10 @@ interface Props {
 export default async function TenantDashboardPage({ params }: Props) {
   const { slug } = await params
   const context = await getTenantPortalContext(slug)
-  const requests = await getTenantServiceRequests(context)
+  const [requests, modalProps] = await Promise.all([
+    getTenantServiceRequests(context),
+    getTenantRequestModalProps(context, slug),
+  ])
 
   const approval = requests.filter(isAwaitingTenant)
   const pending = requests.filter(
@@ -29,27 +33,24 @@ export default async function TenantDashboardPage({ params }: Props) {
   )
   const complete = requests.filter((row) => ['signed', 'completed'].includes(row.status))
   const recent = requests.slice(0, 5)
-  const modalProps = {
-    slug,
-    defaultName: context.engineer.full_name,
-    defaultContact: context.engineer.email || (context.user.email ?? ''),
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Tenant Dashboard</h2>
-          <p className="mt-0.5 text-sm text-gray-500">Track your service reports and approvals.</p>
+          <p className="mt-0.5 text-sm text-gray-500">
+            {modalProps.companyName ? `Service reports and approvals for ${modalProps.companyName}.` : 'Track your service reports and approvals.'}
+          </p>
         </div>
         <NewTenantServiceRequestModal {...modalProps} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          title="My Reports"
+          title="All Reports"
           value={requests.length}
-          subtitle="Total submitted"
+          subtitle="Submitted by your company"
           icon={ClipboardList}
           color="green"
         />

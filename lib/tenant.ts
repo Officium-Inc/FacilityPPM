@@ -4,7 +4,8 @@ import type { User } from '@supabase/supabase-js'
 import { requirePage, type Service } from '@/lib/authz/guard'
 import { userPropertyIds, type MemberActor } from '@/lib/authz/actor'
 import { can } from '@/lib/authz/permissions'
-import type { Priority, WorkOrderStatus } from '@/types'
+import { loadCompanyFloors } from '@/lib/floors'
+import type { Floor, Priority, TenantCompany, WorkOrderStatus } from '@/types'
 
 export type TenantRequestFilter =
   | 'my-requests'
@@ -67,6 +68,7 @@ export interface TenantRequestRow {
   cancellation_reason: string | null
   company_id?: string | null
   engineer_id?: string | null
+  floors?: { label: string } | { label: string }[] | null
   work_order_reports: TenantRequestReport | TenantRequestReport[] | null
 }
 
@@ -91,7 +93,7 @@ const STATUS_GROUPS: Record<'pending' | 'complete' | 'cancelled', WorkOrderStatu
 }
 
 export const TENANT_REQUEST_TITLES: Record<TenantRequestFilter, string> = {
-  'my-requests': 'My Reports',
+  'my-requests': 'All Reports',
   pending: 'Pending',
   'for-my-approval': 'For My Approval',
   complete: 'Complete',
@@ -190,6 +192,7 @@ export async function getTenantServiceRequests(
       sign_off_token,
       audit_report_url,
       cancellation_reason,
+      floors(label),
       work_order_reports!work_order_reports_work_order_id_fkey(
         id, fault_description, location_notes, reported_by_name, reported_by_contact, tenant_lessee, urgency, photo_urls, created_at
       )
@@ -205,12 +208,43 @@ export async function getTenantServiceRequests(
   return filterTenantRequests((data ?? []) as unknown as TenantRequestRow[], context, filter)
 }
 
-export function getTenantApprovalHref(slug: string, row: TenantRequestRow) {
-  if (row.status === 'pending_approval' && row.costing_token) {
-    return `/costing-approval/${row.costing_token}`
+/** Where a tenant reviews a request; requests waiting on them open the in-portal approval / sign-off page. */
+export function getTenantApprovalHref(slug: string, row: Pick<TenantRequestRow, 'id' | 'status' | 'sign_off_token'>) {
+  const detail = `/${slug}/tenant/service-requests/${row.id}`
+  return isAwaitingTenant(row) ? `${detail}/review` : detail
+}
+
+export interface TenantCompanyContext {
+  company: TenantCompany
+  floors: Floor[]
+}
+
+/** The tenant's company and its current floors, or null for tenants not linked to a company (D19). */
+export async function getTenantCompany(context: TenantPortalContext): Promise<TenantCompanyContext | null> {
+  const companyId = context.actor.companyId
+  if (!companyId) return null
+
+  const [{ data: company }, floors] = await Promise.all([
+    context.service
+      .from('tenant_companies')
+      .select('*')
+      .eq('id', companyId)
+      .eq('property_id', context.property.id)
+      .maybeSingle(),
+    loadCompanyFloors(context.service, context.property.id, companyId),
+  ])
+  if (!company) return null
+  return { company: company as TenantCompany, floors }
+}
+
+/** Props for the new service report modal: requests are filed for the tenant's company and one of its floors. */
+export async function getTenantRequestModalProps(context: TenantPortalContext, slug: string) {
+  const companyContext = await getTenantCompany(context)
+  return {
+    slug,
+    defaultName: context.engineer.full_name,
+    defaultContact: context.engineer.email || (context.user.email ?? ''),
+    companyName: companyContext?.company.name,
+    floors: (companyContext?.floors ?? []).map((floor) => ({ id: floor.id, label: floor.label })),
   }
-  if ((row.status === 'verified' || row.status === 'svc_submitted') && row.sign_off_token) {
-    return `/sign-off/${row.sign_off_token}`
-  }
-  return `/${slug}/tenant/service-requests/${row.id}`
 }

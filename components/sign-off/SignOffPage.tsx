@@ -14,17 +14,33 @@ interface SignOffPageProps {
   workDescription: string | null
   allPhotos: string[]
   allDocs: string[]
-  token: string
+  /** API route that records the decision (public token route or the signed-in tenant route). */
+  endpoint: string
+  successHref: string
+  rejectedHref: string
+  /** Rendered inside the Tenant Portal instead of as a standalone page. */
+  embedded?: boolean
+  defaultName?: string
 }
 
 type Step = 'sign' | 'rate'
 
-export default function SignOffPage({ workOrder, workDescription, allPhotos, allDocs, token }: SignOffPageProps) {
+export default function SignOffPage({
+  workOrder,
+  workDescription,
+  allPhotos,
+  allDocs,
+  endpoint,
+  successHref,
+  rejectedHref,
+  embedded,
+  defaultName,
+}: SignOffPageProps) {
   const router = useRouter()
   const [step, setStep] = useState<Step>('sign')
   const [signature, setSignature] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
-  const [name, setName] = useState('')
+  const [name, setName] = useState(defaultName ?? '')
   const [rating, setRating] = useState<number | null>(null)
   const [ratingComment, setRatingComment] = useState('')
   const [loading, setLoading] = useState(false)
@@ -48,7 +64,7 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
     setLoading(true)
     setError(null)
 
-    const res = await fetch(`/api/sign-off/${token}`, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -61,19 +77,21 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
       }),
     })
 
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setError(data.error ?? 'Submission failed. Please try again.')
       setLoading(false)
       return
     }
 
-    router.push(`/sign-off/${token}/success`)
+    router.push(successHref)
+    router.refresh()
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={embedded ? undefined : 'min-h-screen bg-gray-50'}>
       {/* Header */}
+      {!embedded && (
       <div className="bg-green-800 text-white py-5 px-6">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <div className="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
@@ -85,8 +103,9 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
           </div>
         </div>
       </div>
+      )}
 
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
+      <div className={embedded ? 'space-y-5' : 'max-w-2xl mx-auto px-4 py-8 space-y-5'}>
 
         {/* ── Work Order Details ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -184,8 +203,9 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                readOnly={Boolean(embedded && defaultName)}
                 placeholder="Your full name"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 read-only:bg-gray-50"
               />
             </div>
 
@@ -296,13 +316,14 @@ export default function SignOffPage({ workOrder, workDescription, allPhotos, all
         {/* ── Reject ── */}
         {step === 'sign' && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <RejectPanel token={token} checklist={checklist} />
+            <RejectPanel endpoint={endpoint} rejectedHref={rejectedHref} checklist={checklist} />
           </div>
         )}
 
         <p className="text-xs text-gray-400 text-center">
-          This sign-off is legally binding. Your IP address and device will be recorded for
-          audit purposes. This link expires 48 hours after issue.
+          {embedded
+            ? 'This sign-off is legally binding. Your account, IP address and device will be recorded for audit purposes.'
+            : 'This sign-off is legally binding. Your IP address and device will be recorded for audit purposes. This link expires 48 hours after issue.'}
         </p>
       </div>
     </div>

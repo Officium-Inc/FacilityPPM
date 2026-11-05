@@ -5,6 +5,7 @@ import NewTenantServiceRequestModal from '@/components/tenant/NewTenantServiceRe
 import {
   getTenantApprovalHref,
   getTenantPortalContext,
+  getTenantRequestModalProps,
   getTenantServiceRequests,
   isAwaitingTenant,
   rowsOf,
@@ -22,13 +23,11 @@ export default async function ServiceRequestsView({
   filter: TenantRequestFilter
 }) {
   const context = await getTenantPortalContext(slug)
-  const requests = await getTenantServiceRequests(context, filter)
+  const [requests, modalProps] = await Promise.all([
+    getTenantServiceRequests(context, filter),
+    getTenantRequestModalProps(context, slug),
+  ])
   const title = TENANT_REQUEST_TITLES[filter]
-  const modalProps = {
-    slug,
-    defaultName: context.engineer.full_name,
-    defaultContact: context.engineer.email || (context.user.email ?? ''),
-  }
 
   return (
     <div className="space-y-6">
@@ -87,7 +86,9 @@ export default async function ServiceRequestsView({
                       <td className="max-w-xs truncate px-5 py-3 text-gray-700">
                         {report?.fault_description ?? '-'}
                       </td>
-                      <td className="px-5 py-3 text-gray-600">{report?.location_notes ?? '-'}</td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {[rowsOf(row.floors)[0]?.label, report?.location_notes].filter(Boolean).join(' · ') || '-'}
+                      </td>
                       <td className={priority ? 'px-5 py-3 text-gray-600' : 'px-5 py-3 text-gray-400'}>
                         {priorityLabel(priority)}
                       </td>
