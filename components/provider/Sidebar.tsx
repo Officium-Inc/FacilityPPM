@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Building2, LogOut, LayoutDashboard, Menu, X } from 'lucide-react'
+import { Activity, Building2, LogOut, LayoutDashboard, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 
 const nav = [
   { href: '/provider/properties', label: 'Properties', icon: Building2 },
+  { href: '/provider/activity', label: 'Activity', icon: Activity },
 ]
 
 export default function ProviderSidebar() {

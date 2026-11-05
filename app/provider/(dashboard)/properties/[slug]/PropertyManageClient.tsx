@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import LicenseBadge from '@/components/provider/LicenseBadge'
-import { formatRoleName, getCanonicalRoleRows } from '@/lib/roles'
-import type { Property, Engineer, Role, LicenseStatus } from '@/types'
+import LicensePanel from '@/components/provider/LicensePanel'
+import AccountPanel from '@/components/provider/AccountPanel'
+import PropertyActivityPanel from '@/components/provider/PropertyActivityPanel'
+import { formatRoleName, getCanonicalRoleRows, normalizeRoleName } from '@/lib/roles'
+import type { ActivityEvent, AuditEntry, PropertySummary } from '@/lib/provider/activity'
+import type { Property, Engineer, Role } from '@/types'
 import {
-  Shield, Users, Trash2, UserPlus, Mail, Pencil, Check, X,
-  AlertTriangle, BarChart3, Building2, RefreshCw,
+  Users, Trash2, UserPlus, Mail, Pencil, Check, X,
+  AlertTriangle, BarChart3, Building2, RefreshCw, Activity,
 } from 'lucide-react'
 
 interface Invitation {
@@ -25,9 +28,17 @@ interface Props {
   roles: Role[]
   stats: { workOrders: number; assets: number; sites: number }
   invitations: Invitation[]
+  account: { terminated: boolean; terminatedAt: string | null; reason: string | null }
+  activity: {
+    summary: PropertySummary
+    statusCounts: Record<string, number>
+    activeMembers: number
+    events: ActivityEvent[]
+    audit: AuditEntry[]
+  }
 }
 
-type Tab = 'overview' | 'members' | 'danger'
+type Tab = 'overview' | 'activity' | 'members' | 'danger'
 
 function Msg({ msg }: { msg: { type: 'success' | 'error'; text: string } }) {
   return (
@@ -41,20 +52,17 @@ function Msg({ msg }: { msg: { type: 'success' | 'error'; text: string } }) {
   )
 }
 
-export default function PropertyManageClient({ property, engineers, roles, stats, invitations: initInvites }: Props) {
+export default function PropertyManageClient({ property, engineers, roles, stats, invitations: initInvites, account, activity }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('overview')
-  const roleRows = getCanonicalRoleRows(roles)
+  // The retired viewer role grants no access, so it is not offered (D1)
+  const roleRows = getCanonicalRoleRows(roles).filter((r) => normalizeRoleName(r.name) !== 'viewer')
   const defaultExistingRoleId =
     roleRows.find((r) => r.name === 'tenant')?.id ??
-    roleRows.find((r) => r.name === 'viewer')?.id ??
     roleRows[0]?.id ??
     ''
 
   // ── Overview state ──────────────────────────────────────────────
-  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(property.license_status)
-  const [licenseLoading, setLicenseLoading] = useState(false)
-  const [licenseMsg, setLicenseMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [propertyName, setPropertyName] = useState(property.name)
   const [nameLoading, setNameLoading] = useState(false)
   const [nameMsg, setNameMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -101,21 +109,6 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   useEffect(() => {
     setInviteList(initInvites)
   }, [initInvites])
-
-  async function handleLicenseUpdate(e: React.FormEvent) {
-    e.preventDefault()
-    setLicenseLoading(true)
-    setLicenseMsg(null)
-    const res = await fetch(`/api/provider/properties/${property.slug}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ license_status: licenseStatus }),
-    })
-    const data = await res.json()
-    setLicenseMsg(res.ok ? { type: 'success', text: 'License updated.' } : { type: 'error', text: data.error })
-    if (res.ok) router.refresh()
-    setLicenseLoading(false)
-  }
 
   async function handleNameUpdate(e: React.FormEvent) {
     e.preventDefault()
@@ -268,23 +261,32 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   }
 
   async function saveEdit(memberId: string) {
+    const current = memberList.find((m) => m.id === memberId)
+    // Only send the role when it changed, so a status change works for members of retired roles
+    const payload: Record<string, unknown> = { is_active: editActive }
+    if (editRoleId && editRoleId !== current?.role_id) payload.role_id = editRoleId
     const res = await fetch(`/api/provider/properties/${property.slug}/members/${memberId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role_id: editRoleId || null, is_active: editActive }),
+      body: JSON.stringify(payload),
     })
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setMemberMsg({ type: 'error', text: data.error ?? 'Update failed.' })
     } else {
       setMemberList((prev) =>
         prev.map((m) =>
           m.id === memberId
-            ? { ...m, role_id: editRoleId || null, is_active: editActive, roles: roleRows.find((r) => r.id === editRoleId) }
+            ? {
+                ...m,
+                is_active: editActive,
+                ...(payload.role_id ? { role_id: editRoleId, roles: roleRows.find((r) => r.id === editRoleId) } : {}),
+              }
             : m
         )
       )
       setEditingId(null)
+      router.refresh()
     }
   }
 
@@ -305,8 +307,12 @@ export default function PropertyManageClient({ property, engineers, roles, stats
   async function handleDeleteProperty() {
     setDeleteLoading(true)
     setDeleteMsg(null)
-    const res = await fetch(`/api/provider/properties/${property.slug}`, { method: 'DELETE' })
-    const data = await res.json()
+    const res = await fetch(`/api/provider/properties/${property.slug}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: confirmName }),
+    })
+    const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setDeleteMsg({ type: 'error', text: data.error ?? 'Deletion failed.' })
       setDeleteLoading(false)
@@ -318,6 +324,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
+    { id: 'activity', label: 'Activity', icon: Activity },
     { id: 'members', label: `Members (${memberList.length})`, icon: Users },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle },
   ]
@@ -388,38 +395,19 @@ export default function PropertyManageClient({ property, engineers, roles, stats
           </div>
 
           {/* License */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-4 h-4 text-gray-500" />
-              <h3 className="font-semibold text-gray-900 text-sm">License Status</h3>
-            </div>
-            <form onSubmit={handleLicenseUpdate} className="space-y-4">
-              <div className="flex items-center gap-4">
-                {(['active', 'trial', 'suspended'] as LicenseStatus[]).map((status) => (
-                  <label key={status} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="license"
-                      value={status}
-                      checked={licenseStatus === status}
-                      onChange={() => setLicenseStatus(status)}
-                      className="text-blue-600"
-                    />
-                    <LicenseBadge status={status} />
-                  </label>
-                ))}
-              </div>
-              {licenseMsg && <Msg msg={licenseMsg} />}
-              <button
-                type="submit"
-                disabled={licenseLoading || licenseStatus === property.license_status}
-                className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
-              >
-                {licenseLoading ? 'Saving…' : 'Update License'}
-              </button>
-            </form>
-          </div>
+          <LicensePanel
+            slug={property.slug}
+            licenseStatus={property.license_status}
+            licenseExpiresAt={property.license_expires_at ?? null}
+            terminated={account.terminated}
+            audit={activity.audit}
+          />
         </div>
+      )}
+
+      {/* ── ACTIVITY TAB ─────────────────────────────────────────── */}
+      {tab === 'activity' && (
+        <PropertyActivityPanel slug={property.slug} {...activity} />
       )}
 
       {/* ── MEMBERS TAB ──────────────────────────────────────────── */}
@@ -468,7 +456,7 @@ export default function PropertyManageClient({ property, engineers, roles, stats
                             onChange={(e) => setEditRoleId(e.target.value)}
                             className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                           >
-                            <option value="">— No role —</option>
+                            <option value="" disabled>Select role…</option>
                             {roleRows.map((r) => (
                               <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
                             ))}
@@ -717,10 +705,18 @@ export default function PropertyManageClient({ property, engineers, roles, stats
       {/* ── DANGER ZONE TAB ──────────────────────────────────────── */}
       {tab === 'danger' && (
         <div className="space-y-6">
+          <AccountPanel
+            slug={property.slug}
+            propertyName={property.name}
+            terminated={account.terminated}
+            terminatedAt={account.terminatedAt}
+            reason={account.reason}
+          />
+
           <div className="bg-white rounded-xl border-2 border-red-200 p-6">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-5 h-5 text-red-500" />
-              <h3 className="font-semibold text-red-700">Terminate Property</h3>
+              <h3 className="font-semibold text-red-700">Delete Property Permanently</h3>
             </div>
             <p className="text-sm text-gray-600 mb-4">
               This will <strong>permanently delete</strong> <em>{property.name}</em> and all associated data — work orders, assets, engineers, sites, schedules, and checklist history. This action <strong>cannot be undone</strong>.

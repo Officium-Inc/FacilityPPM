@@ -1,5 +1,6 @@
 import { requirePage } from '@/lib/authz/guard'
 import { userPropertyIds } from '@/lib/authz/actor'
+import { recordSupportView } from '@/lib/provider/support'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import ProviderSupportBanner from '@/components/layout/ProviderSupportBanner'
@@ -26,6 +27,9 @@ export default async function DashboardLayout({
       },
     })
   }
+
+  // Provider support views are read-only and audit-logged (D2)
+  if (actor.kind === 'provider') await recordSupportView(service, user.id, property.id)
 
   // Properties for the switcher
   const propertyIds = userPropertyIds(user)

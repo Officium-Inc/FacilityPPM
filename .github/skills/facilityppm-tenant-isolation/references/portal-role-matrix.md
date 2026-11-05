@@ -27,9 +27,9 @@ Always resolve the role **for the property being acted on**, not the "active" on
 | Action | Provider | Any property role |
 |---|---|---|
 | Create property account (property + first Administrator) | ✅ (D18) | ❌ |
-| Terminate property account: suspend, deactivate members, ban sessions | ✅ (D18) | ❌ |
+| Terminate property account: suspend, deactivate members, ban sessions | ✅ (D18, D23) | ❌ |
 | Hard-delete a property (typed confirmation) | ✅ | ❌ |
-| Add, revoke, suspend, renew license (`license_status`, `license_expires_at`) | ✅ (D17) | ❌ |
+| Add, revoke, suspend, renew license (`license_status`, `license_expires_at`) | ✅ (D17, D24) | ❌ |
 | View activity of any property (work orders, events, audit log, KPIs) | ✅ read | ❌ |
 | Create/deactivate user accounts in any property | ✅ | ❌ |
 | Manage provider users | ❌ in app — Supabase dashboard only | ❌ |
@@ -122,5 +122,7 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D20 | The Service Group member assigned to inspect a request may record the inspection findings | The workflow assigns a Service Group member as inspector |
 | D21 | Any active tenant of the request's company may approve the estimate or sign off in the portal; the decision is recorded under the signed-in member's name (not a typed name). Link expiry applies only to emailed links | Company-scoped access (D10); identity comes from the session |
 | D22 | A costing or sign-off decision is accepted only while the work order is still waiting for it (`pending_approval`, or `verified` / legacy `svc_submitted` with a link) and is written with a conditional update, so it can be recorded once | Stops an old link from re-opening a waived or re-costed order, and stops double submissions |
+| D23 | Terminating an account suspends the license, deactivates the property's active members and bans only users with no active membership in another property; the property id is added to the user's `app_metadata.terminated_property_ids` and the deactivated member ids are kept in the `account.terminated` audit entry. Reactivation restores exactly those members and lifts the ban once no terminated property remains | A user who also works in another building must keep that access; reactivation must not revive members an Administrator had deactivated |
+| D24 | License expiry is a date: the license ends at 23:59:59 Philippine time on that day; dates in the past are rejected (suspend instead). Every provider change (license, rename, members, invitations, termination, deletion) and each support view (at most once per 30 minutes) is written to `audit_log` with `metadata.actor_role = 'provider'` | Business timezone; "view the activity of each property" includes provider actions |
 
 The matrix in code is `lib/authz/permissions.ts`; `tests/authz/permissions.test.ts` mirrors this file row by row.

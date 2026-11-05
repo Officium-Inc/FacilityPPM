@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProvider, type Service } from '@/lib/authz/guard'
 import { resolveCanonicalRoleId } from '@/lib/roles'
+import { logProviderAction, requestIp, type ProviderContext } from '@/lib/provider/accounts'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const roleId = await resolveCanonicalRoleId(service, 'admin')
+  const ctx: ProviderContext = { userId: provider.user.id, ip: requestIp(request) }
 
   // Try creating a new auth user first
   const { data: authData, error: authErr } = await service.auth.admin.createUser({
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (authErr) {
     // User already exists — add them to this property instead
     if (authErr.message?.includes('already registered')) {
-      return addExistingUserToProperty({ service, roleId, property, full_name, email })
+      return addExistingUserToProperty({ service, roleId, property, full_name, email, ctx })
     }
     return NextResponse.json({ error: authErr.message }, { status: 500 })
   }
@@ -83,6 +85,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: engErr.message }, { status: 500 })
   }
 
+  await logProviderAction(service, ctx, {
+    propertyId: property.id,
+    action: 'member.added',
+    metadata: { email: email.trim().toLowerCase(), role: 'admin', new_account: true },
+  })
+
   return NextResponse.json({ success: true, user_id: authData.user.id }, { status: 201 })
 }
 
@@ -92,12 +100,14 @@ async function addExistingUserToProperty({
   property,
   full_name,
   email,
+  ctx,
 }: {
   service: Service
   roleId: string | null
   property: { id: string; slug: string; name: string }
   full_name: string
   email: string
+  ctx: ProviderContext
 }) {
   const normalizedEmail = email.trim().toLowerCase()
 
@@ -166,6 +176,12 @@ async function addExistingUserToProperty({
   if (engErr) {
     return NextResponse.json({ error: engErr.message }, { status: 500 })
   }
+
+  await logProviderAction(service, ctx, {
+    propertyId: property.id,
+    action: 'member.added',
+    metadata: { email: normalizedEmail, role: 'admin', existing_account: true },
+  })
 
   return NextResponse.json(
     { success: true, user_id: existingEngineer.user_id, added_to_existing: true },

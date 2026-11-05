@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProvider } from '@/lib/authz/guard'
+import { normalizeRoleName, resolveCanonicalRoleId } from '@/lib/roles'
+import { logProviderAction, requestIp } from '@/lib/provider/accounts'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -35,17 +37,20 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
   }
 
-  const roleId = body.role_id?.trim() || null
-  if (roleId) {
-    const { data: role } = await service
-      .from('roles')
-      .select('id')
-      .eq('id', roleId)
-      .maybeSingle()
-
-    if (!role) {
-      return NextResponse.json({ error: 'Selected role was not found.' }, { status: 400 })
-    }
+  const requestedRoleId = body.role_id?.trim() || null
+  if (!requestedRoleId) {
+    return NextResponse.json({ error: 'Select a role.' }, { status: 400 })
+  }
+  const { data: role } = await service
+    .from('roles')
+    .select('name')
+    .eq('id', requestedRoleId)
+    .maybeSingle()
+  const roleName = normalizeRoleName(role?.name)
+  // The retired viewer role grants no access (D1)
+  const roleId = roleName && roleName !== 'viewer' ? await resolveCanonicalRoleId(service, roleName) : null
+  if (!roleId) {
+    return NextResponse.json({ error: 'Selected role was not found.' }, { status: 400 })
   }
 
   const { data: existingMemberships } = await service
@@ -125,6 +130,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (engErr) {
     return NextResponse.json({ error: engErr.message }, { status: 500 })
   }
+
+  await logProviderAction(service, { userId: provider.user.id, ip: requestIp(request) }, {
+    propertyId: property.id,
+    action: 'member.added',
+    entityType: 'engineer',
+    entityId: member.id,
+    metadata: { email: normalizedEmail, role: roleName, existing_account: true },
+  })
 
   return NextResponse.json({ success: true, member }, { status: 201 })
 }
