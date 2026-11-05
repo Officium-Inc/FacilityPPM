@@ -60,7 +60,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const signOffToken = isLegacySigned ? null : generateSignOffToken()
 
-  const { error } = await service.from('work_orders').update({
+  // Conditional on the status read above: an approval and a send-back (or a double click) cannot both win
+  const { data: updated, error } = await service.from('work_orders').update({
     status: isLegacySigned ? 'completed' : 'verified',
     head_engineer_id: actorEngineerId(actor),
     head_engineer_verified_at: now,
@@ -74,9 +75,12 @@ export async function POST(request: NextRequest, { params }: Params) {
           tenant_name: resolvedTenantName,
         }),
     updated_at: now,
-  }).eq('id', id)
+  }).eq('id', id).eq('status', wo.status).select('id')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!updated?.length) {
+    return NextResponse.json({ error: 'Work order is not waiting for final verification.' }, { status: 409 })
+  }
 
   await service.from('approval_trail').insert({
     work_order_id: wo.id,

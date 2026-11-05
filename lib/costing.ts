@@ -24,6 +24,36 @@ export function lineItemTotal(item: Pick<CostingLineItem, 'qty' | 'unit_cost'>) 
   return roundMoney(item.qty * item.unit_cost)
 }
 
+/** "₱7,000.00" */
+export function formatPeso(value: number | string | null | undefined) {
+  const amount = Number(value)
+  return `₱${roundMoney(Number.isFinite(amount) ? amount : 0).toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+/**
+ * The newest estimate of a work order. Each revision inserts a new `work_order_costings` row, and
+ * embedded rows come back unordered, so never take the first one.
+ */
+export function latestCosting<T extends { submitted_at?: string | null; created_at?: string | null }>(
+  rows: T | T[] | null | undefined
+): T | null {
+  const list = !rows ? [] : Array.isArray(rows) ? rows : [rows]
+  let latest: T | null = null
+  let latestTime = -Infinity
+  for (const row of list) {
+    const parsed = Date.parse(row.submitted_at ?? row.created_at ?? '')
+    const time = Number.isNaN(parsed) ? -Infinity : parsed
+    if (latest === null || time > latestTime) {
+      latest = row
+      latestTime = time
+    }
+  }
+  return latest
+}
+
 /** Keeps only well-formed rows from untrusted input (blank rows are dropped). */
 export function normalizeLineItems(value: unknown): CostingLineItem[] {
   if (!Array.isArray(value)) return []

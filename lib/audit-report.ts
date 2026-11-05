@@ -6,6 +6,8 @@ import { priorityLabel } from '@/lib/priority'
 import { formatRoleName } from '@/lib/roles'
 import { generateRecordHash } from '@/lib/token'
 import { fileRouteUrl } from '@/lib/storage-urls'
+import { latestCosting } from '@/lib/costing'
+import { SEND_BACK_EVENT_TYPE } from '@/lib/verification-rules'
 import type { WorkOrderEvent } from '@/types'
 
 const BUCKET = 'receipts'
@@ -139,7 +141,7 @@ export async function loadAuditReportData(
   ])
 
   const report = one(wo.work_order_reports as Rel<Record<string, unknown>>) as Record<string, any> | null
-  const costing = one(wo.work_order_costings as Rel<Record<string, unknown>>) as Record<string, any> | null
+  const costing = latestCosting(many(wo.work_order_costings as Rel<Record<string, any>>))
   const evidence = one(wo.work_order_completion_evidence as Rel<Record<string, unknown>>) as Record<string, any> | null
   const engineer = one(wo.engineers as Rel<{ full_name?: string; email?: string }>)
   const property = one(wo.properties as Rel<{ name?: string }>)
@@ -236,9 +238,23 @@ export async function loadAuditReportData(
     })
   }
 
+  // Work the head engineer sent back for rework (D28)
+  for (const entry of trail.filter((row) => row.stage === 'final_verification' && row.decision === 'rejected')) {
+    derived.push({
+      key: SEND_BACK_EVENT_TYPE,
+      name: entry.actor_name ?? 'Head Engineer',
+      email: null,
+      role: 'Head Engineer',
+      step: 'Final verification',
+      decision: 'Sent back',
+      reason: entry.reason ?? null,
+      at: entry.created_at,
+    })
+  }
+
   if (wo.head_engineer_verified_at) {
     const person = people.get(wo.head_engineer_id)
-    const verification = trail.find((row) => row.stage === 'final_verification')
+    const verification = trail.filter((row) => row.stage === 'final_verification' && row.decision === 'approved').pop()
     derived.push({
       key: 'final_verified',
       name: verification?.actor_name ?? person?.full_name ?? 'Head Engineer',

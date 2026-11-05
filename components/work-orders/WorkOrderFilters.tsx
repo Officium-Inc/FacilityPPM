@@ -13,7 +13,7 @@ const STATUSES = [
   { value: 'pending_approval', label: 'Pending Approval' },
   { value: 'assigned', label: 'Assigned' },
   { value: 'in_progress', label: 'In Progress' },
-  { value: 'svc_submitted', label: 'Pending Verification' },
+  { value: 'svc_submitted', label: 'Pending Final Verification' },
   { value: 'verified', label: 'Pending Sign-Off' },
   { value: 'signed', label: 'Signed' },
   { value: 'completed', label: 'Completed' },

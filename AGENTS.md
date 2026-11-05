@@ -58,7 +58,7 @@ Path alias: `@/*` → project root.
 
 Who may do what is defined in
 [`.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md`](.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md)
-(the matrix + decision log D1–D27) and implemented in `lib/authz/permissions.ts`. **Deny by default.**
+(the matrix + decision log D1–D28) and implemented in `lib/authz/permissions.ts`. **Deny by default.**
 
 ---
 
@@ -116,10 +116,13 @@ lib/
   storage-files.ts                Signed URLs and downloads with the service role (server-only)
   token.ts                        Link tokens: generateLinkToken(), hashToken(), isPlausibleToken()
   approvals.ts, approval-rules.ts Costing and sign-off decisions (shared by token links and the portal)
+  verification-rules.ts           Final verification send-back rules (D28)
+  work-order-workflow.ts          Status → workflow step mapping; buildWorkflowSteps() for the detail page timeline
+  costing.ts                      Line items, formatPeso(), latestCosting()
   tenant.ts, tenant-submit.ts     Tenant Portal context and submission rules
   provider/                       Licenses, accounts, activity, audit labels, support view
   email.ts                        nodemailer utilities
-  utils.ts                        cn() helper (clsx + tailwind-merge), formatPHT()
+  utils.ts                        cn() helper (clsx + tailwind-merge), formatPHT(), formatPHTDateTime() (12-hour)
 types/
   index.ts                        Shared TypeScript interfaces
 supabase/
@@ -449,6 +452,8 @@ Rewrite migrations and their deploy constraints:
 | `.contains()` on a `jsonb` column never matches | supabase-js sends a JS array as a Postgres array literal (`cs.{…}`), invalid JSON | Pass a JSON string: `.contains('photo_urls', JSON.stringify([url]))` |
 | Insert/update fails with `work_orders_no_raw_*` / `invitations_no_raw_token` | Code wrote a raw token column | Write `*_token_hash` with `hashToken()` |
 | Tenant sees "not linked to a company" | Tenant users are not auto-linked (D19) | An Admin/PM links them on the Floors & Tenants page |
+| Old cost estimate shown after a revision | `work_order_costings` has no unique `work_order_id`; each revision inserts a row and embeds come back unordered | Pick the estimate with `latestCosting()`, never `[0]` |
+| Work order status changed twice by concurrent clicks | Unconditional `.update().eq('id', id)` | Guard workflow updates with `.eq('status', expected).select('id')` and return 409 when no row changed |
 
 ---
 

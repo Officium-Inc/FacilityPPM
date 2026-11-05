@@ -12,18 +12,24 @@ const statusConfig: Record<WorkOrderStatus, { label: string; classes: string }> 
   inspecting:       { label: 'Inspecting',        classes: 'bg-blue-100 text-blue-700' },
   costing:          { label: 'Costing',           classes: 'bg-indigo-100 text-indigo-700' },
   pending_approval: { label: 'Pending Approval',  classes: 'bg-amber-100 text-amber-700' },
-  assigned:         { label: 'Assigned',          classes: 'bg-sky-100 text-sky-700' },
+  assigned:         { label: 'Assigned',          classes: 'bg-cyan-100 text-cyan-800' },
   in_progress:      { label: 'In Progress',       classes: 'bg-yellow-100 text-yellow-800' },
-  svc_submitted:    { label: 'Pending Verification', classes: 'bg-cyan-100 text-cyan-700' },
+  svc_submitted:    { label: 'Pending Final Verification', classes: 'bg-sky-100 text-sky-700' },
   signed:           { label: 'Signed',            classes: 'bg-teal-100 text-teal-700' },
   verified:         { label: 'Pending Sign-Off',  classes: 'bg-green-100 text-green-700' },
   completed:        { label: 'Completed',         classes: 'bg-green-200 text-green-800' },
 }
 
-export default function StatusBadge({ status }: { status: WorkOrderStatus }) {
+export default function StatusBadge({ status, size = 'sm' }: { status: WorkOrderStatus; size?: 'sm' | 'md' }) {
   const cfg = statusConfig[status] ?? { label: status, classes: 'bg-gray-100 text-gray-700' }
   return (
-    <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', cfg.classes)}>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full font-medium',
+        size === 'md' ? 'px-3 py-1 text-xs' : 'px-2.5 py-0.5 text-xs',
+        cfg.classes
+      )}
+    >
       {cfg.label}
     </span>
   )

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { costingToLineItems, formatQtyUnit, lineItemTotal, providedByLabel, roundMoney } from '@/lib/costing'
+import { costingToLineItems, formatQtyUnit, latestCosting, lineItemTotal, providedByLabel, roundMoney } from '@/lib/costing'
 import { getPriorityOption } from '@/lib/priority'
 import { formatRoleName } from '@/lib/roles'
 import { toPdfJpeg } from '@/lib/image-upload'
@@ -104,7 +104,8 @@ export async function loadWorkOrderForm(
   if (!wo) return null
 
   const report = one(wo.work_order_reports as Rel<Record<string, any>>)
-  const costing = one(wo.work_order_costings as Rel<Record<string, any>>)
+  const costings = wo.work_order_costings as Rel<Record<string, any>>
+  const costing = latestCosting(costings ? (Array.isArray(costings) ? costings : [costings]) : [])
   const evidence = one(wo.work_order_completion_evidence as Rel<Record<string, any>>)
   const property = one(wo.properties as Rel<Record<string, any>>)
   const engineer = one(wo.engineers as Rel<PersonRow>)
@@ -117,11 +118,14 @@ export async function loadWorkOrderForm(
       .eq('event_type', 'assigned')
       .order('created_at', { ascending: true })
       .limit(1),
+    // "Noted by" is the latest approval; a send-back (D28) is also a final_verification row
     service
       .from('approval_trail')
       .select('stage, actor_name')
       .eq('work_order_id', workOrderId)
       .eq('stage', 'final_verification')
+      .eq('decision', 'approved')
+      .order('created_at', { ascending: false })
       .limit(1),
   ])
 

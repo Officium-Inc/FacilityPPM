@@ -1,11 +1,11 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting } from '@/types'
-import { Send, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus, Calculator } from 'lucide-react'
-import { formatPHT } from '@/lib/utils'
+import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting, WorkOrderCompletionEvidence } from '@/types'
+import { Send, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, Ban, Plus, Calculator, Check, Undo2 } from 'lucide-react'
+import { cn, formatPHT } from '@/lib/utils'
 import { normalizeRoleName } from '@/lib/roles'
 import { PRIORITY_OPTIONS, priorityOptionLabel, suggestDueDate } from '@/lib/priority'
 import { PROVIDED_BY_OPTIONS, costingToLineItems, lineItemTotal, roundMoney, summarizeLineItems } from '@/lib/costing'
@@ -28,6 +28,8 @@ interface WorkOrderActionsProps {
   permissions: WorkOrderActionPermissions
   /** Previously saved estimate, used to prefill the costing form when it is revised. */
   existingCosting?: Pick<WorkOrderCosting, 'labour_hours' | 'labour_rate' | 'materials_total' | 'subcontractor_total' | 'line_items' | 'notes'> | null
+  /** Previously submitted completion evidence, used to prefill the form when work is sent back for rework. */
+  existingEvidence?: Pick<WorkOrderCompletionEvidence, 'work_description' | 'completion_photo_urls' | 'supporting_doc_urls'> | null
   /** Context about the job being assigned, shown read-only in the Assign Work Order modal. */
   jobSummary?: AssignJobSummary
 }
@@ -40,7 +42,7 @@ export interface WorkOrderActionPermissions {
   cancel: boolean
 }
 
-/** Which permission the actions shown at each status need. Statuses not listed only show read-only info. */
+/** Which permission the actions shown at each status need. Statuses not listed have no actions. */
 const STATUS_PERMISSION: Partial<Record<WorkOrder['status'], keyof WorkOrderActionPermissions>> = {
   new_report: 'review',
   inspecting: 'inspect',
@@ -55,7 +57,9 @@ const STATUS_PERMISSION: Partial<Record<WorkOrder['status'], keyof WorkOrderActi
   on_hold: 'review',
 }
 
-const INPUT = 'w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500'
+const INPUT = 'block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-600 focus:outline-none focus:ring-2 focus:ring-green-600/20'
+const LABEL = 'mb-1 block text-sm font-medium text-gray-700'
+const WARNING = 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800'
 const IMAGE_URL_PATTERN = /\.(avif|gif|jpe?g|png|webp)(?:[?#]|$)/i
 
 function isImageUrl(url: string) {
@@ -69,9 +73,13 @@ function uploadKindLabel(url: string) {
   return 'File'
 }
 
-export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, permissions, existingCosting = null, jobSummary = {} }: WorkOrderActionsProps) {
+/** The action form of the current workflow step, shown inside the current step's card. */
+export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, permissions, existingCosting = null, existingEvidence = null, jobSummary = {} }: WorkOrderActionsProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const formId = useId()
+  /** The API path of the request in flight; every action is disabled meanwhile. */
+  const [pending, setPending] = useState<string | null>(null)
+  const loading = pending !== null
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [inspectionNotes, setInspectionNotes] = useState('')
@@ -102,11 +110,18 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   const [dueDate, setDueDate] = useState(() => suggestDueDate(workOrder.priority))
   const [assignInstructions, setAssignInstructions] = useState('')
 
-  const [workDescription, setWorkDescription] = useState('')
-  const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<string[]>([])
+  // Work sent back for rework starts from what was submitted before
+  const [workDescription, setWorkDescription] = useState(existingEvidence?.work_description ?? '')
+  const [hoursLogged, setHoursLogged] = useState(workOrder.hours_logged != null ? String(workOrder.hours_logged) : '')
+  const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<string[]>(() => [
+    ...(existingEvidence?.completion_photo_urls ?? []),
+    ...(existingEvidence?.supporting_doc_urls ?? []),
+  ])
   const [uploadLoading, setUploadLoading] = useState(false)
 
   const [verifyNotes, setVerifyNotes] = useState('')
+  const [verifyNoteError, setVerifyNoteError] = useState<string | null>(null)
+  const verifyNotesRef = useRef<HTMLTextAreaElement>(null)
   const [verifyTenantId, setVerifyTenantId] = useState('')
 
   const [assignInspectionTeamId, setAssignInspectionTeamId] = useState('')
@@ -114,6 +129,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   const [assignPriority, setAssignPriority] = useState<Priority>(workOrder.priority ?? 'medium')
 
   const { status } = workOrder
+  const api = (action: string) => `/api/work-orders/${workOrder.id}/${action}`
   const { materialsTotal, subcontractorTotal } = summarizeLineItems(costingItems)
   const costingTotal = roundMoney(labourHours * labourRate + materialsTotal + subcontractorTotal)
   function updateCostingItem(index: number, patch: Partial<CostingLineItem>) {
@@ -141,7 +157,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(`/api/work-orders/${workOrder.id}/upload`, { method: 'POST', body: fd })
+      const res = await fetch(api('upload'), { method: 'POST', body: fd })
       const data = await res.json()
       if (res.ok && data.url) urls.push(data.url)
     }
@@ -151,7 +167,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   }
 
   async function apiPost(path: string, body: Record<string, unknown>) {
-    setLoading(true)
+    setPending(path)
     setMessage(null)
     const res = await fetch(path, {
       method: 'POST',
@@ -159,98 +175,142 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       body: JSON.stringify(body),
     })
     const data = await res.json()
+    setPending(null)
     if (!res.ok) {
       setMessage({ type: 'error', text: data.error ?? 'Action failed.' })
-      setLoading(false)
       return false
     }
-    setLoading(false)
     router.refresh()
     return true
   }
 
   async function handleStatusChange(newStatus: string) {
-    await apiPost(`/api/work-orders/${workOrder.id}/status`, { status: newStatus })
+    await apiPost(api('status'), { status: newStatus })
   }
 
   async function handleSendSignOff() {
-    const ok = await apiPost(`/api/work-orders/${workOrder.id}/send-sign-off`, {})
+    const ok = await apiPost(api('send-sign-off'), {})
     if (ok) setMessage({ type: 'success', text: 'Sign-off link sent to tenant.' })
+  }
+
+  function submitEvidence() {
+    if (!workDescription.trim()) { setMessage({ type: 'error', text: 'Describe the work that was done.' }); return }
+    const hours = hoursLogged.trim() ? Number(hoursLogged) : null
+    if (hours !== null && (!Number.isFinite(hours) || hours < 0 || hours > 10000)) {
+      setMessage({ type: 'error', text: 'Hours logged must be a number between 0 and 10,000.' })
+      return
+    }
+    void apiPost(api('complete-evidence'), {
+      workDescription,
+      completionPhotoUrls: uploadedPhotoUrls.filter(isImageUrl),
+      supportingDocUrls: uploadedPhotoUrls.filter((url) => !isImageUrl(url)),
+      // Leave hours out when blank so an earlier value is not saved as 0
+      ...(hours !== null ? { hoursLogged: hours } : {}),
+    })
+  }
+
+  async function approveVerification() {
+    const t = engineers.find(e => e.id === verifyTenantId)
+    if (!workOrder.tenant_email && !t) { setMessage({ type: 'error', text: 'Please select the tenant who will sign off.' }); return }
+    await apiPost(api('verify'), { notes: verifyNotes, tenantEmail: t?.email, tenantName: t?.full_name })
+  }
+
+  async function sendBackVerification() {
+    if (!verifyNotes.trim()) {
+      setVerifyNoteError('Add a note so the engineer knows what to fix.')
+      verifyNotesRef.current?.focus()
+      return
+    }
+    await apiPost(api('send-back'), { reason: verifyNotes })
   }
 
   const requiredPermission = STATUS_PERMISSION[status]
   if (requiredPermission && !permissions[requiredPermission]) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-2">
-        <h3 className="font-semibold text-gray-900 text-sm">Actions</h3>
-        <p className="text-xs text-gray-500">
-          You can view this work order. Actions at this stage are handled by the property team.
-        </p>
-      </div>
+      <p className="text-sm text-gray-500">
+        You can view this work order. Actions at this stage are handled by the property team.
+      </p>
     )
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900 text-sm">Actions</h3>
-
+    <div className="space-y-4">
       {message && (
-        <div className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+        <div
+          role={message.type === 'error' ? 'alert' : 'status'}
+          className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}
+        >
           {message.text}
         </div>
       )}
 
       {status === 'new_report' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Assign Inspection Team</p>
+        <div className="space-y-4">
           {serviceGroup.length === 0 ? (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No service group members found. Add a member with the &ldquo;Service Group&rdquo; role first.</p>
+            <p className={WARNING}>No service group members found. Add a member with the &ldquo;Service Group&rdquo; role first.</p>
           ) : (
-            <select value={assignInspectionTeamId} onChange={(e) => setAssignInspectionTeamId(e.target.value)} className={INPUT}>
-              <option value="">Select service team member...</option>
-              {serviceGroup.map((eng) => (
-                <option key={eng.id} value={eng.id}>{eng.full_name}</option>
-              ))}
-            </select>
+            <div>
+              <label htmlFor={`${formId}-inspector`} className={LABEL}>Inspection team</label>
+              <select id={`${formId}-inspector`} value={assignInspectionTeamId} onChange={(e) => setAssignInspectionTeamId(e.target.value)} className={INPUT}>
+                <option value="">Select a service team member…</option>
+                {serviceGroup.map((eng) => (
+                  <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+                ))}
+              </select>
+            </div>
           )}
-          <ActionButton
-            onClick={async () => {
-              if (!assignInspectionTeamId) { setMessage({ type: 'error', text: 'Please select a service team member.' }); return }
-              await apiPost(`/api/work-orders/${workOrder.id}/start-inspection`, { engineerId: assignInspectionTeamId })
-            }}
-            loading={loading}
-            icon={UserCheck}
-            label="Assign & Start Inspection"
-          />
+          <ActionRow>
+            <ActionButton
+              onClick={async () => {
+                if (!assignInspectionTeamId) { setMessage({ type: 'error', text: 'Please select a service team member.' }); return }
+                await apiPost(api('start-inspection'), { engineerId: assignInspectionTeamId })
+              }}
+              disabled={loading}
+              busy={loading}
+              icon={UserCheck}
+              label="Assign & Start Inspection"
+            />
+          </ActionRow>
         </div>
       )}
 
       {status === 'inspecting' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Record Inspection Findings</p>
-          <textarea value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Inspection notes & diagnosis…" rows={2} className={INPUT} />
-          <input type="text" value={rootCause} onChange={(e) => setRootCause(e.target.value)} placeholder="Root cause" className={INPUT} />
-          <textarea value={scopeOfWork} onChange={(e) => setScopeOfWork(e.target.value)} placeholder="Scope of work required…" rows={2} className={INPUT} />
-
+        <div className="space-y-4">
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Priority (assessed by engineer) <span className="text-red-500">*</span></label>
-            <select value={inspectionPriority} onChange={(e) => setInspectionPriority(e.target.value as Priority | '')} className={INPUT}>
-              <option value="">— Select priority —</option>
-              {PRIORITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{priorityOptionLabel(option)}</option>
-              ))}
-            </select>
+            <label htmlFor={`${formId}-findings`} className={LABEL}>Inspection notes</label>
+            <textarea id={`${formId}-findings`} value={inspectionNotes} onChange={(e) => setInspectionNotes(e.target.value)} placeholder="Findings and diagnosis…" rows={3} className={INPUT} />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor={`${formId}-root-cause`} className={LABEL}>Root cause</label>
+              <input id={`${formId}-root-cause`} type="text" value={rootCause} onChange={(e) => setRootCause(e.target.value)} className={INPUT} />
+            </div>
+            <div>
+              <label htmlFor={`${formId}-priority`} className={LABEL}>Priority <span className="text-red-600" aria-hidden="true">*</span></label>
+              <select id={`${formId}-priority`} required value={inspectionPriority} onChange={(e) => setInspectionPriority(e.target.value as Priority | '')} className={INPUT}>
+                <option value="">Select priority…</option>
+                {PRIORITY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{priorityOptionLabel(option)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label htmlFor={`${formId}-scope`} className={LABEL}>Scope of work</label>
+            <textarea id={`${formId}-scope`} value={scopeOfWork} onChange={(e) => setScopeOfWork(e.target.value)} placeholder="Work required to fix the issue…" rows={2} className={INPUT} />
           </div>
 
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Inspection Outcome</p>
-          <div className="space-y-2">
+          <fieldset className="space-y-2">
+            <legend className={LABEL}>Inspection outcome</legend>
             <OutcomeOption
+              name={`${formId}-outcome`}
               checked={inspectionOutcome === 'proceed'}
               onSelect={() => setInspectionOutcome('proceed')}
               title="Proceed to costing"
               description="In-house team does the work."
             />
             <OutcomeOption
+              name={`${formId}-outcome`}
               checked={inspectionOutcome === 'third_party'}
               onSelect={() => setInspectionOutcome('third_party')}
               title="Third-party contractor will do the work"
@@ -258,6 +318,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
             />
             {permissions.cancel && (
               <OutcomeOption
+                name={`${formId}-outcome`}
                 checked={inspectionOutcome === 'cancel'}
                 onSelect={() => setInspectionOutcome('cancel')}
                 title="Cancel request"
@@ -265,67 +326,77 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                 tone="danger"
               />
             )}
-          </div>
+          </fieldset>
 
           {inspectionOutcome === 'third_party' && (
-            <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
-              <input type="text" value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Contractor / company name *" className={INPUT} />
-              <input type="text" value={contractorContact} onChange={(e) => setContractorContact(e.target.value)} placeholder="Contact person, phone or email" className={INPUT} />
-              <textarea value={contractorNotes} onChange={(e) => setContractorNotes(e.target.value)} placeholder="Notes (scope handed over, quote reference…)" rows={2} className={INPUT} />
+            <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+              <div>
+                <label htmlFor={`${formId}-contractor`} className={LABEL}>Contractor / company name <span className="text-red-600" aria-hidden="true">*</span></label>
+                <input id={`${formId}-contractor`} type="text" value={contractorName} onChange={(e) => setContractorName(e.target.value)} className={INPUT} />
+              </div>
+              <div>
+                <label htmlFor={`${formId}-contractor-contact`} className={LABEL}>Contact person, phone or email</label>
+                <input id={`${formId}-contractor-contact`} type="text" value={contractorContact} onChange={(e) => setContractorContact(e.target.value)} className={INPUT} />
+              </div>
+              <div>
+                <label htmlFor={`${formId}-contractor-notes`} className={LABEL}>Notes</label>
+                <textarea id={`${formId}-contractor-notes`} value={contractorNotes} onChange={(e) => setContractorNotes(e.target.value)} placeholder="Scope handed over, quote reference…" rows={2} className={INPUT} />
+              </div>
             </div>
           )}
 
           {inspectionOutcome === 'cancel' ? (
-            <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
-              <textarea value={inspectionCancelReason} onChange={(e) => setInspectionCancelReason(e.target.value)} placeholder="Reason for cancelling (required, shown to the tenant)…" rows={2} className={INPUT} />
-              <ActionButton
-                onClick={() => {
-                  if (!inspectionCancelReason.trim()) { setMessage({ type: 'error', text: 'Please enter a cancellation reason.' }); return }
-                  void apiPost(`/api/work-orders/${workOrder.id}/cancel`, { reason: inspectionCancelReason })
-                }}
-                loading={loading} icon={Ban} label="Cancel Request" variant="danger"
-              />
+            <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <div>
+                <label htmlFor={`${formId}-cancel-reason`} className={LABEL}>Reason for cancelling (shown to the tenant)</label>
+                <textarea id={`${formId}-cancel-reason`} value={inspectionCancelReason} onChange={(e) => setInspectionCancelReason(e.target.value)} rows={2} className={INPUT} />
+              </div>
+              <ActionRow>
+                <ActionButton
+                  onClick={() => {
+                    if (!inspectionCancelReason.trim()) { setMessage({ type: 'error', text: 'Please enter a cancellation reason.' }); return }
+                    void apiPost(api('cancel'), { reason: inspectionCancelReason })
+                  }}
+                  disabled={loading} busy={loading} icon={Ban} label="Cancel Request" variant="danger"
+                />
+              </ActionRow>
             </div>
           ) : (
-            <ActionButton
-              onClick={() => {
-                if (!inspectionPriority) { setMessage({ type: 'error', text: 'Please select the priority.' }); return }
-                void apiPost(`/api/work-orders/${workOrder.id}/inspection`, {
-                  inspectionNotes,
-                  rootCause,
-                  scopeOfWork,
-                  priority: inspectionPriority,
-                  outcome: inspectionOutcome,
-                  contractorName,
-                  contractorContact,
-                  contractorNotes,
-                })
-              }}
-              loading={loading} icon={ClipboardCheck}
-              label={inspectionOutcome === 'third_party' ? 'Submit Inspection → Costing (Third-Party)' : 'Submit Inspection → Proceed to Costing'}
-            />
+            <ActionRow>
+              <ActionButton
+                onClick={() => {
+                  if (!inspectionPriority) { setMessage({ type: 'error', text: 'Please select the priority.' }); return }
+                  void apiPost(api('inspection'), {
+                    inspectionNotes,
+                    rootCause,
+                    scopeOfWork,
+                    priority: inspectionPriority,
+                    outcome: inspectionOutcome,
+                    contractorName,
+                    contractorContact,
+                    contractorNotes,
+                  })
+                }}
+                disabled={loading} busy={loading} icon={ClipboardCheck}
+                label={inspectionOutcome === 'third_party' ? 'Submit Inspection → Costing (Third-Party)' : 'Submit Inspection → Proceed to Costing'}
+              />
+            </ActionRow>
           )}
         </div>
       )}
 
-      {(status === 'costing' || (status === 'pending_approval' && workOrder.rejection_reason)) && (
+      {status === 'costing' && (
         <>
-          {/* Trigger shown in the Actions card */}
-          <div className="space-y-3">
-            {workOrder.rejection_reason && (
-              <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-                <p className="font-medium">Tenant rejected the previous estimate</p>
-                <p className="mt-0.5">{workOrder.rejection_reason}</p>
-              </div>
-            )}
+          <div className="space-y-4">
             {isThirdParty && <ContractorBanner workOrder={workOrder} hint="Add the contractor's quote as an item provided by the third-party contractor." />}
-            <button
-              onClick={() => setCostingModalOpen(true)}
-              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
-            >
-              <span className="flex items-center gap-2"><Calculator className="w-4 h-4" /> {workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <ActionRow>
+              <ActionButton
+                onClick={() => setCostingModalOpen(true)}
+                disabled={loading}
+                icon={Calculator}
+                label={workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}
+              />
+            </ActionRow>
           </div>
 
           {/* Modal */}
@@ -343,6 +414,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                   <button
                     onClick={() => { if (!loading) setCostingModalOpen(false) }}
                     className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Close"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -487,7 +559,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                       loading={loading}
                       hint="Cost not approved? Cancel this request. The tenant is notified and any approval link stops working."
                       onConfirm={async (reason) => {
-                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/cancel`, { reason })
+                        const ok = await apiPost(api('cancel'), { reason })
                         if (ok) setCostingModalOpen(false)
                       }}
                     />
@@ -510,7 +582,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                     onClick={async () => {
                       if (!selectedCostingTenantId) { setMessage({ type: 'error', text: 'Please select a tenant to send the approval to.' }); return }
                       const t = tenants.find(e => e.id === selectedCostingTenantId)
-                      const ok = await apiPost(`/api/work-orders/${workOrder.id}/costing`, { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+                      const ok = await apiPost(api('costing'), { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
                       if (ok) setCostingModalOpen(false)
                     }}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
@@ -527,41 +599,31 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
         </>
       )}
 
-      {status === 'pending_approval' && !workOrder.rejection_reason && (
-        <div className="space-y-3">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">
-            Awaiting tenant cost approval — a link has been sent.
-          </div>
+      {status === 'pending_approval' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">An approval link was sent to the tenant. The work can be assigned once they approve the estimate.</p>
           <CancelRequestPanel
             loading={loading}
             hint="Tenant has not approved the cost? Cancel the request. The approval link stops working and the tenant is notified."
-            onConfirm={(reason) => apiPost(`/api/work-orders/${workOrder.id}/cancel`, { reason })}
+            onConfirm={(reason) => apiPost(api('cancel'), { reason })}
           />
         </div>
       )}
 
       {status === 'assigned' && (
         <>
-          {/* Trigger button shown in the Actions card */}
-          <div className="space-y-3">
-            {workOrder.costing_approved_by_name && (
-              <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
-                Cost approved by {workOrder.costing_approved_by_name}
-                {workOrder.costing_approved_at && ` on ${formatPHT(workOrder.costing_approved_at)}`}
-              </div>
-            )}
-            <button
+          <ActionRow>
+            <ActionButton
               onClick={() => {
                 setAssignPriority(workOrder.priority ?? 'medium')
                 setDueDate(suggestDueDate(workOrder.priority))
                 setAssignModalOpen(true)
               }}
-              className="w-full flex items-center justify-between gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
-            >
-              <span className="flex items-center gap-2"><UserCheck className="w-4 h-4" /> Assign &amp; Start Work</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+              disabled={loading}
+              icon={UserCheck}
+              label="Assign & Start Work"
+            />
+          </ActionRow>
 
           {/* Modal */}
           {assignModalOpen && (
@@ -578,6 +640,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                   <button
                     onClick={() => { if (!loading) setAssignModalOpen(false) }}
                     className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Close"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -708,7 +771,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                       type="button"
                       disabled={loading}
                       onClick={async () => {
-                        const ok = await apiPost(`/api/work-orders/${workOrder.id}/assign`, { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority })
+                        const ok = await apiPost(api('assign'), { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority })
                         if (ok) setAssignModalOpen(false)
                       }}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
@@ -727,200 +790,202 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
       )}
 
       {status === 'in_progress' && (
-        <div className="space-y-3">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Submit Completion Evidence</p>
-          <textarea value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={2} className={INPUT} />
+        <div className="space-y-4">
+          <div>
+            <label htmlFor={`${formId}-work-done`} className={LABEL}>Work done <span className="text-red-600" aria-hidden="true">*</span></label>
+            <textarea id={`${formId}-work-done`} required value={workDescription} onChange={(e) => setWorkDescription(e.target.value)} placeholder="Describe what was done…" rows={3} className={INPUT} />
+          </div>
+          <div className="sm:max-w-[12rem]">
+            <label htmlFor={`${formId}-hours`} className={LABEL}>Hours logged <span className="font-normal text-gray-500">(optional)</span></label>
+            <input
+              id={`${formId}-hours`}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={10000}
+              step={0.25}
+              value={hoursLogged}
+              onChange={(e) => setHoursLogged(e.target.value)}
+              className={INPUT}
+            />
+          </div>
 
           {/* File / photo upload */}
           <div>
-            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide block mb-1">Upload photos / files</label>
-            <label className={`inline-flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:text-green-600 transition-colors ${uploadLoading ? 'opacity-50 cursor-not-allowed' : 'text-gray-500'}`}>
-              <Paperclip className="w-4 h-4" />
+            <p className={LABEL}>Photos and files</p>
+            <label className={`inline-flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm transition-colors focus-within:ring-2 focus-within:ring-green-600 hover:border-green-600 hover:text-green-700 ${uploadLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer text-gray-600'}`}>
+              <Paperclip className="h-4 w-4" aria-hidden="true" />
               {uploadLoading ? 'Uploading…' : 'Attach files'}
-              <input type="file" multiple accept="image/*,video/*,application/pdf" onChange={handleFileUpload} className="hidden" disabled={uploadLoading} />
+              <input type="file" multiple accept="image/*,video/*,application/pdf" onChange={handleFileUpload} className="sr-only" disabled={uploadLoading} />
             </label>
             {uploadedPhotoUrls.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {uploadedPhotoUrls.map((url, i) => (
-                  <div key={i} className="relative group">
+                  <div key={`${i}-${url}`} className="group relative">
                     {isImageUrl(url) ? (
-                      <img src={url} alt={`Upload ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={url} alt={`Upload ${i + 1}`} className="h-16 w-16 rounded-lg border border-gray-200 object-cover" />
                     ) : (
                       <div className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-1 text-center text-[10px] font-medium text-gray-500">
-                        <Paperclip className="h-4 w-4" />
+                        <Paperclip className="h-4 w-4" aria-hidden="true" />
                         <span className="truncate">{uploadKindLabel(url)}</span>
                       </div>
                     )}
                     <button
                       type="button"
                       onClick={() => setUploadedPhotoUrls(prev => prev.filter((_, j) => j !== i))}
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    ><X className="w-2.5 h-2.5" /></button>
+                      aria-label={`Remove file ${i + 1}`}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-white opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                    ><X className="h-3 w-3" aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-gray-500">
             After you submit, the head engineer does the final verification. The tenant sign-off link is sent once the work is verified.
           </p>
-          <ActionButton
-            onClick={() => {
-              void apiPost(`/api/work-orders/${workOrder.id}/complete-evidence`, {
-                workDescription,
-                completionPhotoUrls: uploadedPhotoUrls.filter(isImageUrl),
-                supportingDocUrls: uploadedPhotoUrls.filter((url) => !isImageUrl(url)),
-              })
-            }}
-            loading={loading} icon={Send} label="Submit Evidence for Final Verification"
-          />
+          <ActionRow>
+            <ActionButton onClick={submitEvidence} disabled={loading || uploadLoading} busy={loading} icon={Send} label="Submit for Final Verification" />
+          </ActionRow>
         </div>
       )}
 
       {status === 'svc_submitted' && (
-        <div className="space-y-3">
-          <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-3 py-2 text-sm text-cyan-800">
-            Work submitted — awaiting final verification
+        <div className="space-y-4">
+          <div>
+            <label htmlFor={`${formId}-verify-notes`} className={LABEL}>
+              Notes <span className="font-normal text-gray-500">(optional)</span>
+            </label>
+            <textarea
+              id={`${formId}-verify-notes`}
+              ref={verifyNotesRef}
+              value={verifyNotes}
+              onChange={(e) => { setVerifyNotes(e.target.value); if (verifyNoteError) setVerifyNoteError(null) }}
+              placeholder="Anything the next person should know..."
+              rows={3}
+              maxLength={2000}
+              aria-invalid={verifyNoteError ? true : undefined}
+              aria-describedby={`${formId}-verify-hint`}
+              className={cn(INPUT, 'resize-y', verifyNoteError && 'border-red-500 focus:border-red-500 focus:ring-red-500/20')}
+            />
+            <p id={`${formId}-verify-hint`} className={cn('mt-1 text-xs', verifyNoteError ? 'text-red-700' : 'text-gray-500')}>
+              {verifyNoteError ?? 'Required to send the work back; the assigned engineer sees it.'}
+            </p>
           </div>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Head Engineer Final Verification</p>
-          <textarea value={verifyNotes} onChange={(e) => setVerifyNotes(e.target.value)} placeholder="Final verification notes (optional)…" rows={2} className={INPUT} />
           {!workOrder.tenant_email && (
-            <>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide pt-1">Send sign-off to tenant</p>
-              {tenants.length === 0 ? (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
-              ) : (
-                <select value={verifyTenantId} onChange={(e) => setVerifyTenantId(e.target.value)} className={INPUT}>
-                  <option value="">— Select tenant —</option>
+            tenants.length === 0 ? (
+              <p className={WARNING}>No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+            ) : (
+              <div>
+                <label htmlFor={`${formId}-sign-off-tenant`} className={LABEL}>Tenant who signs off</label>
+                <select id={`${formId}-sign-off-tenant`} value={verifyTenantId} onChange={(e) => setVerifyTenantId(e.target.value)} className={INPUT}>
+                  <option value="">Select a tenant…</option>
                   {tenants.map((t) => (
                     <option key={t.id} value={t.id}>{t.full_name} ({t.email})</option>
                   ))}
                 </select>
-              )}
-            </>
+              </div>
+            )
           )}
-          <ActionButton
-            onClick={async () => {
-              const t = engineers.find(e => e.id === verifyTenantId)
-              if (!workOrder.tenant_email && !t) { setMessage({ type: 'error', text: 'Please select the tenant who will sign off.' }); return }
-              const ok = await apiPost(`/api/work-orders/${workOrder.id}/verify`, { notes: verifyNotes, tenantEmail: t?.email, tenantName: t?.full_name })
-              if (ok) setMessage({ type: 'success', text: 'Verified. Sign-off link sent to the tenant.' })
-            }}
-            loading={loading} icon={ClipboardCheck} label="Approve & Send to Tenant for Sign-Off"
-          />
+          <ActionRow>
+            <ActionButton
+              onClick={approveVerification}
+              disabled={loading}
+              busy={pending === api('verify')}
+              icon={Check}
+              label="Approve & send to tenant for sign-off"
+            />
+            <ActionButton
+              onClick={sendBackVerification}
+              disabled={loading}
+              busy={pending === api('send-back')}
+              icon={Undo2}
+              label="Send back to Work Execution"
+              variant="outline"
+            />
+          </ActionRow>
         </div>
       )}
 
       {status === 'verified' && (
-        <div className="space-y-2">
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
-            <p className="font-medium text-green-800">Verified by Head Engineer</p>
-            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
-          </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">Awaiting tenant sign-off</div>
-          <ActionButton onClick={handleSendSignOff} loading={loading} icon={Send} label="Resend Sign-Off Link" variant="secondary" />
-        </div>
+        <ActionRow>
+          <ActionButton onClick={handleSendSignOff} disabled={loading} busy={loading} icon={Send} label="Resend Sign-Off Link" variant="outline" />
+        </ActionRow>
       )}
 
       {status === 'signed' && (
-        <div className="space-y-3">
-          <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 text-sm">
-            <p className="font-medium text-teal-800">Signed by tenant</p>
-            {workOrder.signed_by_name && <p className="text-teal-700 mt-0.5">{workOrder.signed_by_name}</p>}
-            {workOrder.signed_at && <p className="text-teal-600 text-xs mt-0.5">{formatPHT(workOrder.signed_at, true)}</p>}
-            {workOrder.rating && <p className="text-teal-700 text-xs mt-1">Rating: {'★'.repeat(workOrder.rating)}{'☆'.repeat(5 - workOrder.rating)}</p>}
-            {workOrder.rating_comment && <p className="text-teal-600 text-xs italic mt-0.5">&ldquo;{workOrder.rating_comment}&rdquo;</p>}
+        <div className="space-y-4">
+          <div>
+            <label htmlFor={`${formId}-legacy-notes`} className={LABEL}>
+              Notes <span className="font-normal text-gray-500">(optional)</span>
+            </label>
+            <textarea id={`${formId}-legacy-notes`} value={verifyNotes} onChange={(e) => setVerifyNotes(e.target.value)} rows={3} className={cn(INPUT, 'resize-y')} />
           </div>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Head Engineer Final Verification</p>
-          <textarea value={verifyNotes} onChange={(e) => setVerifyNotes(e.target.value)} placeholder="Final verification notes (optional)…" rows={2} className={INPUT} />
-          <ActionButton onClick={() => apiPost(`/api/work-orders/${workOrder.id}/verify`, { notes: verifyNotes })} loading={loading} icon={ClipboardCheck} label="Approve & Complete" />
+          <ActionRow>
+            <ActionButton onClick={() => apiPost(api('verify'), { notes: verifyNotes })} disabled={loading} busy={loading} icon={ClipboardCheck} label="Approve & Complete" />
+          </ActionRow>
         </div>
       )}
 
-      {status === 'completed' && (
-        <div className="space-y-3">
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
-            <p className="font-medium text-green-800">Work Order Completed</p>
-            {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">Verified {formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
-            {workOrder.signed_at && <p className="text-green-600 text-xs mt-0.5">Tenant signed {formatPHT(workOrder.signed_at, true)}</p>}
-          </div>
-          <a
-            href={workOrder.audit_report_url ?? `/api/pdf/${workOrder.id}/audit`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center"
-          >
-            <FileDown className="w-4 h-4" /> Download Audit Report
-          </a>
-          {workOrder.pdf_url && (
-            <a href={workOrder.pdf_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors w-full justify-center">
-              <Download className="w-4 h-4" /> Download Signed Receipt
-            </a>
-          )}
-        </div>
+      {status === 'scheduled' && (
+        <ActionRow>
+          <ActionButton onClick={() => handleStatusChange('in_progress')} disabled={loading} busy={loading} icon={RefreshCw} label="Mark In Progress" />
+        </ActionRow>
       )}
-
-      {status === 'cancelled' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">
-          <p className="font-medium text-red-800">
-            Request cancelled{workOrder.cancelled_stage ? ` at ${workOrder.cancelled_stage}` : ''}
-          </p>
-          {workOrder.cancellation_reason && <p className="text-red-700 mt-0.5 whitespace-pre-wrap">{workOrder.cancellation_reason}</p>}
-          {(workOrder.cancelled_by_name || workOrder.cancelled_at) && (
-            <p className="text-red-600 text-xs mt-1">
-              {workOrder.cancelled_by_name ?? ''}{workOrder.cancelled_at ? ` · ${formatPHT(workOrder.cancelled_at, true)}` : ''}
-            </p>
-          )}
-        </div>
-      )}
-
-      {status === 'scheduled' && <ActionButton onClick={() => handleStatusChange('in_progress')} loading={loading} icon={RefreshCw} label="Mark In Progress" />}
-      {status === 'on_hold' && <ActionButton onClick={() => handleStatusChange('in_progress')} loading={loading} icon={RefreshCw} label="Resume Work" />}
-
-      {workOrder.rejection_reason && status !== 'costing' && status !== 'pending_approval' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">
-          <p className="font-medium text-red-800">Last rejection reason</p>
-          <p className="text-red-700 mt-0.5">{workOrder.rejection_reason}</p>
-        </div>
+      {status === 'on_hold' && (
+        <ActionRow>
+          <ActionButton onClick={() => handleStatusChange('in_progress')} disabled={loading} busy={loading} icon={RefreshCw} label="Resume Work" />
+        </ActionRow>
       )}
     </div>
   )
 }
 
-function ActionButton({ onClick, loading, icon: Icon, label, variant = 'primary' }: {
-  onClick: () => void; loading: boolean; icon: React.ElementType; label: string; variant?: 'primary' | 'secondary' | 'danger'
+function ActionRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">{children}</div>
+}
+
+function ActionButton({ onClick, disabled = false, busy = false, icon: Icon, label, variant = 'primary' }: {
+  onClick: () => void
+  disabled?: boolean
+  /** Shows "Please wait…" on the button whose request is in flight. */
+  busy?: boolean
+  icon: React.ElementType
+  label: string
+  variant?: 'primary' | 'outline' | 'danger'
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      disabled={loading}
-          className={`inline-flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg transition-colors w-full justify-center ${
-        variant === 'primary'
-          ? 'bg-green-700 hover:bg-green-800 disabled:bg-green-400 text-white'
-          : variant === 'danger'
-          ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white'
-          : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
-      }`}
+      disabled={disabled}
+      className={cn(
+        'inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed sm:w-auto',
+        variant === 'primary' && 'bg-green-700 text-white hover:bg-green-800 focus-visible:ring-green-600 disabled:bg-green-700/60',
+        variant === 'outline' && 'border border-gray-300 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus-visible:ring-green-600 disabled:opacity-60',
+        variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600 disabled:bg-red-600/60'
+      )}
     >
-      <Icon className="w-4 h-4" />
-      {loading ? 'Please wait…' : label}
+      <Icon className="h-4 w-4" aria-hidden="true" />
+      {busy ? 'Please wait…' : label}
     </button>
   )
 }
 
-function OutcomeOption({ checked, onSelect, title, description, tone }: {
-  checked: boolean; onSelect: () => void; title: string; description: string; tone?: 'danger'
+function OutcomeOption({ name, checked, onSelect, title, description, tone }: {
+  name: string; checked: boolean; onSelect: () => void; title: string; description: string; tone?: 'danger'
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+      className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 transition-colors focus-within:ring-2 focus-within:ring-green-600 ${
         checked
-          ? tone === 'danger' ? 'border-red-400 bg-red-50' : 'border-green-500 bg-green-50'
+          ? tone === 'danger' ? 'border-red-400 bg-red-50' : 'border-green-600 bg-green-50'
           : 'border-gray-200 hover:bg-gray-50'
       }`}
     >
-      <input type="radio" checked={checked} onChange={onSelect} className="mt-1 accent-green-700" />
+      <input type="radio" name={name} checked={checked} onChange={onSelect} className="mt-1 accent-green-700" />
       <span className="min-w-0">
         <span className={`block text-sm font-medium ${tone === 'danger' ? 'text-red-800' : 'text-gray-900'}`}>{title}</span>
         <span className="block text-xs text-gray-500">{description}</span>
@@ -945,15 +1010,16 @@ function CancelRequestPanel({ loading, hint, onConfirm }: {
 }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
+  const reasonId = useId()
 
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 sm:w-auto"
       >
-        <Ban className="w-4 h-4" /> Cancel Request
+        <Ban className="h-4 w-4" aria-hidden="true" /> Cancel Request
       </button>
     )
   }
@@ -961,7 +1027,9 @@ function CancelRequestPanel({ loading, hint, onConfirm }: {
   return (
     <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
       <p className="text-xs text-red-800">{hint}</p>
+      <label htmlFor={reasonId} className="sr-only">Reason for cancelling</label>
       <textarea
+        id={reasonId}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         placeholder="Reason for cancelling (required, shown to the tenant)…"
