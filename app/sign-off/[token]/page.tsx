@@ -1,4 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/server'
+import { hashToken, isPlausibleToken } from '@/lib/token'
+import { withSignedFileUrls } from '@/lib/storage-files'
 import { notFound } from 'next/navigation'
 import type { WorkOrder } from '@/types'
 import SignOffPage from '@/components/sign-off/SignOffPage'
@@ -15,13 +17,14 @@ interface Props {
 
 export default async function SignOffTokenPage({ params }: Props) {
   const { token } = await params
+  if (!isPlausibleToken(token)) notFound()
   // Use service client so joined tables (assets, sites, etc.) bypass RLS for this public page
   const supabase = await createServiceClient()
 
   const { data: wo } = await supabase
     .from('work_orders')
     .select(SIGN_OFF_VIEW_SELECT)
-    .eq('sign_off_token', token)
+    .eq('sign_off_token_hash', hashToken(token))
     .maybeSingle()
 
   if (!wo) notFound()
@@ -43,12 +46,16 @@ export default async function SignOffTokenPage({ params }: Props) {
     )
   }
 
-  const { workDescription, allPhotos, allDocs } = await loadSignOffEvidence(supabase, workOrder)
+  // No signed-in user here: the token holder sees the files through short-lived signed URLs
+  const { order, workDescription, allPhotos, allDocs } = await withSignedFileUrls(supabase, {
+    ...(await loadSignOffEvidence(supabase, workOrder)),
+    order: { ...workOrder, sign_off_token_hash: null, costing_token_hash: null } as WorkOrder,
+  })
   const base = `/sign-off/${encodeURIComponent(token)}`
 
   return (
     <SignOffPage
-      workOrder={workOrder}
+      workOrder={order}
       workDescription={workDescription}
       allPhotos={allPhotos}
       allDocs={allDocs}

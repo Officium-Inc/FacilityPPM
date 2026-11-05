@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { hashToken, isPlausibleToken } from '@/lib/token'
 import {
   SIGN_OFF_DECISION_COLUMNS,
   decideSignOff,
@@ -15,6 +16,7 @@ interface Params {
 /** Public sign-off link: approve (signature + optional rating) or reject the completed work. */
 export async function POST(request: NextRequest, { params }: Params) {
   const { token } = await params
+  if (!isPlausibleToken(token)) return NextResponse.json({ error: 'Invalid or expired sign-off token.' }, { status: 404 })
   const decision = parseSignOffDecision(await request.json().catch(() => null))
   if ('error' in decision) return NextResponse.json({ error: decision.error }, { status: 400 })
 
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: wo } = await service
     .from('work_orders')
     .select(SIGN_OFF_DECISION_COLUMNS)
-    .eq('sign_off_token', token)
+    .eq('sign_off_token_hash', hashToken(token))
     .maybeSingle()
 
   if (!wo) return NextResponse.json({ error: 'Invalid or expired sign-off token.' }, { status: 404 })

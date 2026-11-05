@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { createServiceClient } from '@/lib/supabase/server'
 import { findAuthUserByEmail } from '@/lib/auth-users'
+import { hashToken, isPlausibleToken } from '@/lib/token'
 import AcceptInviteForm from './AcceptInviteForm'
 
 interface Props {
@@ -9,12 +10,13 @@ interface Props {
 
 export default async function InvitePage({ params }: Props) {
   const { token } = await params
+  if (!isPlausibleToken(token)) notFound()
   const service = await createServiceClient()
 
   const { data: invite } = await service
     .from('invitations')
     .select('email, invited_name, expires_at, used_at, properties(name)')
-    .eq('token', token)
+    .eq('token_hash', hashToken(token))
     .maybeSingle()
 
   if (!invite) notFound()

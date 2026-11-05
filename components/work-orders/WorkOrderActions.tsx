@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting } from '@/types'
-import { Send, ExternalLink, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus, Calculator } from 'lucide-react'
+import { Send, Download, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, ArrowRight, Ban, FileDown, Plus, Calculator } from 'lucide-react'
 import { formatPHT } from '@/lib/utils'
 import { normalizeRoleName } from '@/lib/roles'
 import { PRIORITY_OPTIONS, priorityOptionLabel, suggestDueDate } from '@/lib/priority'
@@ -819,11 +819,6 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
             {workOrder.head_engineer_verified_at && <p className="text-green-600 text-xs mt-0.5">{formatPHT(workOrder.head_engineer_verified_at, true)}</p>}
           </div>
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">Awaiting tenant sign-off</div>
-          {workOrder.sign_off_token && (
-            <a href={`${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')}/sign-off/${workOrder.sign_off_token}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-green-600 hover:underline">
-              <ExternalLink className="w-3.5 h-3.5" /> Preview sign-off page
-            </a>
-          )}
           <ActionButton onClick={handleSendSignOff} loading={loading} icon={Send} label="Resend Sign-Off Link" variant="secondary" />
         </div>
       )}

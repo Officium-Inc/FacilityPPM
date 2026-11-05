@@ -3,6 +3,7 @@ import { authorize, requireSession } from '@/lib/authz/guard'
 import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { IMAGE_TYPES, optimizeImage } from '@/lib/image-upload'
 import { WORK_ORDER_FILE_BUCKET, workOrderFilePath } from '@/lib/work-order-files'
+import { fileRouteUrl } from '@/lib/storage-urls'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -86,5 +87,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     data: { publicUrl },
   } = service.storage.from(BUCKET).getPublicUrl(fileName)
 
-  return NextResponse.json({ url: publicUrl, contentType }, { status: 201 })
+  // The bucket is private: the browser shows the file through the authenticated file route
+  return NextResponse.json({ url: fileRouteUrl(publicUrl), contentType }, { status: 201 })
 }

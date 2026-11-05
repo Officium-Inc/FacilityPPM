@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { authorize, type Denied, type Session } from '@/lib/authz/guard'
 import { activePropertyId, type MemberActor } from '@/lib/authz/actor'
+import { toStoredFileUrl } from '@/lib/storage-urls'
 
 export const SERVICE_REPORT_BUCKET = 'receipts'
 export const MAX_SERVICE_REPORT_PHOTOS = 6
@@ -57,11 +58,13 @@ export function serviceReportPhotoPrefix(propertyId: string) {
   return `${base}/storage/v1/object/public/${SERVICE_REPORT_BUCKET}/service-reports/${propertyId}/`
 }
 
-/** Only accept photo URLs that were uploaded through the tenant upload endpoint for this property. */
+/** Only accept photo URLs uploaded through the tenant upload endpoint for this property (stored form; file-route URLs accepted). */
 export function sanitizeServiceReportPhotoUrls(value: unknown, propertyId: string): string[] {
   if (!Array.isArray(value)) return []
   const prefix = serviceReportPhotoPrefix(propertyId)
   return value
-    .filter((url): url is string => typeof url === 'string' && url.startsWith(prefix) && !url.includes('..'))
+    .filter((url): url is string => typeof url === 'string')
+    .map(toStoredFileUrl)
+    .filter((url) => url.startsWith(prefix) && !url.includes('..'))
     .slice(0, MAX_SERVICE_REPORT_PHOTOS)
 }

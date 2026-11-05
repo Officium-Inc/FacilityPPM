@@ -104,7 +104,7 @@ export function costingDecisionBlocker(wo: CostingDecisionRecord, enforceLinkExp
 export const SIGN_OFF_STATUSES = ['verified', 'svc_submitted']
 
 export const SIGN_OFF_DECISION_COLUMNS =
-  `${WORK_ORDER_SCOPE_COLUMNS}, wo_number, status, sign_off_token, sign_off_expires_at, signed_at, floor_id, tenant_name, head_engineer_verified_at`
+  `${WORK_ORDER_SCOPE_COLUMNS}, wo_number, status, sign_off_token_hash, sign_off_expires_at, signed_at, floor_id, tenant_name, head_engineer_verified_at`
 
 export interface SignOffDecisionRecord {
   id: string
@@ -114,7 +114,7 @@ export interface SignOffDecisionRecord {
   engineer_id: string | null
   company_id?: string | null
   floor_id?: string | null
-  sign_off_token: string | null
+  sign_off_token_hash: string | null
   sign_off_expires_at: string | null
   signed_at: string | null
   tenant_email: string | null
@@ -170,8 +170,8 @@ export function parseSignOffDecision(body: unknown): SignOffDecision | { error: 
   return { error: 'Invalid action.' }
 }
 
-export function isAwaitingSignOff(wo: { status: string; sign_off_token?: string | null }) {
-  return wo.status === 'verified' || (wo.status === 'svc_submitted' && Boolean(wo.sign_off_token))
+export function isAwaitingSignOff(wo: { status: string; sign_off_token_hash?: string | null }) {
+  return wo.status === 'verified' || (wo.status === 'svc_submitted' && Boolean(wo.sign_off_token_hash))
 }
 
 /** Why the work can no longer be signed off, or null when it is waiting for the tenant. */

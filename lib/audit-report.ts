@@ -5,6 +5,7 @@ import AuditReportPdf from '@/components/pdf/AuditReportPdf'
 import { priorityLabel } from '@/lib/priority'
 import { formatRoleName } from '@/lib/roles'
 import { generateRecordHash } from '@/lib/token'
+import { fileRouteUrl } from '@/lib/storage-urls'
 import type { WorkOrderEvent } from '@/types'
 
 const BUCKET = 'receipts'
@@ -309,10 +310,11 @@ export async function loadAuditReportData(
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   const files: AuditFile[] = []
+  // Files are private: the PDF links them through the authenticated file route (signed URLs would expire)
   const pushFiles = (label: string, urls: unknown) => {
     if (!Array.isArray(urls)) return
     urls.filter((url): url is string => typeof url === 'string' && url.startsWith('http')).forEach((url, index, all) => {
-      files.push({ label: `${label}${all.length > 1 ? ` ${index + 1}` : ''} - ${fileNameFromUrl(url)}`, url })
+      files.push({ label: `${label}${all.length > 1 ? ` ${index + 1}` : ''} - ${fileNameFromUrl(url)}`, url: fileRouteUrl(url, { absolute: true }) })
     })
   }
   pushFiles('Service report photo', report?.photo_urls)
@@ -320,7 +322,7 @@ export async function loadAuditReportData(
   pushFiles('Completion photo', evidence?.completion_photo_urls)
   pushFiles('Supporting document', evidence?.supporting_doc_urls)
   if (appUrl && costing) files.push({ label: 'Cost estimate (PDF)', url: `${appUrl}/api/pdf/${workOrderId}/costing` })
-  if (wo.pdf_url) files.push({ label: 'Signed receipt (PDF)', url: wo.pdf_url })
+  if (wo.pdf_url) files.push({ label: 'Signed receipt (PDF)', url: fileRouteUrl(wo.pdf_url, { absolute: true }) })
 
   const lastEntry = timeline[timeline.length - 1]
   const recordHash = generateRecordHash({

@@ -391,7 +391,7 @@ const ident = (raw) => {
   return parts.length === 1 ? parts[0] : parts[0] === 'public' ? parts[1] : parts.join('.')
 }
 const IDENT = String.raw`(?:"(?:[^"]|"")+"|[\w]+)(?:\.(?:"(?:[^"]|"")+"|[\w]+))?`
-const SQL_STARTS = new RegExp(String.raw`\b(create\s+(?:unlogged\s+)?table|drop\s+table|alter\s+table|create\s+policy|drop\s+policy|create\s+(?:or\s+replace\s+)?function|drop\s+function|revoke|create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view|drop\s+view|insert\s+into\s+storage\.buckets)\b`, 'i')
+const SQL_STARTS = new RegExp(String.raw`\b(create\s+(?:unlogged\s+)?table|drop\s+table|alter\s+table|create\s+policy|drop\s+policy|create\s+(?:or\s+replace\s+)?function|drop\s+function|revoke|create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view|drop\s+view|insert\s+into\s+storage\.buckets|update\s+storage\.buckets)\b`, 'i')
 
 const tables = new Map() // name -> {location}
 const rlsEnabled = new Set()
@@ -409,6 +409,15 @@ const migrationFiles = fs.existsSync(migrationDir)
 for (const file of migrationFiles) {
   const src = fs.readFileSync(path.join(migrationDir, file), 'utf8')
   for (const st of expandStatements(splitSql(src))) {
+    // Dynamic loops in DO blocks: "drop every policy in public" and "enable RLS on every table in public"
+    if (/\bpg_policies\b/i.test(st.sql) && /schemaname\s*=\s*'public'/i.test(st.sql) && /drop\s+policy/i.test(st.sql)) {
+      for (const [key, p] of policies) if (!p.table.includes('.')) policies.delete(key)
+      continue
+    }
+    if (/\bpg_tables\b/i.test(st.sql) && /schemaname\s*=\s*'public'/i.test(st.sql) && /enable\s+row\s+level\s+security/i.test(st.sql)) {
+      for (const name of tables.keys()) rlsEnabled.add(name)
+      continue
+    }
     const startMatch = SQL_STARTS.exec(st.sql)
     if (!startMatch) continue
     const sql = st.sql.slice(startMatch.index)
@@ -453,6 +462,16 @@ for (const file of migrationFiles) {
         const forcedPublic = /do update set public\s*=\s*true/i.test(flat)
         if (isPublic || forcedPublic) publicBuckets.set(id, { location })
         else publicBuckets.delete(id)
+      }
+    } else if (/^update storage\.buckets set\b/i.test(flat)) {
+      const publicValue = /\bset\b.*?\bpublic\s*=\s*(true|false)\b/i.exec(flat)
+      const where = /\bwhere\s+id\s*(?:=\s*'([^']+)'|in\s*\(([^)]*)\))/i.exec(flat)
+      if (publicValue && where) {
+        const ids = where[1] ? [where[1]] : where[2].split(',').map((v) => v.trim().replace(/^'|'$/g, ''))
+        for (const id of ids) {
+          if (/^true$/i.test(publicValue[1])) publicBuckets.set(id, { location })
+          else publicBuckets.delete(id)
+        }
       }
     }
   }

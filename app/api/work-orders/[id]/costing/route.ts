@@ -5,6 +5,7 @@ import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { sendCostingApprovalEmail } from '@/lib/email'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { normalizeLineItems, roundMoney, summarizeLineItems } from '@/lib/costing'
+import { generateLinkToken, hashToken } from '@/lib/token'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -98,14 +99,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // Generate costing approval token (7 day expiry)
-  const costingToken = crypto.randomUUID()
+  // Generate costing approval token (7 day expiry); only its hash is stored
+  const costingToken = generateLinkToken()
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + 7)
 
   const { error: updateErr } = await service.from('work_orders').update({
     status: 'pending_approval',
-    costing_token: costingToken,
+    costing_token_hash: hashToken(costingToken),
     costing_token_expires_at: expiresAt.toISOString(),
     tenant_email: tenantEmail.trim(),
     tenant_name: tenantName?.trim() ?? null,
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Roll back token — don't leave WO in pending_approval without a valid email sent
     await service.from('work_orders').update({
       status: 'costing',
-      costing_token: null,
+      costing_token_hash: null,
       costing_token_expires_at: null,
     }).eq('id', id)
     return NextResponse.json({ error: 'Failed to send cost approval email.' }, { status: 500 })
@@ -144,5 +145,5 @@ export async function POST(request: NextRequest, { params }: Params) {
     metadata: { grand_total: grandTotal, tenant_email: tenantEmail.trim() },
   })
 
-  return NextResponse.json({ success: true, costingToken })
+  return NextResponse.json({ success: true })
 }

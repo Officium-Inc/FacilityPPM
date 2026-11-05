@@ -63,9 +63,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     cancelled_by_name: actor.name,
     cancellation_reason: cleanReason,
     cancelled_stage: stage,
-    costing_token: null,
+    costing_token_hash: null,
     costing_token_expires_at: null,
-    sign_off_token: null,
+    sign_off_token_hash: null,
     sign_off_expires_at: null,
     updated_at: now,
   }).eq('id', id)

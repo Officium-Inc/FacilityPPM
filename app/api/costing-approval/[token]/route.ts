@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { hashToken, isPlausibleToken } from '@/lib/token'
 import {
   COSTING_DECISION_COLUMNS,
   costingDecisionBlocker,
@@ -16,6 +17,7 @@ interface Params {
 /** Public cost approval link: the token is the only credential, so return just what the review page needs. */
 export async function GET(_request: NextRequest, { params }: Params) {
   const { token } = await params
+  if (!isPlausibleToken(token)) return NextResponse.json({ error: 'Invalid or expired token.' }, { status: 404 })
   const service = await createServiceClient()
 
   const { data: wo } = await service
@@ -28,7 +30,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         materials_total, subcontractor_total, grand_total, line_items, notes
       )
     `)
-    .eq('costing_token', token)
+    .eq('costing_token_hash', hashToken(token))
     .maybeSingle()
 
   if (!wo) return NextResponse.json({ error: 'Invalid or expired token.' }, { status: 404 })
@@ -46,6 +48,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { token } = await params
+  if (!isPlausibleToken(token)) return NextResponse.json({ error: 'Invalid or expired token.' }, { status: 404 })
   const decision = parseCostingDecision(await request.json().catch(() => null))
   if ('error' in decision) return NextResponse.json({ error: decision.error }, { status: 400 })
 
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: wo } = await service
     .from('work_orders')
     .select(COSTING_DECISION_COLUMNS)
-    .eq('costing_token', token)
+    .eq('costing_token_hash', hashToken(token))
     .maybeSingle()
 
   if (!wo) return NextResponse.json({ error: 'Invalid or expired token.' }, { status: 404 })

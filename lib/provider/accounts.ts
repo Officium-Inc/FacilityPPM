@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import { sendInviteEmail } from '@/lib/email'
+import { generateLinkToken, hashToken } from '@/lib/token'
 import { getAccountStatus } from '@/lib/provider/account-status'
 import type { LicenseStatus } from '@/types'
 
@@ -67,6 +68,8 @@ export async function createAdminInvite(
     .maybeSingle()
   if (existing) return fail(409, 'A pending invitation for this email already exists.')
 
+  // Only the token's hash is stored; the raw token goes in the email
+  const token = generateLinkToken()
   const { data: invite, error: inviteError } = await service
     .from('invitations')
     .insert({
@@ -74,8 +77,9 @@ export async function createAdminInvite(
       email: normalizedEmail,
       invited_name: name?.trim() || null,
       role_name: 'admin',
+      token_hash: hashToken(token),
     })
-    .select('id, token')
+    .select('id')
     .single()
   if (inviteError) return fail(500, inviteError.message)
 
@@ -84,7 +88,7 @@ export async function createAdminInvite(
       toEmail: normalizedEmail,
       toName: name?.trim() || undefined,
       propertyName: property.name,
-      token: invite.token,
+      token,
     })
   } catch {
     await service.from('invitations').delete().eq('id', invite.id)

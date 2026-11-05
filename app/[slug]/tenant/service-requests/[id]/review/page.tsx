@@ -14,6 +14,7 @@ import {
   type SignOffDecisionRecord,
 } from '@/lib/approval-rules'
 import type { WorkOrder, WorkOrderCosting } from '@/types'
+import { withFileRouteUrls } from '@/lib/storage-urls'
 
 interface Props {
   params: Promise<{ slug: string; id: string }>
@@ -70,9 +71,11 @@ export default async function TenantRequestReviewPage({ params }: Props) {
 
   if (signOffDecisionBlocker(workOrder as unknown as SignOffDecisionRecord, false)) redirect(detailHref)
 
-  const { workDescription, allPhotos, allDocs } = await loadSignOffEvidence(service, workOrder)
-  // The signed-in tenant does not need the emailed link credentials in the page payload
-  const reviewOrder: WorkOrder = { ...workOrder, sign_off_token: null, costing_token: null }
+  // The page payload does not need the link token hashes; files go through the authenticated file route
+  const { reviewOrder, workDescription, allPhotos, allDocs } = withFileRouteUrls({
+    ...(await loadSignOffEvidence(service, workOrder)),
+    reviewOrder: { ...workOrder, sign_off_token_hash: null, costing_token_hash: null } as WorkOrder,
+  })
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">

@@ -10,6 +10,7 @@ import { can } from '@/lib/authz/permissions'
 import { createServiceClient } from '@/lib/supabase/server'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
+import { withFileRouteUrls } from '@/lib/storage-urls'
 import { priorityLabel } from '@/lib/priority'
 import { normalizeLineItems, formatQtyUnit, lineItemTotal, providedByLabel } from '@/lib/costing'
 import type { WorkOrder, Engineer, ApprovalTrailEntry } from '@/types'
@@ -31,7 +32,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   if (!slugProperty) notFound()
   const service = await createServiceClient()
 
-  const { data: wo, error: woError } = await service
+  const { data: rawWo, error: woError } = await service
     .from('work_orders')
     .select(`
       *,
@@ -55,8 +56,11 @@ export default async function WorkOrderDetailPage({ params }: Props) {
     .maybeSingle()
 
   if (woError) console.error('[WO detail] query error:', woError)
-  const { actor } = await requirePageRecord(slug, 'workRequest.view', wo)
-  if (!wo) notFound()
+  const { actor } = await requirePageRecord(slug, 'workRequest.view', rawWo)
+  if (!rawWo) notFound()
+  // Files are private: the page links them through the authenticated file route.
+  // The page payload does not need the link token hashes.
+  const wo = withFileRouteUrls({ ...rawWo, sign_off_token_hash: null, costing_token_hash: null })
   const permissions = {
     review: can(actor, 'workRequest.review', wo),
     inspect: can(actor, 'workRequest.inspect', wo),
@@ -107,7 +111,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   }
 
   // Access was checked above, so captured signature images can be shown
-  const formData = await loadWorkOrderForm(service, id, { includeSignatures: true })
+  const formData = withFileRouteUrls(await loadWorkOrderForm(service, id, { includeSignatures: true }))
 
   return (
     <div className="-m-4 min-h-full sm:-m-6">

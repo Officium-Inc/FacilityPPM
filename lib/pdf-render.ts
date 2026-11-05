@@ -40,7 +40,7 @@ export async function renderWorkOrderFormPdf(
   const data = await loadWorkOrderForm(service, workOrderId, { includeSignatures: options.includeSignatures })
   if (!data) return null
 
-  const photoBuffers = await fetchFormPhotoBuffers(data.photos)
+  const photoBuffers = await fetchFormPhotoBuffers(service, data.photos)
   const element = React.createElement(WorkOrderFormPdf, { data, photoBuffers }) as PdfElement
   const buffer = await renderToBuffer(element)
   return { buffer: Buffer.from(buffer), fileName: `${data.woNumber}-service-report.pdf` }

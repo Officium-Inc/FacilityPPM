@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { resolveCanonicalRoleId } from '@/lib/roles'
 import { toPropertyRole } from '@/lib/authz/permissions'
 import { findAuthUserByEmail, grantPropertyAccess } from '@/lib/auth-users'
+import { hashToken, isPlausibleToken } from '@/lib/token'
 
 interface Params {
   params: Promise<{ token: string }>
@@ -12,6 +13,7 @@ type InviteProperty = { id: string; name: string; slug: string }
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { token } = await params
+  if (!isPlausibleToken(token)) return NextResponse.json({ error: 'Invalid invitation link.' }, { status: 404 })
   const body = await request.json().catch(() => ({}))
   const { password, full_name } = body as { password?: string; full_name?: string }
 
@@ -20,7 +22,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: invite } = await service
     .from('invitations')
     .select('id, email, invited_name, role_name, company_id, expires_at, used_at, properties(id, name, slug)')
-    .eq('token', token)
+    .eq('token_hash', hashToken(token))
     .maybeSingle()
 
   if (!invite) return NextResponse.json({ error: 'Invalid invitation link.' }, { status: 404 })

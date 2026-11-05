@@ -175,7 +175,8 @@ export interface WorkOrder {
   tenant_name: string | null
   tenant_email: string | null
   priority: Priority | null
-  sign_off_token: string | null
+  /** SHA-256 of the emailed sign-off link token (migration 024); the raw token is never stored. */
+  sign_off_token_hash?: string | null
   sign_off_expires_at: string | null
   signed_at: string | null
   signed_by_name: string | null
@@ -186,7 +187,8 @@ export interface WorkOrder {
   pdf_url: string | null
   // Workflow v2 fields
   report_id: string | null
-  costing_token: string | null
+  /** SHA-256 of the emailed cost approval link token (migration 024). */
+  costing_token_hash?: string | null
   costing_token_expires_at: string | null
   costing_approved_at: string | null
   costing_approved_by_name: string | null

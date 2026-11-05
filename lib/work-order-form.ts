@@ -4,6 +4,7 @@ import { getPriorityOption } from '@/lib/priority'
 import { formatRoleName } from '@/lib/roles'
 import { toPdfJpeg } from '@/lib/image-upload'
 import { DEFAULT_WORK_ORDER_TERMS } from '@/lib/work-order-terms'
+import { downloadStoredFile } from '@/lib/storage-files'
 
 export const FORM_TITLE = 'WORK ORDER REQUEST'
 export const FORM_SUBTITLE = 'Maintenance and Engineering Service Report'
@@ -238,25 +239,15 @@ export async function loadWorkOrderForm(
   }
 }
 
-/** Only photos stored in our own Supabase storage are fetched (they come from user-supplied URLs). */
-function isTrustedPhotoUrl(url: string) {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!base) return false
-  try {
-    return new URL(url).origin === new URL(base).origin
-  } catch {
-    return false
-  }
-}
-
-/** Downloads the report photos as JPEG buffers for embedding in the PDF; failures are skipped. */
-export async function fetchFormPhotoBuffers(urls: string[]): Promise<Buffer[]> {
+/** Downloads the report photos (from the private bucket) as JPEG buffers for embedding in the PDF; failures are skipped. */
+export async function fetchFormPhotoBuffers(service: SupabaseClient, urls: string[]): Promise<Buffer[]> {
   const buffers = await Promise.all(
-    urls.filter(isTrustedPhotoUrl).map(async (url) => {
+    urls.map(async (url) => {
       try {
-        const response = await fetch(url)
-        if (!response.ok) return null
-        return await toPdfJpeg(Buffer.from(await response.arrayBuffer()))
+        // Only our own stored files are read; other URLs are ignored
+        const file = await downloadStoredFile(service, url)
+        if (!file) return null
+        return await toPdfJpeg(file.buffer)
       } catch {
         return null
       }

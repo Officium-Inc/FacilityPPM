@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { IMAGE_TYPES, optimizeImage } from '@/lib/image-upload'
 import { authorizeTenantSubmit, SERVICE_REPORT_BUCKET } from '@/lib/tenant-submit'
 import { requireSession } from '@/lib/authz/guard'
+import { fileRouteUrl } from '@/lib/storage-urls'
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB raw input limit per photo
 
@@ -43,5 +44,6 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: { publicUrl } } = service.storage.from(SERVICE_REPORT_BUCKET).getPublicUrl(fileName)
-  return NextResponse.json({ url: publicUrl }, { status: 201 })
+  // The bucket is private: the browser shows the photo through the authenticated file route
+  return NextResponse.json({ url: fileRouteUrl(publicUrl) }, { status: 201 })
 }

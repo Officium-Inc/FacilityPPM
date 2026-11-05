@@ -62,8 +62,8 @@ export interface TenantRequestRow {
   updated_at: string
   tenant_name: string | null
   tenant_email: string | null
-  costing_token: string | null
-  sign_off_token: string | null
+  /** Presence marks a legacy `svc_submitted` order that already has a sign-off link. */
+  sign_off_token_hash: string | null
   audit_report_url: string | null
   cancellation_reason: string | null
   company_id?: string | null
@@ -78,11 +78,11 @@ export interface TenantRequestRow {
  * `signed` is the legacy "tenant signed, not yet verified" state.
  * A legacy svc_submitted order that already has a sign-off link is still waiting on the tenant.
  */
-export function isAwaitingTenant(row: Pick<TenantRequestRow, 'status' | 'sign_off_token'>) {
+export function isAwaitingTenant(row: Pick<TenantRequestRow, 'status' | 'sign_off_token_hash'>) {
   return (
     row.status === 'pending_approval' ||
     row.status === 'verified' ||
-    (row.status === 'svc_submitted' && Boolean(row.sign_off_token))
+    (row.status === 'svc_submitted' && Boolean(row.sign_off_token_hash))
   )
 }
 
@@ -188,8 +188,7 @@ export async function getTenantServiceRequests(
       updated_at,
       tenant_name,
       tenant_email,
-      costing_token,
-      sign_off_token,
+      sign_off_token_hash,
       audit_report_url,
       cancellation_reason,
       floors(label),
@@ -209,7 +208,7 @@ export async function getTenantServiceRequests(
 }
 
 /** Where a tenant reviews a request; requests waiting on them open the in-portal approval / sign-off page. */
-export function getTenantApprovalHref(slug: string, row: Pick<TenantRequestRow, 'id' | 'status' | 'sign_off_token'>) {
+export function getTenantApprovalHref(slug: string, row: Pick<TenantRequestRow, 'id' | 'status' | 'sign_off_token_hash'>) {
   const detail = `/${slug}/tenant/service-requests/${row.id}`
   return isAwaitingTenant(row) ? `${detail}/review` : detail
 }

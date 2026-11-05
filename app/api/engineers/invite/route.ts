@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendInviteEmail } from '@/lib/email'
+import { generateLinkToken, hashToken } from '@/lib/token'
 import { assignableRoles, toPropertyRole } from '@/lib/authz/permissions'
 import { authorize, requireSession } from '@/lib/authz/guard'
 
@@ -86,7 +87,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A pending invitation for this email already exists.' }, { status: 409 })
   }
 
-  // Create invitation record
+  // Create invitation record; only the token's hash is stored, the raw token goes in the email
+  const inviteToken = generateLinkToken()
   const { data: invite, error: inviteErr } = await service
     .from('invitations')
     .insert({
@@ -96,8 +98,9 @@ export async function POST(request: NextRequest) {
       role_name: roleName,
       company_id: companyId,
       invited_by: user.email ?? null,
+      token_hash: hashToken(inviteToken),
     })
-    .select('id, token')
+    .select('id')
     .single()
 
   if (inviteErr) return NextResponse.json({ error: inviteErr.message }, { status: 500 })
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
       toEmail: email,
       toName: body.name?.trim(),
       propertyName: property.name,
-      token: invite.token,
+      token: inviteToken,
       invitedBy: user.email ?? undefined,
     })
   } catch {

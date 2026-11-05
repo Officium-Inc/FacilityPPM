@@ -37,7 +37,7 @@ function signOffRecord(overrides: Partial<SignOffDecisionRecord> = {}): SignOffD
     engineer_id: 'e-1',
     company_id: 'c-1',
     floor_id: 'f-1',
-    sign_off_token: 'token',
+    sign_off_token_hash: 'hash',
     sign_off_expires_at: future,
     signed_at: null,
     tenant_email: 'tenant@example.com',
@@ -138,9 +138,9 @@ describe('parseSignOffDecision', () => {
 describe('sign-off state', () => {
   it('is awaiting the tenant when verified, or a legacy svc_submitted order with a link', () => {
     expect(isAwaitingSignOff({ status: 'verified' })).toBe(true)
-    expect(isAwaitingSignOff({ status: 'svc_submitted', sign_off_token: 'token' })).toBe(true)
-    expect(isAwaitingSignOff({ status: 'svc_submitted', sign_off_token: null })).toBe(false)
-    expect(isAwaitingSignOff({ status: 'in_progress', sign_off_token: 'token' })).toBe(false)
+    expect(isAwaitingSignOff({ status: 'svc_submitted', sign_off_token_hash: 'hash' })).toBe(true)
+    expect(isAwaitingSignOff({ status: 'svc_submitted', sign_off_token_hash: null })).toBe(false)
+    expect(isAwaitingSignOff({ status: 'in_progress', sign_off_token_hash: 'hash' })).toBe(false)
   })
 
   it('blocks cancelled, signed and not-ready work orders', () => {

@@ -16,6 +16,7 @@ import {
 import { can } from '@/lib/authz/permissions'
 import { getPriorityOption } from '@/lib/priority'
 import { formatPHT } from '@/lib/utils'
+import { fileRouteUrl, withFileRouteUrls } from '@/lib/storage-urls'
 
 interface Props {
   params: Promise<{ slug: string; id: string }>
@@ -50,8 +51,7 @@ export default async function TenantServiceRequestDetailPage({ params, searchPar
       updated_at,
       tenant_name,
       tenant_email,
-      costing_token,
-      sign_off_token,
+      sign_off_token_hash,
       audit_report_url,
       cancellation_reason,
       floors(label),
@@ -84,10 +84,10 @@ export default async function TenantServiceRequestDetailPage({ params, searchPar
   const doneMessage = done ? DONE_MESSAGES[done === 'costing' ? `costing:${action}` : done] : undefined
   const priority = getPriorityOption(report?.urgency ?? request.priority)
   const auditHref = request.status === 'completed'
-    ? request.audit_report_url ?? `/api/pdf/${request.id}/audit`
+    ? (request.audit_report_url ? fileRouteUrl(request.audit_report_url) : `/api/pdf/${request.id}/audit`)
     : null
   // Ownership was verified above, so the tenant may see their own captured signatures
-  const formData = await loadWorkOrderForm(context.service, request.id, { includeSignatures: true })
+  const formData = withFileRouteUrls(await loadWorkOrderForm(context.service, request.id, { includeSignatures: true }))
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

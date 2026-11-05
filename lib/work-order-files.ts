@@ -1,3 +1,5 @@
+import { toStoredFileUrl } from '@/lib/storage-urls'
+
 /** Bucket for work order attachments, signed receipts and service report photos. */
 export const WORK_ORDER_FILE_BUCKET = 'receipts'
 
@@ -15,14 +17,17 @@ export function workOrderFilePath(propertyId: string, workOrderId: string, fileN
 
 /**
  * Keeps only file URLs uploaded through the work order upload endpoint for this work order
- * (current `<property>/<work order>/` paths and the older `<work order>/` paths).
+ * (current `<property>/<work order>/` paths and the older `<work order>/` paths), in their stored form.
+ * File-route URLs sent back by the browser are accepted.
  */
 export function sanitizeWorkOrderFileUrls(value: unknown, propertyId: string, workOrderId: string): string[] {
   if (!Array.isArray(value)) return []
   const base = publicBucketBase()
   const prefixes = [`${base}${propertyId}/${workOrderId}/`, `${base}${workOrderId}/`]
   return value
-    .filter((url): url is string => typeof url === 'string' && prefixes.some((prefix) => url.startsWith(prefix)))
+    .filter((url): url is string => typeof url === 'string')
+    .map(toStoredFileUrl)
+    .filter((url) => prefixes.some((prefix) => url.startsWith(prefix)))
     .filter((url) => !url.includes('..'))
     .slice(0, MAX_FILES)
 }

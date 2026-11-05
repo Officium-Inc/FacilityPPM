@@ -132,7 +132,7 @@ export async function decideCosting(
     .update({
       status: 'costing',
       rejection_reason: decision.reason,
-      costing_token: null,
+      costing_token_hash: null,
       costing_token_expires_at: null,
       updated_at: now,
     })
@@ -281,7 +281,7 @@ export async function decideSignOff(
     .update({
       status: 'in_progress',
       rejection_reason: decision.rejectionReason,
-      sign_off_token: null,
+      sign_off_token_hash: null,
       sign_off_expires_at: null,
       head_engineer_verified_at: null,
       updated_at: now,

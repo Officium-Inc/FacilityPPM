@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { createServiceClient } from '@/lib/supabase/server'
 import { renderCostingPdf, renderWorkOrderFormPdf } from '@/lib/pdf-render'
+import { downloadStoredFile } from '@/lib/storage-files'
 import {
   DEFAULT_MONDAY_API_VERSION,
   getPropertyMondayConfig,
@@ -401,17 +402,16 @@ async function downloadAttachment(service: ServiceClient, workOrderId: string, r
     return { buffer: pdf.buffer, contentType: 'application/pdf', fileName: sanitizeFileName(ref.name) }
   }
 
-  const response = await fetch(ref.url)
-  if (!response.ok) {
-    throw new Error(`Could not download ${ref.name} (${response.status})`)
+  // Stored files are private: read them with the service role instead of their (non-public) URL
+  const file = await downloadStoredFile(service, ref.url)
+  if (!file) {
+    throw new Error(`Could not download ${ref.name}`)
   }
 
-  const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
-  const buffer = Buffer.from(await response.arrayBuffer())
   return {
-    buffer,
-    contentType,
-    fileName: withExtension(ref.name, ref.url, contentType),
+    buffer: file.buffer,
+    contentType: file.contentType,
+    fileName: withExtension(ref.name, ref.url, file.contentType),
   }
 }
 

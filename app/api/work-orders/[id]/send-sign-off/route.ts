@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorize, requireSession } from '@/lib/authz/guard'
-import { generateSignOffToken, getSignOffExpiry } from '@/lib/token'
+import { generateSignOffToken, getSignOffExpiry, hashToken } from '@/lib/token'
 import { sendSignOffEmail } from '@/lib/email'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: wo, error: fetchErr } = await service
     .from('work_orders')
     .select(`
-      id, wo_number, status, sign_off_token, property_id, tenant_email, tenant_name,
+      id, wo_number, status, sign_off_token_hash, property_id, engineer_id, requested_by_id, company_id, tenant_email, tenant_name,
       ppm_schedules(title, assets(name, buildings(name, sites(name)))),
       properties(name)
     `)
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   // `verified` = head engineer approved, waiting for the tenant. `svc_submitted` only applies to
   // orders from the previous flow that already had a sign-off link.
-  const isResendable = wo.status === 'verified' || (wo.status === 'svc_submitted' && wo.sign_off_token)
+  const isResendable = wo.status === 'verified' || (wo.status === 'svc_submitted' && wo.sign_off_token_hash)
   if (!isResendable) {
     return NextResponse.json({ error: 'Work order is not waiting for tenant sign-off' }, { status: 400 })
   }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { error: updateErr } = await service
     .from('work_orders')
     .update({
-      sign_off_token: token,
+      sign_off_token_hash: hashToken(token),
       sign_off_expires_at: expiresAt.toISOString(),
       updated_at: new Date().toISOString(),
     })
@@ -88,5 +88,5 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   await syncTenant360WorkOrder(id, { findExisting: true })
 
-  return NextResponse.json({ success: true, token, emailSent })
+  return NextResponse.json({ success: true, emailSent })
 }

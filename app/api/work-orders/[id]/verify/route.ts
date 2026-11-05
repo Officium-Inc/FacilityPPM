@@ -3,7 +3,7 @@ import { authorize, requireSession } from '@/lib/authz/guard'
 import { actorEngineerId, actorLog } from '@/lib/authz/actor'
 import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { renderToBuffer, type DocumentProps } from '@react-pdf/renderer'
-import { generateRecordHash, generateSignOffToken, getSignOffExpiry } from '@/lib/token'
+import { generateRecordHash, generateSignOffToken, getSignOffExpiry, hashToken } from '@/lib/token'
 import AcknowledgementReceipt from '@/components/pdf/AcknowledgementReceipt'
 import type { WorkOrder } from '@/types'
 import React, { type ReactElement, type JSXElementConstructor } from 'react'
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     ...(isLegacySigned
       ? {}
       : {
-          sign_off_token: signOffToken,
+          sign_off_token_hash: hashToken(signOffToken!),
           sign_off_expires_at: getSignOffExpiry().toISOString(),
           tenant_email: resolvedTenantEmail,
           tenant_name: resolvedTenantName,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomBytes } from 'crypto'
 import { requireProvider, type Service } from '@/lib/authz/guard'
 import { sendInviteEmail } from '@/lib/email'
+import { generateLinkToken, hashToken } from '@/lib/token'
 import { logProviderAction, requestIp } from '@/lib/provider/accounts'
 
 interface Params {
@@ -57,12 +57,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { property, invite } = found
   if (invite.used_at) return NextResponse.json({ error: 'This invitation was already accepted.' }, { status: 409 })
 
-  const newToken = randomBytes(32).toString('hex')
+  const newToken = generateLinkToken()
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
   const { error: updateErr } = await service
     .from('invitations')
-    .update({ token: newToken, expires_at: expiresAt })
+    .update({ token_hash: hashToken(newToken), expires_at: expiresAt })
     .eq('id', invite.id)
     .eq('property_id', property.id)
     .is('used_at', null)
