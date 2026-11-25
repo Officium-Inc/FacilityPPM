@@ -19,7 +19,11 @@ follow the matrix.
 ## Identity and claims
 
 - `app_metadata` (service-role writable only): `role` (`'provider'` or absent), `property_id`/`property_slug`
-  (active), `property_ids[]`/`property_slugs[]` (all memberships), `terminated_property_ids[]` (D23).
+  (active; starting page only, D31), `property_ids[]`/`property_slugs[]` (own memberships), `org_ids[]`/`org_slugs[]`
+  (organizations the user administers, D30), `terminated_property_ids[]` (D23). `syncUserAccess()` rebuilds the
+  lists from the database rows.
+- Org Admin: `organization_members (organization_id, user_id, org_role, is_active)`; SQL mirror `private.my_org_ids()`.
+  Their Administrator rows in each property carry `engineers.org_member_id`.
 - Per-property role: `engineers (user_id, property_id, role_id, is_active, company_id) → roles.name`,
   normalized by `normalizeRoleName()` in `lib/roles.ts` (SQL mirror: `private.my_memberships()`).
 - `user_metadata` is user-editable — **never** use it for authorization (display name only).

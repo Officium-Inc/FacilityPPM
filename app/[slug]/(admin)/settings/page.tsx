@@ -121,9 +121,10 @@ export default async function SettingsPage({ params, searchParams }: Props) {
       </div>
 
       {activeTab === 'api-keys' ? (
-        <ApiKeysClient canManageIntegrations={canManageIntegrations} />
+        <ApiKeysClient slug={slug} canManageIntegrations={canManageIntegrations} />
       ) : activeTab === 'profile' ? (
         <ProfileClient
+          slug={slug}
           fullName={myEngineer?.full_name ?? (user.user_metadata?.full_name as string | undefined) ?? ''}
           email={myEngineer?.email ?? user.email ?? ''}
           phone={myEngineer?.phone ?? ''}

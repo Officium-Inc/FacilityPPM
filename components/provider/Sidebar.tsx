@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Activity, Building2, LogOut, LayoutDashboard, Menu, X } from 'lucide-react'
+import { Activity, Building2, Landmark, LogOut, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 
 const nav = [
+  { href: '/provider/organizations', label: 'Organizations', icon: Landmark },
   { href: '/provider/properties', label: 'Properties', icon: Building2 },
   { href: '/provider/activity', label: 'Activity', icon: Activity },
 ]
@@ -52,7 +53,7 @@ export default function ProviderSidebar() {
           </div>
           <div className={cn('min-w-0 transition-all duration-200', collapsed ? 'hidden' : 'block')}>
             <p className="text-white font-semibold text-sm leading-tight">Tenant360</p>
-            <p className="text-blue-400 text-xs font-medium">Control Panel</p>
+            <p className="text-blue-400 text-xs font-medium">Platform Admin</p>
           </div>
         </div>
       </div>
@@ -76,22 +77,6 @@ export default function ProviderSidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        <Link
-          href="/provider/properties"
-          title={collapsed ? 'Dashboard' : undefined}
-          className={cn(
-            'group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ease-out',
-            collapsed && 'justify-center px-0',
-            pathname.startsWith('/provider/properties')
-              ? 'bg-blue-600 text-white shadow-sm shadow-blue-950/20'
-              : 'text-gray-400 hover:translate-x-0.5 hover:text-white hover:bg-gray-800'
-          )}
-        >
-          <LayoutDashboard className="w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
-          <span className={cn('truncate transition-opacity duration-200', collapsed ? 'hidden' : 'inline')}>
-            Dashboard
-          </span>
-        </Link>
         {nav.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
@@ -164,7 +149,7 @@ export default function ProviderSidebar() {
               </div>
               <div>
                 <p className="text-sm font-semibold leading-tight text-white">Tenant360</p>
-                <p className="text-xs font-medium text-blue-400">Control Panel</p>
+                <p className="text-xs font-medium text-blue-400">Platform Admin</p>
               </div>
             </div>
             <button
@@ -178,18 +163,21 @@ export default function ProviderSidebar() {
           </div>
 
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-            <Link
-              href="/provider/properties"
-              className={cn(
-                'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ease-out',
-                pathname.startsWith('/provider/properties')
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-950/20'
-                  : 'text-gray-400 hover:translate-x-0.5 hover:bg-gray-800 hover:text-white'
-              )}
-            >
-              <Building2 className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
-              Properties
-            </Link>
+            {nav.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ease-out',
+                  pathname.startsWith(href)
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-950/20'
+                    : 'text-gray-400 hover:translate-x-0.5 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                {label}
+              </Link>
+            ))}
           </nav>
 
           <div className="border-t border-gray-700/50 px-3 py-4">

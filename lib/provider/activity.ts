@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { roleNameFromRelation } from '@/lib/roles'
+import { effectiveLicenseState, type LicenseState } from '@/lib/provider/license'
 
 /** Read-only activity data for the Provider Dashboard. Callers must have passed `requireProviderPage()`. */
 
@@ -113,17 +115,25 @@ export interface PropertyOverviewRow {
   slug: string
   license_status: string
   license_expires_at: string | null
+  property_type: string | null
   created_at: string
+  organization: { id: string; name: string; slug: string; license_status: string; license_expires_at: string | null } | null
+  /** The license that applies: the organization's and the property's, the most restrictive wins (D29). */
+  license: LicenseState
   summary: PropertySummary
   activeMembers: number
+  activeAdministrators: number
 }
 
 /** Every property with its work order summary and member count, plus (optionally) the latest events across properties. */
 export async function loadProviderOverview(service: Service, options: { events?: boolean } = {}) {
   const [{ data: properties }, { data: workOrders }, { data: members }, { data: events }] = await Promise.all([
-    service.from('properties').select('id, name, slug, license_status, license_expires_at, created_at').order('name'),
+    service
+      .from('properties')
+      .select('id, name, slug, license_status, license_expires_at, property_type, organization_id, created_at, organization:organizations(id, name, slug, license_status, license_expires_at)')
+      .order('name'),
     service.from('work_orders').select('property_id, status, updated_at'),
-    service.from('engineers').select('property_id, is_active'),
+    service.from('engineers').select('property_id, is_active, roles(name)'),
     options.events === false
       ? Promise.resolve({ data: [] })
       : service
@@ -141,15 +151,30 @@ export async function loadProviderOverview(service: Service, options: { events?:
     byProperty.set(row.property_id, list)
   }
   const activeMembers = new Map<string, number>()
-  for (const member of (members ?? []) as Array<{ property_id: string; is_active: boolean }>) {
-    if (member.is_active) activeMembers.set(member.property_id, (activeMembers.get(member.property_id) ?? 0) + 1)
+  const activeAdministrators = new Map<string, number>()
+  for (const member of (members ?? []) as Array<{ property_id: string; is_active: boolean; roles: unknown }>) {
+    if (!member.is_active) continue
+    activeMembers.set(member.property_id, (activeMembers.get(member.property_id) ?? 0) + 1)
+    if (roleNameFromRelation(member.roles) === 'admin') {
+      activeAdministrators.set(member.property_id, (activeAdministrators.get(member.property_id) ?? 0) + 1)
+    }
   }
 
-  const rows: PropertyOverviewRow[] = ((properties ?? []) as Array<Omit<PropertyOverviewRow, 'summary' | 'activeMembers'>>).map((property) => ({
-    ...property,
-    summary: summarize(byProperty.get(property.id) ?? []),
-    activeMembers: activeMembers.get(property.id) ?? 0,
-  }))
+  type PropertyQueryRow = Omit<PropertyOverviewRow, 'summary' | 'activeMembers' | 'activeAdministrators' | 'license' | 'organization'> & {
+    organization_id: string | null
+    organization: PropertyOverviewRow['organization'] | PropertyOverviewRow['organization'][]
+  }
+  const rows: PropertyOverviewRow[] = ((properties ?? []) as unknown as PropertyQueryRow[]).map(({ organization_id, organization: rawOrganization, ...property }) => {
+    const organization = one(rawOrganization)
+    return {
+      ...property,
+      organization,
+      license: effectiveLicenseState(organization_id ? organization : undefined, property),
+      summary: summarize(byProperty.get(property.id) ?? []),
+      activeMembers: activeMembers.get(property.id) ?? 0,
+      activeAdministrators: activeAdministrators.get(property.id) ?? 0,
+    }
+  })
 
   return {
     properties: rows,

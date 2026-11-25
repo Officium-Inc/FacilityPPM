@@ -29,8 +29,9 @@ handlers with the service role after `lib/authz` checks, so those checks are the
 3. **Authorize before any `createServiceClient()` read or write.** The service client bypasses RLS; the
    handler must already have checked property membership **and** role (and tenant company ownership).
 4. **Authorization data only from `app_metadata` or DB rows.** Never `user_metadata`, request body, query
-   string, headers or cookies for role/property decisions. Body-supplied `property_id`/`slug` must be checked
-   against `app_metadata.property_ids` / `property_slugs` (`includes`, not equality with the active one).
+   string, headers or cookies for role/property decisions. Property routes take the property from the URL
+   (`/api/properties/[slug]/…` + `authorizeForSlug`) and never act on the "active property" (D31); org portal
+   routes use `authorizeOrg` (active Org Admin, usable organization license, D30).
 5. **Tenants are scoped to their own company/floor**, not just the property. Property-level RLS
    (`property_id = jwt.property_id`) alone lets a tenant read other tenants' work requests.
 6. **Deactivated members lose access everywhere**: check `engineers.is_active` in every authz helper.
@@ -101,9 +102,11 @@ Suppressing a reviewed false positive: add `// audit-allow: <reason>` inside the
   detects missing checks heuristically, not wrong ones (e.g. authorizing the active property instead of the
   record's property).
 - **Migrations are applied by hand.** The live database can lag behind `supabase/migrations/`; run
-  `supabase/tests/rls_check.sql` (empty result = pass) after applying 022–024 and before trusting RLS.
-- **Middleware is routing only.** `property_slugs.includes(slug)` lets a user reach a property's URLs; access
-  still needs an active `engineers` row with a current role (`resolveMembership()`).
+  `supabase/tests/rls_check.sql` (empty result = pass) after applying 022–025 and before trusting RLS.
+- **Middleware is routing only.** `property_slugs.includes(slug)` (or an Org Admin's `org_ids`) lets a user reach a
+  property's URLs; access still needs an active `engineers` row with a current role (`resolveMembership()`).
+- **Org-managed Administrator rows** (`engineers.org_member_id`, D30) follow the Org Admin membership: change them
+  through `lib/org/members.ts`, never from a property member route (those answer 409).
 - **Stored file URLs are identifiers, not links** (D26). Passing raw `photo_urls` / `pdf_url` / `audit_report_url`
   to a browser shows broken files; pass data through `withFileRouteUrls()` or `withSignedFileUrls()`. A new
   upload path shape must be added to `fileOwnerFromPath()`, or `/api/files` answers 404.

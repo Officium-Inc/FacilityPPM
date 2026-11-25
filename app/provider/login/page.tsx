@@ -27,12 +27,12 @@ export default function ProviderLoginPage() {
 
     if (data.user?.app_metadata?.role !== 'provider') {
       await supabase.auth.signOut()
-      setError('Access denied. This login is for provider accounts only.')
+      setError('Access denied. This login is for Platform Admin accounts only.')
       setLoading(false)
       return
     }
 
-    router.push('/provider/properties')
+    router.push('/provider/organizations')
     router.refresh()
   }
 
@@ -44,11 +44,11 @@ export default function ProviderLoginPage() {
             <span className="text-white font-bold text-2xl">T</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Tenant360</h1>
-          <p className="text-gray-500 text-sm mt-1">Provider Portal · Tenant360</p>
+          <p className="text-gray-500 text-sm mt-1">Platform Admin · Tenant360</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">Provider Sign In</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Platform Admin Sign In</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -100,7 +100,7 @@ export default function ProviderLoginPage() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Tenant360 v0.1.22alpha · Provider access only
+          Tenant360 v0.1.22alpha · Platform Admin access only
         </p>
       </div>
     </div>

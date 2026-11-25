@@ -10,7 +10,8 @@ Legend: ✅ allowed · 🔒 allowed with the scope noted · ❌ forbidden
 
 | Portal | Role (spec) | Code value | Where it lives | Scope |
 |---|---|---|---|---|
-| Provider Dashboard | Provider | `app_metadata.role = 'provider'` | Supabase `app_metadata` (service role only) | All properties |
+| Provider Dashboard (UI: "Platform Admin") | Provider | `app_metadata.role = 'provider'` | Supabase `app_metadata` (service role only) | All organizations and properties |
+| Org portal (`/org/[orgSlug]`) | Org Admin (`owner` / `admin`) | `organization_members.org_role` | `organization_members` per organization; access list `app_metadata.org_ids` | Every property of the organization, as Administrator (D30) |
 | Admin Portal | Administrator | `admin` | `engineers.role_id → roles.name` per property | One property |
 | Admin Portal | Property Manager | `property_manager` | same | One property |
 | Admin Portal | Head Engineer | `head_engineer` | same | One property |
@@ -20,20 +21,24 @@ Legend: ✅ allowed · 🔒 allowed with the scope noted · ❌ forbidden
 
 A user can belong to several properties (`app_metadata.property_ids[]`) with a different role in each.
 Always resolve the role **for the property being acted on**, not the "active" one. A user with no active
-`engineers` row for that property has no access to it, whatever `app_metadata` says.
+`engineers` row for that property has no access to it, whatever `app_metadata` says. Org Admins reach their
+organization's properties through `app_metadata.org_ids` plus their org-managed Administrator rows (D30).
 
-## Provider Dashboard
+## Provider Dashboard (Platform Admin)
 
-| Action | Provider | Any property role |
-|---|---|---|
-| Create property account (property + first Administrator) | ✅ (D18) | ❌ |
-| Terminate property account: suspend, deactivate members, ban sessions | ✅ (D18, D23) | ❌ |
-| Hard-delete a property (typed confirmation) | ✅ | ❌ |
-| Add, revoke, suspend, renew license (`license_status`, `license_expires_at`) | ✅ (D17, D24) | ❌ |
-| View activity of any property (work orders, events, audit log, KPIs) | ✅ read | ❌ |
-| Create/deactivate user accounts in any property | ✅ | ❌ |
-| Manage provider users | ❌ in app — Supabase dashboard only | ❌ |
-| Open a property's Admin Portal | 🔒 read-only support view, audit-logged (D2) | ❌ |
+| Action | Provider | Org Admin | Any property role |
+|---|---|---|---|
+| Create an organization (+ first Owner invitation) | ✅ (D29) | ❌ | ❌ |
+| Create a property inside an organization (name, slug, type) | ✅ (D29) | ❌ | ❌ |
+| Terminate / reactivate an organization: suspend the license, terminate every property (D23) | ✅ (D29) | ❌ | ❌ |
+| Hard-delete a property, or an organization without properties (typed confirmation) | ✅ | ❌ | ❌ |
+| Add, revoke, suspend, renew the organization license (`license_status`, `license_expires_at`) | ✅ (D17, D24, D29) | ❌ (read) | ❌ |
+| Invite / change / remove Org Admins | ✅ (may change the last owner) | 🔒 owners manage owners (D30) | ❌ |
+| Edit the organization profile | ✅ | ✅ | ❌ |
+| View activity of any property (work orders, events, audit log, KPIs) | ✅ read | ❌ | ❌ |
+| Create/deactivate user accounts in any property | ✅ (not org-managed rows) | — (Administrator in the property) | ❌ |
+| Manage provider users | ❌ in app — Supabase dashboard only | ❌ | ❌ |
+| Open a property's Admin Portal | 🔒 read-only support view, audit-logged (D2) | ✅ as Administrator | per role |
 
 ## Admin Portal — property customization
 
@@ -128,5 +133,8 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D26 | Files are private (migration 023): the `receipts` and `evidence` buckets are not public and have no storage policies. Signed-in users open files through `/api/files/<bucket>/<path>`, which requires `workRequest.view` on the owning work order (or being the uploader of a not-yet-submitted tenant photo) and redirects to a 60 s signed URL; public sign-off pages get 1 h signed URLs; PDFs and the Monday sync download with the service role. Stored public-object URLs stay unchanged in the database as file identifiers | Tenant photos and receipts were readable by anyone with the URL; keeping URLs as identifiers avoids a data migration |
 | D27 | Link tokens (sign-off, cost approval, invitation) are stored only as SHA-256 hashes in `*_token_hash` columns (migration 024); the raw token exists only in the emailed link. Existing tokens were hashed in place so sent links keep working; CHECK constraints forbid storing a raw token again, and API responses and pages never return a token or its hash to the browser | A database or log leak must not expose working links |
 | D28 | At Final Verification the head engineer (any role with `workRequest.review`) may send `svc_submitted` work back to Work Execution (`in_progress`) instead of approving it (`POST /api/work-orders/[id]/send-back`). A note is required and becomes the reason the engineer sees; it is a conditional single-use update (`verify` is guarded the same way, so only one decision wins) that also clears any legacy sign-off link. It is recorded in `approval_trail` (`final_verification` / `rejected`) and as a `verification_sent_back` event, shown in the audit report, and the assigned engineer gets an in-app notification. Unlike a tenant sign-off rejection, no corrective work order is created | Quality check before the tenant sees the work; the same order is redone and resubmitted |
+| D29 | An **Organization** sits above properties (migration 025): the client account, its profile and the **license**. Only Platform Admin creates organizations and properties; every property belongs to one organization and has a `property_type` (`commercial` / `corporate` / `residential`). The license is edited on the organization and mirrored onto its properties; the license that applies is the most restrictive of the organization's and the property's (`effectiveLicenseState`), and a property whose organization row is missing fails closed. Termination is organization-wide: it suspends the license and runs the D23 termination for every property; reactivation restores every terminated property. Existing properties were backfilled with one organization each (a terminated property got an `organization.terminated` entry). An organization can only be deleted once it has no properties | Whiteboard model (Organization → Property → Floors/Units → Tenant); one license per client |
+| D30 | **Org Admins** (`organization_members`, role `owner` or `admin`) are Administrators in every property of their organization, including properties added later. The Administrator rows are org-managed (`engineers.org_member_id`): taking over a member row of their own keeps its previous state in `org_restore`, and removing or deactivating the Org Admin restores that row or deletes the row the organization created. Property-level member routes refuse to change or remove org-managed rows (409). Org Admins edit the organization profile and manage Org Admins in the org portal; only owners give, change or remove the owner role, the organization keeps at least one active owner, and nobody changes their own org access (Platform Admin may override). Org Admins reach properties through `app_metadata.org_ids`, not one `property_ids` entry per property; `syncUserAccess()` rebuilds both lists from the database rows (on sign-in and after every membership change) | Plan decisions 1, 2 and 6; a JWT that does not grow with each property |
+| D31 | API routes never act on the "active property" (`app_metadata.property_id`): every property-scoped route names the property in its URL (`/api/properties/[slug]/…`, `authorizeForSlug`) and `authorize()` has no active-property fallback. The active property only chooses where a user lands after signing in | Two tabs on two properties wrote to the wrong one |
 
 The matrix in code is `lib/authz/permissions.ts`; `tests/authz/permissions.test.ts` mirrors this file row by row.

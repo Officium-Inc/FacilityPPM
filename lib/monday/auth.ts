@@ -1,4 +1,4 @@
-import { authorize, requireSession, type Service } from '@/lib/authz/guard'
+import { authorizeForSlug, requireSession, type Service } from '@/lib/authz/guard'
 import type { Actor } from '@/lib/authz/actor'
 
 export interface MondayPropertyAdminContext {
@@ -8,18 +8,19 @@ export interface MondayPropertyAdminContext {
   service: Service
 }
 
-/** Monday.com integration settings: Administrators and Property Managers of the active property. */
-export async function requireMondayPropertyAdmin(): Promise<
+/** Route params of `/api/properties/[slug]/integrations/monday/…`. */
+export type MondayRouteParams = Promise<{ slug: string }>
+
+/** Monday.com integration settings: Administrators and Property Managers of the property in the URL. */
+export async function requireMondayPropertyAdmin(params: MondayRouteParams): Promise<
   | { ok: true; context: MondayPropertyAdminContext }
   | { ok: false; status: number; error: string }
 > {
+  const { slug } = await params
   const session = await requireSession()
   if (!session.ok) return { ok: false, status: 401, error: 'Unauthorized' }
 
-  const propertyId = session.user.app_metadata?.property_id as string | undefined
-  if (!propertyId) return { ok: false, status: 400, error: 'No active property' }
-
-  const access = await authorize(session, 'property.integrations.manage', { propertyId })
+  const access = await authorizeForSlug(session, slug, 'property.integrations.manage')
   if (!access.ok) {
     const body = await access.response.json().catch(() => ({ error: 'Forbidden' }))
     return { ok: false, status: access.response.status, error: body.error ?? 'Forbidden' }
@@ -30,7 +31,7 @@ export async function requireMondayPropertyAdmin(): Promise<
     context: {
       actor: access.actor,
       user: { id: session.user.id, email: session.user.email ?? null },
-      propertyId,
+      propertyId: access.propertyId,
       service: session.service,
     },
   }

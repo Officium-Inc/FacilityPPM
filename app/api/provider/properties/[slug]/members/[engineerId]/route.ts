@@ -7,13 +7,16 @@ interface Params {
   params: Promise<{ slug: string; engineerId: string }>
 }
 
+const ORG_MANAGED_ERROR =
+  'This Administrator comes from the organization. Change their access on the organization’s administrators.'
+
 /** The member row, only when it belongs to the property in the URL. */
 async function loadMember(service: Service, slug: string, engineerId: string) {
   const { data: property } = await service.from('properties').select('id, slug').eq('slug', slug).maybeSingle()
   if (!property) return null
   const { data: member } = await service
     .from('engineers')
-    .select('id, user_id, property_id, email, is_active, role_id, roles(name)')
+    .select('id, user_id, property_id, email, is_active, role_id, org_member_id, roles(name)')
     .eq('id', engineerId)
     .eq('property_id', property.id)
     .maybeSingle()
@@ -32,6 +35,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const found = await loadMember(service, slug, engineerId)
   if (!found) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
   const { property, member } = found
+  // Org-managed Administrator rows follow the org membership (D30)
+  if (member.org_member_id) return NextResponse.json({ error: ORG_MANAGED_ERROR }, { status: 409 })
 
   const updates: Record<string, unknown> = {}
   let roleName: string | null = null
@@ -84,6 +89,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const found = await loadMember(service, slug, engineerId)
   if (!found) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
   const { property, member } = found
+  if (member.org_member_id) return NextResponse.json({ error: ORG_MANAGED_ERROR }, { status: 409 })
 
   if (member.user_id) await removePropertyFromUser(service, member.user_id, property)
 

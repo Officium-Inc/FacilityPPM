@@ -32,7 +32,7 @@ const ROLE_STYLES: Record<string, { bg: string; text: string; label: string }> =
   tenant:           { bg: 'bg-blue-100',   text: 'text-blue-800',   label: 'Tenant' },
   admin:            { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Administrator' },
   property_manager: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Property Manager' },
-  provider:         { bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Provider' },
+  provider:         { bg: 'bg-amber-100',  text: 'text-amber-800',  label: 'Platform Admin' },
   viewer:           { bg: 'bg-gray-100',   text: 'text-gray-600',   label: 'Viewer' },
 }
 

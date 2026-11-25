@@ -2,7 +2,7 @@ import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { requirePage, type Service } from '@/lib/authz/guard'
-import { userPropertyIds, type MemberActor } from '@/lib/authz/actor'
+import type { MemberActor } from '@/lib/authz/actor'
 import { can } from '@/lib/authz/permissions'
 import { latestCosting } from '@/lib/costing'
 import { loadCompanyFloors } from '@/lib/floors'
@@ -42,7 +42,6 @@ export interface TenantPortalContext {
   property: TenantProperty
   engineer: TenantEngineer
   role: string
-  userProperties: Array<{ id: string; name: string; slug: string }>
   service: Service
 }
 
@@ -103,18 +102,12 @@ export const getTenantPortalContext = cache(async (slug: string): Promise<Tenant
     })
   }
 
-  const propertyIds = userPropertyIds(user)
-  const { data: userProperties } = propertyIds.length > 0
-    ? await service.from('properties').select('id, name, slug').in('id', propertyIds)
-    : { data: [] }
-
   return {
     user,
     actor,
     property: property as TenantProperty,
     engineer: { id: actor.engineerId, full_name: actor.name, email: actor.email ?? '', is_active: true },
     role: actor.role,
-    userProperties: userProperties ?? [],
     service,
   }
 })

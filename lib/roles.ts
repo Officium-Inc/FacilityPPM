@@ -79,7 +79,7 @@ export function isCanonicalRoleName(roleName?: string | null): roleName is Canon
 
 export function formatRoleName(roleName?: string | null, fallback = '-') {
   if (!roleName?.trim()) return fallback
-  if (roleName === 'provider') return 'Provider'
+  if (roleName === 'provider') return 'Platform Admin'
   const normalized = normalizeRoleName(roleName)
   return ROLE_LABELS[normalized as CanonicalRoleName] ?? toTitleCase(normalized)
 }

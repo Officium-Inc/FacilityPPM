@@ -110,39 +110,51 @@ export async function sendInviteEmail({
   propertyName,
   token,
   invitedBy,
+  scope = 'property',
 }: {
   toEmail: string
   toName?: string
+  /** The property, or for an organization invitation the organization. */
   propertyName: string
   token: string
   invitedBy?: string
+  /** Organization invitations make the recipient an Org Admin of every property of the organization. */
+  scope?: 'property' | 'organization'
 }) {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
   if (!appUrl) throw new Error('NEXT_PUBLIC_APP_URL is not set')
   const inviteUrl = `${appUrl}/invite/${token}`
-  const greeting = toName ? `Hi ${toName},` : 'Hi,'
+  const greeting = toName ? `Hi ${escapeHtml(toName)},` : 'Hi,'
+  const name = escapeHtml(propertyName)
+  const isOrganization = scope === 'organization'
+  const inviter = invitedBy ? `<strong>${escapeHtml(invitedBy)}</strong> has invited you` : 'You have been invited'
+  const intro = isOrganization
+    ? `${inviter} to administer <strong>${name}</strong> on Tenant360. As an organization administrator you manage every property of ${name}.`
+    : `${inviter} to join <strong>${name}</strong> on Tenant360.`
 
   const transporter = createTransporter()
   await transporter.sendMail({
     from: `"Tenant360" <${process.env.GMAIL_USER}>`,
     to: toEmail,
-    subject: `You've been invited to ${propertyName} on Tenant360`,
+    subject: isOrganization
+      ? `You've been invited to administer ${propertyName} on Tenant360`
+      : `You've been invited to ${propertyName} on Tenant360`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1d4ed8; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Tenant360</h1>
-          <p style="color: #bfdbfe; margin: 4px 0 0;">Tenant360  Property Access Invitation</p>
+          <p style="color: #bfdbfe; margin: 4px 0 0;">${isOrganization ? 'Organization Access Invitation' : 'Property Access Invitation'}</p>
         </div>
         <div style="padding: 32px 24px; background: #f9fafb;">
           <p>${greeting}</p>
-          <p>${invitedBy ? `<strong>${invitedBy}</strong> has` : 'You have been'} invited you to join <strong>${propertyName}</strong> on Tenant360.</p>
+          <p>${intro}</p>
           <p>Click the button below to accept your invitation and set up your account. This link expires in <strong>7 days</strong>.</p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${inviteUrl}" style="background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Accept Invitation
             </a>
           </div>
-          <p style="color: #6b7280; font-size: 14px;">If you already have a Tenant360 account, you will be added to this property automatically.</p>
+          <p style="color: #6b7280; font-size: 14px;">If you already have a Tenant360 account, you will be added to this ${isOrganization ? 'organization' : 'property'} automatically.</p>
           <p style="color: #6b7280; font-size: 14px;">If you did not expect this invitation, you can safely ignore this email.</p>
         </div>
         <div style="padding: 16px 24px; background: #e5e7eb; text-align: center;">

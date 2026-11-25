@@ -11,15 +11,16 @@ import type { LicenseStatus } from '@/types'
 import { formatPHT } from '@/lib/utils'
 
 interface Props {
-  slug: string
+  /** The organization's Platform Admin endpoint (PATCH with license_status / license_expires_at). */
+  endpoint: string
   licenseStatus: LicenseStatus
   licenseExpiresAt: string | null
   terminated: boolean
   audit: AuditEntry[]
 }
 
-/** License status and expiry (add, renew, suspend) with its audit-logged history (D17). */
-export default function LicensePanel({ slug, licenseStatus, licenseExpiresAt, terminated, audit }: Props) {
+/** The organization's license (D29): status and expiry (add, renew, suspend) with its audit-logged history (D17). */
+export default function LicensePanel({ endpoint, licenseStatus, licenseExpiresAt, terminated, audit }: Props) {
   const router = useRouter()
   const [status, setStatus] = useState<LicenseStatus>(licenseStatus)
   const [expiresOn, setExpiresOn] = useState(licenseDateInput(licenseExpiresAt))
@@ -34,7 +35,7 @@ export default function LicensePanel({ slug, licenseStatus, licenseExpiresAt, te
     e.preventDefault()
     setLoading(true)
     setMessage(null)
-    const res = await fetch(`/api/provider/properties/${encodeURIComponent(slug)}`, {
+    const res = await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ license_status: status, license_expires_at: expiresOn || null }),
@@ -57,7 +58,7 @@ export default function LicensePanel({ slug, licenseStatus, licenseExpiresAt, te
 
       {terminated ? (
         <p className="text-sm text-gray-600">
-          The account is terminated. Reactivate it from the Danger Zone tab to restore the license and its members.
+          The organization is terminated. Reactivate it from the Danger Zone tab to restore the license and its members.
         </p>
       ) : (
         <form onSubmit={save} className="space-y-4">
@@ -93,7 +94,7 @@ export default function LicensePanel({ slug, licenseStatus, licenseExpiresAt, te
             )}
           </div>
           <p className="text-xs text-gray-400">
-            Suspended or expired licenses lock every member out of the property. Expiry is at the end of the day, Philippine time.
+            Applies to every property of the organization. Suspended or expired licenses lock every member out. Expiry is at the end of the day, Philippine time.
           </p>
           {message && (
             <div className={`rounded-lg px-3 py-2 text-sm border ${message.type === 'success' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>

@@ -1,5 +1,5 @@
 -- supabase/tests/rls_check.sql
--- Verifies the role-aware RLS from migration 022 against the data in this database (run on staging first).
+-- Verifies the role-aware RLS from migrations 022 and 025 against the data in this database (run on staging first).
 -- Paste into the Supabase SQL Editor and run. It changes nothing: everything happens in a transaction that
 -- is rolled back. The result lists one row per failed check; an empty result means every check passed.
 --
@@ -11,7 +11,11 @@
 --   * Head Engineers do not see the audit log
 --   * staff (Administrator, Property Manager, Head Engineer) see every work order of an active property
 --   * no signed-in user can write through the Data API
--- It also checks that `anon` reads nothing and that invitations are never readable.
+--   * property members see no organization rows and no org members other than their own rows
+-- For each active Org Admin (up to 100) it impersonates them with only `org_ids` in the claims and checks that
+-- they see their organization, no other organization, and every work order of the organization's properties
+-- while both licenses are usable.
+-- It also checks that `anon` reads nothing and that invitations (property and organization) are never readable.
 
 begin;
 
@@ -36,7 +40,8 @@ declare
     'checklist_items', 'inventory_items', 'parts_used', 'audit_log', 'invitations', 'work_order_reports',
     'work_order_costings', 'work_order_completion_evidence', 'service_ratings', 'approval_trail',
     'work_order_comments', 'notifications', 'property_monday_integrations', 'work_order_events',
-    'floors', 'tenant_companies', 'floor_occupancies'
+    'floors', 'tenant_companies', 'floor_occupancies',
+    'organizations', 'organization_members', 'organization_invitations'
   ];
   v_table text;
 begin
@@ -69,10 +74,13 @@ begin
         when 'engineer' then 'head_engineer'
         else regexp_replace(lower(trim(r.name)), '[[:space:]_-]+', '_', 'g')
       end as role,
-      (p.license_status <> 'suspended' and (p.license_expires_at is null or p.license_expires_at > now())) as license_ok
+      (p.license_status <> 'suspended' and (p.license_expires_at is null or p.license_expires_at > now())
+        and (o.id is null or (o.license_status <> 'suspended' and (o.license_expires_at is null or o.license_expires_at > now()))))
+        as license_ok
     from public.engineers e
     join public.roles r on r.id = e.role_id
     join public.properties p on p.id = e.property_id
+    left join public.organizations o on o.id = p.organization_id
     left join public.tenant_companies c on c.id = e.company_id
     where e.user_id is not null and e.is_active
     order by e.property_id, r.name
@@ -103,6 +111,13 @@ begin
     if v_bad > 0 then v_failed := v_failed || format('other-property floors visible: %s', v_bad); end if;
     select count(*) into v_bad from public.invitations;
     if v_bad > 0 then v_failed := v_failed || format('invitations visible: %s', v_bad); end if;
+    select count(*) into v_bad from public.organization_invitations;
+    if v_bad > 0 then v_failed := v_failed || format('organization invitations visible: %s', v_bad); end if;
+    -- Property claims alone reach no organization rows (Org Admins are checked below with org_ids)
+    select count(*) into v_bad from public.organizations;
+    if v_bad > 0 then v_failed := v_failed || format('organizations visible without org_ids: %s', v_bad); end if;
+    select count(*) into v_bad from public.organization_members where user_id is distinct from m.user_id;
+    if v_bad > 0 then v_failed := v_failed || format('other org members visible without org_ids: %s', v_bad); end if;
 
     if m.role = 'tenant' then
       select count(*) into v_bad from public.work_orders where company_id is distinct from m.company_id;
@@ -159,6 +174,71 @@ begin
 
     insert into rls_check_failures
     select m.email, m.property_id, m.role, 'member visibility', failure from unnest(v_failed) as failure;
+  end loop;
+
+  -- Org Admins: the claims carry only org_ids (no property_ids)
+  for m in
+    select
+      om.user_id,
+      om.email,
+      om.organization_id,
+      (o.license_status <> 'suspended' and (o.license_expires_at is null or o.license_expires_at > now())) as license_ok
+    from public.organization_members om
+    join public.organizations o on o.id = om.organization_id
+    where om.is_active
+    order by om.organization_id
+    limit 100
+  loop
+    -- Work orders of the organization's properties whose own license is usable
+    select count(*) into v_total
+    from public.work_orders w
+    join public.properties p on p.id = w.property_id
+    where p.organization_id = m.organization_id
+      and p.license_status <> 'suspended'
+      and (p.license_expires_at is null or p.license_expires_at > now());
+    v_failed := array[]::text[];
+
+    perform set_config(
+      'request.jwt.claims',
+      jsonb_build_object(
+        'sub', m.user_id,
+        'role', 'authenticated',
+        'app_metadata', jsonb_build_object('org_ids', jsonb_build_array(m.organization_id))
+      )::text,
+      true
+    );
+    execute 'set local role authenticated';
+
+    select count(*) into v_bad from public.organizations where id <> m.organization_id;
+    if v_bad > 0 then v_failed := v_failed || format('other organizations visible: %s', v_bad); end if;
+    select count(*) into v_bad
+    from public.organization_members
+    where organization_id <> m.organization_id and user_id is distinct from m.user_id;
+    if v_bad > 0 then v_failed := v_failed || format('members of other organizations visible: %s', v_bad); end if;
+    select count(*) into v_bad from public.organization_invitations;
+    if v_bad > 0 then v_failed := v_failed || format('organization invitations visible: %s', v_bad); end if;
+    select count(*) into v_bad
+    from public.work_orders w
+    where w.property_id not in (select p.id from public.properties p where p.organization_id = m.organization_id);
+    if v_bad > 0 then v_failed := v_failed || format('work orders of other organizations visible: %s', v_bad); end if;
+
+    select count(*) into v_visible from public.organizations where id = m.organization_id;
+    if m.license_ok and v_visible <> 1 then v_failed := v_failed || 'own organization not visible'::text; end if;
+    if not m.license_ok and v_visible > 0 then v_failed := v_failed || 'license blocked but organization visible'::text; end if;
+
+    select count(*) into v_visible from public.work_orders;
+    if m.license_ok and v_visible <> v_total then
+      v_failed := v_failed || format('org admin sees %s of %s work orders (missing Administrator rows?)', v_visible, v_total);
+    end if;
+    if not m.license_ok and v_visible > 0 then
+      v_failed := v_failed || format('organization license blocked but %s work orders visible', v_visible);
+    end if;
+
+    execute 'reset role';
+    perform set_config('request.jwt.claims', '', true);
+
+    insert into rls_check_failures
+    select m.email, null::uuid, 'org_admin', 'org admin visibility', failure from unnest(v_failed) as failure;
   end loop;
 end $$;
 

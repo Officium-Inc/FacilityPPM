@@ -2,10 +2,11 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import LicenseBadge from '@/components/provider/LicenseBadge'
 import PropertyManageClient from './PropertyManageClient'
-import { requireProviderPage } from '@/lib/authz/guard'
+import { PROPERTY_WITH_ORGANIZATION, requireProviderPage, type PropertyRow } from '@/lib/authz/guard'
 import { getAccountStatus } from '@/lib/provider/account-status'
 import { loadPropertyActivity } from '@/lib/provider/activity'
-import { licenseDateInput, licenseState } from '@/lib/provider/license'
+import { effectiveLicenseState, licenseDateInput } from '@/lib/provider/license'
+import { propertyTypeLabel } from '@/lib/property-types'
 import type { Property, Engineer, Role } from '@/types'
 import { ArrowLeft, Eye } from 'lucide-react'
 
@@ -21,12 +22,14 @@ export default async function PropertyManagePage({ params, searchParams }: Props
 
   const { data: property } = await service
     .from('properties')
-    .select('*')
+    .select(PROPERTY_WITH_ORGANIZATION)
     .eq('slug', slug)
     .maybeSingle()
 
   if (!property) notFound()
-  const prop = property as Property
+  const row = property as unknown as PropertyRow & Property & { organization: PropertyRow['organization'] | PropertyRow['organization'][] }
+  const organization = Array.isArray(row.organization) ? row.organization[0] ?? null : row.organization ?? null
+  const prop = { ...row, organization } as Property & PropertyRow
 
   const siteIds = (await service.from('sites').select('id').eq('property_id', prop.id)).data?.map((s) => s.id) ?? []
   const buildingIds = siteIds.length
@@ -55,17 +58,18 @@ export default async function PropertyManagePage({ params, searchParams }: Props
     loadPropertyActivity(service, prop.id),
   ])
 
-  const state = account.terminated ? 'terminated' : licenseState(prop)
-  const expiresOn = licenseDateInput(prop.license_expires_at)
+  const license = effectiveLicenseState(prop.organization_id ? organization : undefined, prop)
+  const state = account.terminated ? 'terminated' : license
+  const expiresOn = licenseDateInput(organization?.license_expires_at ?? prop.license_expires_at)
 
   return (
     <div className="space-y-6">
       <Link
-        href="/provider/properties"
+        href={organization ? `/provider/organizations/${organization.slug}` : '/provider/properties'}
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
-        Back to Control Panel
+        {organization ? `Back to ${organization.name}` : 'Back to Properties'}
       </Link>
 
       {invite === 'failed' && (
@@ -77,8 +81,9 @@ export default async function PropertyManagePage({ params, searchParams }: Props
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{prop.name}</h2>
-          <div className="flex items-center gap-3 mt-1">
+          <div className="flex flex-wrap items-center gap-3 mt-1">
             <code className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">/{prop.slug}</code>
+            <span className="text-xs text-gray-500">{propertyTypeLabel(prop.property_type)}</span>
             <LicenseBadge status={state} />
             {expiresOn && !account.terminated && <span className="text-xs text-gray-500">until {expiresOn}</span>}
           </div>
@@ -97,6 +102,7 @@ export default async function PropertyManagePage({ params, searchParams }: Props
 
       <PropertyManageClient
         property={prop}
+        organization={organization ? { name: organization.name, slug: organization.slug } : null}
         engineers={(engineers as Engineer[]) ?? []}
         roles={(roles as Role[]) ?? []}
         stats={{ workOrders: activity.summary.total, assets: assetCount ?? 0, sites: siteIds.length }}

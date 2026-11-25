@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProvider } from '@/lib/authz/guard'
-import { parseLicenseUpdate } from '@/lib/provider/license'
+import { isPropertyType } from '@/lib/property-types'
 import { logProviderAction, removePropertyFromUser, requestIp } from '@/lib/provider/accounts'
 
 interface Params {
   params: Promise<{ slug: string }>
 }
 
-/** Renames a property or changes its license (status and expiry); license changes are audit-logged (D17). */
+/**
+ * Renames a property or changes its type. The license is the organization's (D29): it is changed on the
+ * organization and mirrored onto its properties, never per property.
+ */
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { slug } = await params
   const provider = await requireProvider()
@@ -15,14 +18,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { service, user } = provider
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>
-  const license = parseLicenseUpdate(body)
-  if ('error' in license) return NextResponse.json({ error: license.error }, { status: 400 })
+  if (body.license_status !== undefined || body.license_expires_at !== undefined) {
+    return NextResponse.json({ error: 'The license belongs to the organization. Change it on the organization.' }, { status: 400 })
+  }
 
-  const updates: Record<string, unknown> = { ...license }
+  const updates: Record<string, unknown> = {}
   if (body.name !== undefined) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (!name || name.length > 120) return NextResponse.json({ error: 'Name is required (up to 120 characters).' }, { status: 400 })
     updates.name = name
+  }
+  if (body.property_type !== undefined) {
+    if (!isPropertyType(body.property_type)) return NextResponse.json({ error: 'Invalid property type.' }, { status: 400 })
+    updates.property_type = body.property_type
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 })
@@ -30,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { data: before } = await service
     .from('properties')
-    .select('id, name, license_status, license_expires_at')
+    .select('id, name, property_type, organization_id')
     .eq('slug', slug)
     .maybeSingle()
   if (!before) return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
@@ -39,27 +47,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const ctx = { userId: user.id, ip: requestIp(request) }
-  const licenseChanged =
-    (license.license_status !== undefined && license.license_status !== before.license_status) ||
-    (license.license_expires_at !== undefined && license.license_expires_at !== before.license_expires_at)
-  if (licenseChanged) {
-    await logProviderAction(service, ctx, {
-      propertyId: before.id,
-      action: 'license.updated',
-      metadata: {
-        from: { status: before.license_status, expires_at: before.license_expires_at ?? null },
-        to: {
-          status: license.license_status ?? before.license_status,
-          expires_at: license.license_expires_at !== undefined ? license.license_expires_at : before.license_expires_at ?? null,
-        },
-      },
-    })
-  }
   if (updates.name && updates.name !== before.name) {
     await logProviderAction(service, ctx, {
       propertyId: before.id,
+      organizationId: before.organization_id ?? null,
       action: 'property.renamed',
       metadata: { from: before.name, to: updates.name },
+    })
+  }
+  if (updates.property_type && updates.property_type !== before.property_type) {
+    await logProviderAction(service, ctx, {
+      propertyId: before.id,
+      organizationId: before.organization_id ?? null,
+      action: 'property.type_changed',
+      metadata: { from: before.property_type, to: updates.property_type },
     })
   }
 

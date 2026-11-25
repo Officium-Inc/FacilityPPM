@@ -62,7 +62,7 @@ export default function NewWorkOrderModal({ slug, schedules, engineers }: Props)
     setLoading(true)
     setError(null)
 
-    const res = await fetch('/api/work-orders', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/work-orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

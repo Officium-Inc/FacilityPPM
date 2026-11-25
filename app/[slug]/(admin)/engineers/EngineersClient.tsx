@@ -15,6 +15,8 @@ interface Engineer {
   certifications?: string | null
   is_active: boolean
   roles?: { id: string; name: string } | null
+  /** Administrator rows of Org Admins are managed from the organization (D30). */
+  org_member_id?: string | null
 }
 interface Invitation {
   id: string
@@ -42,7 +44,7 @@ type ConfirmRemove = { id: string; name: string } | null
 
 const EMPTY_INVITE = { email: '', name: '', role_name: '', company_id: '' }
 
-export default function EngineersClient({ slug: _slug, engineers, invitations: initialInvitations, canManageMembers, actor, companies }: Props) {
+export default function EngineersClient({ slug, engineers, invitations: initialInvitations, canManageMembers, actor, companies }: Props) {
   const router = useRouter()
   const roleOptions = toRoleOptions(assignableRoles(actor))
   const [showAdd, setShowAdd] = useState(false)
@@ -78,7 +80,7 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
     setError(null)
     setSuccess(null)
 
-    const res = await fetch('/api/engineers/invite', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/members/invite`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -116,7 +118,7 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
 
   async function handleCancelInvite(inviteId: string) {
     setCancellingId(inviteId)
-    const res = await fetch(`/api/engineers/invite/${inviteId}`, { method: 'DELETE' })
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/members/invite/${inviteId}`, { method: 'DELETE' })
     if (res.ok) {
       setInvitations((prev) => prev.filter((i) => i.id !== inviteId))
     }
@@ -125,7 +127,7 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
 
   async function handleRemove(id: string) {
     setRemoveLoading(true)
-    const res = await fetch('/api/engineers', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/members`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
@@ -141,7 +143,7 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
     setLoading(true)
     setError(null)
 
-    const res = await fetch('/api/engineers', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/members`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: editId, ...editForm }),
@@ -281,7 +283,17 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
                       <td className="px-5 py-3 font-medium text-gray-900">{eng.full_name}</td>
                       <td className="px-5 py-3 text-gray-600">{eng.email}</td>
                       <td className="px-5 py-3 text-gray-600">{eng.phone ?? '—'}</td>
-                      <td className="px-5 py-3 text-gray-600">{formatRoleName(eng.roles?.name, '—')}</td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {formatRoleName(eng.roles?.name, '—')}
+                        {eng.org_member_id && (
+                          <span
+                            className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700"
+                            title="Administrator through the organization; their access is managed by the organization"
+                          >
+                            Organization
+                          </span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-gray-600">{eng.certifications ?? '—'}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${eng.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -289,14 +301,14 @@ export default function EngineersClient({ slug: _slug, engineers, invitations: i
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && canManageMember(actor, eng.roles?.name ?? '') && (
+                        {canManageMembers && !eng.org_member_id && canManageMember(actor, eng.roles?.name ?? '') && (
                           <button onClick={() => openEdit(eng)} className="text-gray-400 hover:text-green-600 transition-colors" title="Edit">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </td>
                       <td className="px-5 py-3">
-                        {canManageMembers && canManageMember(actor, eng.roles?.name ?? '') && (
+                        {canManageMembers && !eng.org_member_id && canManageMember(actor, eng.roles?.name ?? '') && (
                           <button onClick={() => setConfirmRemove({ id: eng.id, name: eng.full_name })} className="text-gray-400 hover:text-red-600 transition-colors" title="Remove">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

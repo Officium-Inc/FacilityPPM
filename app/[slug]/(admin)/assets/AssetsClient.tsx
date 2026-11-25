@@ -25,7 +25,7 @@ interface Props {
 
 const EMPTY = { building_id: '', name: '', category: '', make: '', model: '', serial_no: '', location: '' }
 
-export default function AssetsClient({ slug: _slug, assets, buildings, canManage }: Props) {
+export default function AssetsClient({ slug, assets, buildings, canManage }: Props) {
   const router = useRouter()
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(EMPTY)
@@ -41,7 +41,7 @@ export default function AssetsClient({ slug: _slug, assets, buildings, canManage
     setLoading(true)
     setError(null)
 
-    const res = await fetch('/api/assets', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/assets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),

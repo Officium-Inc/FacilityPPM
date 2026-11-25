@@ -74,6 +74,7 @@ interface SyncRun {
 }
 
 interface Props {
+  slug: string
   canManageIntegrations: boolean
 }
 
@@ -99,7 +100,8 @@ async function readJson<T>(response: Response): Promise<T> {
   return data as T
 }
 
-export default function ApiKeysClient({ canManageIntegrations }: Props) {
+export default function ApiKeysClient({ slug, canManageIntegrations }: Props) {
+  const apiBase = `/api/properties/${encodeURIComponent(slug)}/integrations/monday`
   const [integration, setIntegration] = useState<IntegrationSummary | null>(null)
   const [sync, setSync] = useState<SyncSummary | null>(null)
   const [fields, setFields] = useState<FieldDefinition[]>([])
@@ -124,7 +126,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
   ), [enabledByField, fields, mappingByField])
 
   async function loadBoards() {
-    const data = await fetch('/api/integrations/monday/boards').then((res) => readJson<{ boards: MondayBoard[] }>(res))
+    const data = await fetch(`${apiBase}/boards`).then((res) => readJson<{ boards: MondayBoard[] }>(res))
     setBoards(data.boards)
     return data.boards
   }
@@ -134,7 +136,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     summary?: IntegrationSummary | null,
     applySuggestions = false
   ) {
-    const data = await fetch(`/api/integrations/monday/boards/${encodeURIComponent(boardId)}`)
+    const data = await fetch(`${apiBase}/boards/${encodeURIComponent(boardId)}`)
       .then((res) => readJson<{
         board: BoardDetails
         suggestedMappings: FieldMapping[]
@@ -159,7 +161,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetch('/api/integrations/monday')
+      const data = await fetch(apiBase)
         .then((res) => readJson<{ integration: IntegrationSummary; fields: FieldDefinition[]; sync: SyncSummary }>(res))
       setIntegration(data.integration)
       setFields(data.fields)
@@ -198,7 +200,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     setSuccess(null)
 
     try {
-      await fetch('/api/integrations/monday/token', {
+      await fetch(`${apiBase}/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiToken }),
@@ -241,7 +243,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     setSuccess(null)
 
     try {
-      const data = await fetch('/api/integrations/monday/config', {
+      const data = await fetch(`${apiBase}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -292,7 +294,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     setError(null)
     setSuccess(null)
     try {
-      const data = await fetch('/api/integrations/monday/sync', {
+      const data = await fetch(`${apiBase}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: 50, includeSynced: true }),
@@ -319,7 +321,7 @@ export default function ApiKeysClient({ canManageIntegrations }: Props) {
     setError(null)
     setSuccess(null)
     try {
-      await fetch('/api/integrations/monday', { method: 'DELETE' }).then((res) => readJson(res))
+      await fetch(apiBase, { method: 'DELETE' }).then((res) => readJson(res))
       setBoards([])
       setBoard(null)
       setSelectedBoardId('')

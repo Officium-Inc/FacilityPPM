@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import LicensePanel from '@/components/provider/LicensePanel'
-import AccountPanel from '@/components/provider/AccountPanel'
+import Link from 'next/link'
 import PropertyActivityPanel from '@/components/provider/PropertyActivityPanel'
+import { describeAuditEntry, LICENSE_HISTORY_ACTIONS } from '@/lib/provider/audit-labels'
 import { formatRoleName, getCanonicalRoleRows, normalizeRoleName } from '@/lib/roles'
+import { PROPERTY_TYPE_LABELS, PROPERTY_TYPES, isPropertyType } from '@/lib/property-types'
+import { formatPHT } from '@/lib/utils'
 import type { ActivityEvent, AuditEntry, PropertySummary } from '@/lib/provider/activity'
 import type { Property, Engineer, Role } from '@/types'
 import {
   Users, Trash2, UserPlus, Mail, Pencil, Check, X,
-  AlertTriangle, BarChart3, Building2, RefreshCw, Activity,
+  AlertTriangle, BarChart3, Building2, RefreshCw, Activity, Shield,
 } from 'lucide-react'
 
 interface Invitation {
@@ -24,6 +26,8 @@ interface Invitation {
 
 interface Props {
   property: Property
+  /** The owning organization: the license, termination and Org Admins are managed there (D29, D30). */
+  organization: { name: string; slug: string } | null
   engineers: Engineer[]
   roles: Role[]
   stats: { workOrders: number; assets: number; sites: number }
@@ -52,9 +56,12 @@ function Msg({ msg }: { msg: { type: 'success' | 'error'; text: string } }) {
   )
 }
 
-export default function PropertyManageClient({ property, engineers, roles, stats, invitations: initInvites, account, activity }: Props) {
+export default function PropertyManageClient({ property, organization, engineers, roles, stats, invitations: initInvites, account, activity }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('overview')
+  const [propertyType, setPropertyType] = useState(isPropertyType(property.property_type) ? property.property_type : 'commercial')
+  const licenseHistory = activity.audit.filter((entry) => LICENSE_HISTORY_ACTIONS.has(entry.action))
+  const activeAdministrators = engineers.filter((member) => member.is_active && normalizeRoleName(member.roles?.name) === 'admin').length
   // The retired viewer role grants no access, so it is not offered (D1)
   const roleRows = getCanonicalRoleRows(roles).filter((r) => normalizeRoleName(r.name) !== 'viewer')
   const defaultExistingRoleId =
@@ -114,13 +121,16 @@ export default function PropertyManageClient({ property, engineers, roles, stats
     e.preventDefault()
     setNameLoading(true)
     setNameMsg(null)
+    const payload: Record<string, string> = {}
+    if (propertyName !== property.name) payload.name = propertyName
+    if (propertyType !== property.property_type) payload.property_type = propertyType
     const res = await fetch(`/api/provider/properties/${property.slug}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: propertyName }),
+      body: JSON.stringify(payload),
     })
-    const data = await res.json()
-    setNameMsg(res.ok ? { type: 'success', text: 'Name updated.' } : { type: 'error', text: data.error })
+    const data = await res.json().catch(() => ({}))
+    setNameMsg(res.ok ? { type: 'success', text: 'Property updated.' } : { type: 'error', text: data.error ?? 'Update failed.' })
     if (res.ok) router.refresh()
     setNameLoading(false)
   }
@@ -369,39 +379,77 @@ export default function PropertyManageClient({ property, engineers, roles, stats
             ))}
           </div>
 
-          {/* Property Name */}
+          {activeAdministrators === 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                This property has no active Administrator. Invite an organization administrator
+                {organization ? <> on <Link href={`/provider/organizations/${organization.slug}`} className="font-medium underline">{organization.name}</Link></> : null}
+                {' '}or an Administrator from the Members tab.
+              </span>
+            </div>
+          )}
+
+          {/* Property details */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center gap-2 mb-4">
               <Building2 className="w-4 h-4 text-gray-500" />
-              <h3 className="font-semibold text-gray-900 text-sm">Property Name</h3>
+              <h3 className="font-semibold text-gray-900 text-sm">Property</h3>
             </div>
-            <form onSubmit={handleNameUpdate} className="flex gap-3">
+            <form onSubmit={handleNameUpdate} className="flex flex-col gap-3 sm:flex-row">
               <input
                 type="text"
                 required
                 value={propertyName}
                 onChange={(e) => setPropertyName(e.target.value)}
+                aria-label="Property name"
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <select
+                value={propertyType}
+                onChange={(e) => setPropertyType(e.target.value as typeof propertyType)}
+                aria-label="Property type"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {PROPERTY_TYPES.map((type) => <option key={type} value={type}>{PROPERTY_TYPE_LABELS[type]}</option>)}
+              </select>
               <button
                 type="submit"
-                disabled={nameLoading || propertyName === property.name}
+                disabled={nameLoading || (propertyName === property.name && propertyType === property.property_type)}
                 className="bg-blue-700 hover:bg-blue-800 disabled:bg-gray-200 disabled:text-gray-400 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
               >
-                {nameLoading ? 'Saving…' : 'Rename'}
+                {nameLoading ? 'Saving…' : 'Save'}
               </button>
             </form>
             {nameMsg && <div className="mt-3"><Msg msg={nameMsg} /></div>}
           </div>
 
-          {/* License */}
-          <LicensePanel
-            slug={property.slug}
-            licenseStatus={property.license_status}
-            licenseExpiresAt={property.license_expires_at ?? null}
-            terminated={account.terminated}
-            audit={activity.audit}
-          />
+          {/* License: the organization's (D29) */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-gray-500" />
+              <h3 className="font-semibold text-gray-900 text-sm">License</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              {organization ? (
+                <>
+                  The license belongs to{' '}
+                  <Link href={`/provider/organizations/${organization.slug}`} className="font-medium text-blue-600 hover:underline">{organization.name}</Link>
+                  {' '}and covers all its properties. Change it, or terminate the account, on the organization.
+                </>
+              ) : 'This property has no organization yet; run migration 025.'}
+            </p>
+            {licenseHistory.length > 0 && (
+              <ul className="space-y-1.5">
+                {licenseHistory.map((entry) => (
+                  <li key={entry.id} className="text-sm text-gray-700">
+                    <span className="text-xs text-gray-400 mr-2">{formatPHT(entry.created_at, true)}</span>
+                    {describeAuditEntry(entry)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
@@ -462,7 +510,14 @@ export default function PropertyManageClient({ property, engineers, roles, stats
                             ))}
                           </select>
                         ) : (
-                          <span className="text-gray-700">{formatRoleName(member.roles?.name, '—')}</span>
+                          <span className="text-gray-700">
+                            {formatRoleName(member.roles?.name, '—')}
+                            {member.org_member_id && (
+                              <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700" title="Administrator through the organization; managed on the organization">
+                                Org Admin
+                              </span>
+                            )}
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-3">
@@ -494,6 +549,12 @@ export default function PropertyManageClient({ property, engineers, roles, stats
                                 <X className="w-3.5 h-3.5" />
                               </button>
                             </>
+                          ) : member.org_member_id ? (
+                            organization && (
+                              <Link href={`/provider/organizations/${organization.slug}`} className="text-xs text-blue-600 hover:underline">
+                                Manage on organization
+                              </Link>
+                            )
                           ) : (
                             <>
                               <button onClick={() => startEdit(member)} className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50" title="Edit">
@@ -705,13 +766,20 @@ export default function PropertyManageClient({ property, engineers, roles, stats
       {/* ── DANGER ZONE TAB ──────────────────────────────────────── */}
       {tab === 'danger' && (
         <div className="space-y-6">
-          <AccountPanel
-            slug={property.slug}
-            propertyName={property.name}
-            terminated={account.terminated}
-            terminatedAt={account.terminatedAt}
-            reason={account.reason}
-          />
+          <div className="bg-white rounded-xl border-2 border-gray-200 p-6 space-y-2">
+            <h3 className="font-semibold text-gray-900">Terminate or reactivate</h3>
+            <p className="text-sm text-gray-600">
+              {account.terminated
+                ? `This property was terminated${account.terminatedAt ? ` on ${formatPHT(account.terminatedAt, true)}` : ''}${account.reason ? ` — ${account.reason}` : ''}. `
+                : ''}
+              Termination is done for the whole organization: it suspends the license and deactivates the members of every property.
+            </p>
+            {organization && (
+              <Link href={`/provider/organizations/${organization.slug}`} className="inline-block text-sm font-medium text-blue-600 hover:underline">
+                Open {organization.name}
+              </Link>
+            )}
+          </div>
 
           <div className="bg-white rounded-xl border-2 border-red-200 p-6">
             <div className="flex items-center gap-2 mb-2">

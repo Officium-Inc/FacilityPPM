@@ -32,13 +32,40 @@ export function licenseDateInput(expiresAt: string | null | undefined) {
   return new Date(value.getTime() + BUSINESS_OFFSET_MS).toISOString().slice(0, 10)
 }
 
-export function licenseState(
-  property: { license_status: LicenseStatus | string; license_expires_at?: string | null },
-  now = new Date()
-): LicenseState {
+export interface LicenseFields {
+  license_status: LicenseStatus | string
+  license_expires_at?: string | null
+}
+
+export function licenseState(property: LicenseFields, now = new Date()): LicenseState {
   if (property.license_status === 'suspended') return 'suspended'
   if (property.license_expires_at && new Date(property.license_expires_at) < now) return 'expired'
   return isLicenseStatus(property.license_status) ? property.license_status : 'suspended'
+}
+
+/** Most restrictive first: a blocked license wins over a trial, a trial over an active license. */
+const RESTRICTIVENESS: Record<LicenseState, number> = { suspended: 3, expired: 2, trial: 1, active: 0 }
+
+/**
+ * The license that applies to a property (D29): the organization's license and the property's own, the most
+ * restrictive wins. A property without an organization (before migration 025) uses its own license; a
+ * missing organization row passed as `null` fails closed.
+ */
+export function effectiveLicenseState(
+  organization: LicenseFields | null | undefined,
+  property: LicenseFields | null | undefined,
+  now = new Date()
+): LicenseState {
+  if (!property) return 'suspended'
+  const own = licenseState(property, now)
+  if (organization === undefined) return own
+  const org = organization ? licenseState(organization, now) : 'suspended'
+  return RESTRICTIVENESS[org] >= RESTRICTIVENESS[own] ? org : own
+}
+
+/** Suspended and expired licenses lock members out. */
+export function isBlockedLicenseState(state: LicenseState) {
+  return state === 'suspended' || state === 'expired'
 }
 
 export interface LicenseUpdate {

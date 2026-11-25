@@ -28,14 +28,25 @@ export function requestIp(request: Request) {
   return request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? request.headers.get('x-real-ip') ?? null
 }
 
-/** Provider actions go to `audit_log` so the property's activity shows who changed what. */
+/**
+ * Platform Admin actions go to `audit_log` so the property's (and the organization's) activity shows who
+ * changed what. Organization-level entries pass `propertyId: null` and an `organizationId`.
+ */
 export async function logProviderAction(
   service: Service,
   ctx: ProviderContext,
-  entry: { propertyId: string | null; action: string; metadata?: Record<string, unknown>; entityType?: string; entityId?: string | null }
+  entry: {
+    propertyId: string | null
+    organizationId?: string | null
+    action: string
+    metadata?: Record<string, unknown>
+    entityType?: string
+    entityId?: string | null
+  }
 ) {
   const { error } = await service.from('audit_log').insert({
     property_id: entry.propertyId,
+    organization_id: entry.organizationId ?? null,
     user_id: ctx.userId,
     action: entry.action,
     entity_type: entry.entityType ?? 'property',

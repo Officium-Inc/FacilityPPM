@@ -6,13 +6,14 @@ import { useRouter } from 'next/navigation'
 import { Save, KeyRound } from 'lucide-react'
 
 interface Props {
+  slug: string
   fullName: string
   email: string
   phone: string
   roleName: string | null
 }
 
-export default function ProfileClient({ fullName, email, phone, roleName }: Props) {
+export default function ProfileClient({ slug, fullName, email, phone, roleName }: Props) {
   const router = useRouter()
   const [name, setName] = useState(fullName)
   const [phoneValue, setPhoneValue] = useState(phone)
@@ -24,7 +25,7 @@ export default function ProfileClient({ fullName, email, phone, roleName }: Prop
   const [success, setSuccess] = useState<string | null>(null)
 
   async function patchProfile(payload: Record<string, string>) {
-    const res = await fetch('/api/profile', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/me`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

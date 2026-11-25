@@ -1,65 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { requireSession } from '@/lib/authz/guard'
+import { resolveMembership } from '@/lib/authz/actor'
 
-// audit-allow-file: the target slug/property id is checked against app_metadata.property_slugs/property_ids
+/**
+ * Sets the user's active property (app_metadata.property_id/slug), used for the starting page. The user must
+ * be an active member of the target property, directly or as an Org Admin of its organization.
+ */
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // audit-allow: the target property is checked with resolveMembership (active member row + access lists)
+  const session = await requireSession()
+  if (!session.ok) return session.response
+  const { user, service } = session
 
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const { slug } = (await request.json().catch(() => ({}))) as { slug?: string }
+  if (!slug) return NextResponse.json({ error: 'slug is required' }, { status: 400 })
 
-  const { slug, propertyId: clientPropertyId } = (await request.json()) as { slug?: string; propertyId?: string }
+  const { data: property } = await service.from('properties').select('id, slug').eq('slug', slug).maybeSingle()
+  if (!property) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
-  if (!slug) {
-    return NextResponse.json({ error: 'slug is required' }, { status: 400 })
-  }
-
-  // Verify the user actually has access to this slug
-  const userSlugs: string[] = (user.app_metadata?.property_slugs as string[] | undefined) ??
-    (user.app_metadata?.property_slug ? [user.app_metadata.property_slug as string] : [])
-
-  if (!userSlugs.includes(slug)) {
+  const membership = await resolveMembership(service, user, property.id as string)
+  if (membership.status !== 'ok' || membership.actor.kind !== 'member') {
     return NextResponse.json({ error: 'Access denied to this property' }, { status: 403 })
   }
 
-  const service = await createServiceClient()
-
-  // If the client passed propertyId, verify it against app_metadata and skip the DB lookup
-  let propertyId: string | undefined
-  if (clientPropertyId) {
-    const userIds: string[] = (user.app_metadata?.property_ids as string[] | undefined) ??
-      (user.app_metadata?.property_id ? [user.app_metadata.property_id as string] : [])
-    if (!userIds.includes(clientPropertyId)) {
-      return NextResponse.json({ error: 'Access denied to this property' }, { status: 403 })
-    }
-    propertyId = clientPropertyId
-  } else {
-    // Fall back to DB lookup
-    const { data: property, error: propErr } = await service
-      .from('properties')
-      .select('id, slug')
-      .eq('slug', slug)
-      .single()
-    if (propErr || !property) {
-      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-    }
-    propertyId = property.id
-  }
-
-  // Update the user's active property in app_metadata (service role bypasses RLS)
   const { error: updateErr } = await service.auth.admin.updateUserById(user.id, {
     app_metadata: {
       ...user.app_metadata,
-      property_id: propertyId,
-      property_slug: slug,
+      property_id: property.id,
+      property_slug: property.slug,
     },
   })
+  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
-  if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ success: true, slug })
+  return NextResponse.json({ success: true, slug: property.slug })
 }

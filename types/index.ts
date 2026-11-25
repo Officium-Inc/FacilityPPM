@@ -7,6 +7,9 @@ export interface Property {
   license_status: LicenseStatus
   /** When set and in the past, the license is treated as suspended (D17). */
   license_expires_at?: string | null
+  /** The owning organization (migration 025); its license applies too, the most restrictive wins (D29). */
+  organization_id?: string | null
+  property_type?: string | null
   address: string | null
   city: string | null
   country: string | null
@@ -123,6 +126,8 @@ export interface Engineer {
   role_id: string | null
   /** Tenant members belong to one company; null for staff and for tenants not linked yet (D19). */
   company_id?: string | null
+  /** Set on Administrator rows that exist because of an Org Admin membership (D30); managed from the organization. */
+  org_member_id?: string | null
   full_name: string
   email: string
   phone: string | null

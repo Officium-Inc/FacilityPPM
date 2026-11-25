@@ -84,7 +84,7 @@ export default function NewServiceRequestModal({
     setLoading(true)
     setError(null)
 
-    const res = await fetch('/api/fault-reports', {
+    const res = await fetch(`/api/properties/${encodeURIComponent(slug)}/fault-reports`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

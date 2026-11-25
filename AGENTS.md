@@ -48,17 +48,23 @@ Path alias: `@/*` → project root.
 
 ---
 
-## Three Portals
+## Four Areas
 
-| Portal | URL | Who | Scope |
+The hierarchy is **Platform Admin → Organization → Property → (floors, units, tenants)**. The organization
+holds the license; only Platform Admin creates organizations and properties (D29).
+
+| Area | URL | Who | Scope |
 |---|---|---|---|
-| Provider Dashboard | `/provider/*` | Provider (`app_metadata.role = 'provider'`) | All properties: accounts, licenses, activity |
+| Platform Admin ("Provider Dashboard" in code) | `/provider/*` | Provider (`app_metadata.role = 'provider'`) | All organizations and properties: licenses, termination, activity |
+| Org portal | `/org/[orgSlug]/*` | Org Admin (`organization_members`, `owner` / `admin`) | One organization: its properties, Org Admins, profile (D30) |
 | Admin Portal | `/[slug]/*` (route group `(admin)`) | Administrator, Property Manager, Head Engineer, Service Group | One property |
 | Tenant Portal | `/[slug]/tenant/*` | Tenant (member of a tenant company) | Their company's floors and requests |
 
 Who may do what is defined in
 [`.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md`](.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md)
-(the matrix + decision log D1–D28) and implemented in `lib/authz/permissions.ts`. **Deny by default.**
+(the matrix + decision log D1–D31) and implemented in `lib/authz/permissions.ts` (property roles) and
+`lib/org/roles.ts` (Org Admins). **Deny by default.** The UI says "Platform Admin"; routes and
+`app_metadata.role` keep `provider`.
 
 ---
 
@@ -73,8 +79,11 @@ app/
   sign-off/[token]/               Tenant sign-off from an emailed link (public, token)
   costing-approval/[token]/       Cost estimate approval from an emailed link (public, token)
   provider/                       Reserved static segment (takes routing priority over [slug])
-    login/                        Provider login
-    (dashboard)/                  Provider Dashboard: properties, accounts, licenses, activity
+    login/                        Platform Admin login
+    (dashboard)/                  Platform Admin: organizations, properties, licenses, activity
+  org/[orgSlug]/                  Org portal (reserved `org` segment)
+    (portal)/                     requireOrgPage(): properties, members (Org Admins), settings
+    suspended/                    Public notice for a suspended or expired organization
   [slug]/                         Dynamic property segment
     login/                        Redirects to /login
     suspended/                    Public suspended notice
@@ -92,21 +101,34 @@ app/
     files/[bucket]/[...path]/     Authenticated file access (redirects to a 60 s signed URL)
     work-orders/[id]/*            Work order workflow actions (each guarded by lib/authz)
     service-requests/             Tenant submission + photo upload
-    fault-reports/                Staff submission on behalf of a company
-    properties/[slug]/            Floors, companies, occupancy, company members (Admin Portal)
-    provider/properties/          Provider Dashboard CRUD (accounts, licenses, members, invitations)
-    sign-off/[token]  costing-approval/[token]  invite/[token]   Public token endpoints
+    properties/[slug]/            Everything scoped to one property (authorizeForSlug, D31): floors, companies,
+                                  occupancy, members (+ invite), assets, details (property profile),
+                                  fault-reports (on behalf), work-orders (PPM), notifications, me (own profile),
+                                  integrations/monday/*
+    org/[orgSlug]/                Org portal API (authorizeOrg): profile, members, invitations
+    provider/organizations/       Platform Admin: organizations, license, termination, Org Admins
+    provider/properties/          Platform Admin: create property in an organization, members, invitations
+    sign-off/[token]  costing-approval/[token]  invite/[token]   Public token endpoints (invite: property or org)
     pdf/[workOrderId]/            Receipt, costing, service report and audit PDFs (authenticated)
-    engineers/  assets/  notifications/  profile/  switch-property/  integrations/  auth/
+    engineers/active-check/       Login: rebuild access lists, answer the starting page
+    switch-property/  auth/
 components/
-  layout/  dashboard/  work-orders/  tenant/  sign-off/  provider/  settings/  pdf/
+  layout/  dashboard/  work-orders/  tenant/  sign-off/  provider/  org/  settings/  pdf/
 lib/
   authz/
     permissions.ts                The permission matrix: PERMISSIONS, can(), assignableRoles(), canManageMember()
-    actor.ts                      resolveMembership() / resolveActor(): provider or active member + canonical role
-    guard.ts                      requireSession(), authorize(), authorizeForSlug(), requireProvider(),
-                                  requirePage(), requirePageRecord(), requireProviderPage()
+    actor.ts                      resolveMembership() / resolveOrgMembership(): provider, active member, Org Admin
+    guard.ts                      requireSession(), authorize(), authorizeForSlug(), authorizeOrg(), requireProvider(),
+                                  requirePage(), requirePageRecord(), requireOrgPage(), requireProviderPage()
     records.ts                    WORK_ORDER_SCOPE_COLUMNS
+  org/                            roles.ts (Org Admin rules, client-safe), members.ts (invites, changes, join),
+                                  provisioning.ts (org-managed Administrator rows), accounts.ts (create, license,
+                                  terminate), overview.ts, profile.ts
+  properties/create.ts            createProperty(): property in an organization + Administrator provisioning
+  access.ts                       Accessible properties/organizations from DB rows; resolveHome()
+  auth-users.ts                   findAuthUserByEmail(), syncUserAccess() (rebuilds app_metadata access lists)
+  reserved-slugs.ts               RESERVED_SLUGS, slugError(), slugify() (middleware + property/org creation)
+  property-types.ts               commercial / corporate / residential
   supabase/
     client.ts                     Browser client factory (auth only)
     server.ts                     Server client factories (see below)
@@ -126,9 +148,10 @@ lib/
 types/
   index.ts                        Shared TypeScript interfaces
 supabase/
-  migrations/                     001–024, applied manually in order (see Migrations)
+  migrations/                     001–025, applied manually in order (see Migrations)
   tests/rls_check.sql             RLS verification script for the SQL Editor
-tests/                            Vitest: authz matrix, approval rules, licenses, storage URLs, tokens
+tests/                            Vitest: authz matrix, approval rules, licenses, Org Admin rules, access lists,
+                                  storage URLs, tokens
 middleware.ts                     Next.js middleware (imports from lib/supabase/middleware.ts)
 ```
 
@@ -142,22 +165,30 @@ middleware.ts                     Next.js middleware (imports from lib/supabase/
 
 ```json
 {
-  "property_id": "<uuid>",               // Active property (synced to the URL by the Admin Portal layout)
+  "property_id": "<uuid>",               // Active property: only picks the starting page (D31)
   "property_slug": "<slug>",
-  "property_ids": ["<uuid>", "..."],     // Every property the user may enter
+  "property_ids": ["<uuid>", "..."],     // Properties with a member row of the user's own
   "property_slugs": ["<slug>", "..."],
-  "terminated_property_ids": ["<uuid>"]  // Set when the provider terminates an account (D23)
+  "org_ids": ["<uuid>"],                 // Organizations where the user is an active Org Admin (D30)
+  "org_slugs": ["<slug>"],
+  "terminated_property_ids": ["<uuid>"]  // Set when Platform Admin terminates an account (D23)
 }
 ```
 
+`syncUserAccess(service, userId)` (`lib/auth-users.ts`) rebuilds these lists from the database rows; it runs on
+every sign-in (`/api/engineers/active-check`) and after membership changes. Org Admins reach their organization's
+properties through `org_ids`, so the JWT does not grow with each property.
+
 Provider users have `{ "role": "provider" }`. Property users have **no** `role` in `app_metadata` (older code
-wrote `"superadmin"`; it is ignored and removed by `grantPropertyAccess()`).
+wrote `"superadmin"`; it is ignored and removed by `syncUserAccess()` / `grantPropertyAccess()`).
 
 **The role inside a property** comes from the `engineers` row for `(user_id, property_id)`: `role_id → roles.name`
 (normalized by `normalizeRoleName()`), `is_active`, and `company_id` for tenants. Canonical roles: `admin`,
 `property_manager`, `head_engineer`, `service_group`, `tenant`; `viewer` is retired (D1).
-`property_ids` is necessary but not sufficient: without an active `engineers` row with a current role, the user
-has no access to that property. `user_metadata` is user-editable — never use it for authorization.
+`property_ids` (or `org_ids` for the property's organization) is necessary but not sufficient: without an active
+`engineers` row with a current role, the user has no access to that property. Org Admins have org-managed
+Administrator rows (`engineers.org_member_id`) in every property of their organization; property-level member
+routes refuse to change them (D30). `user_metadata` is user-editable — never use it for authorization.
 
 ### Two Supabase Client Types — Critical Distinction
 
@@ -216,56 +247,65 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
 | Context | Call |
 |---|---|
-| Route without a record (active property) | `authorize(session, action)` or `authorize(session, action, { propertyId })` |
-| Slug-scoped API (`/api/properties/[slug]/…`) | `authorizeForSlug(session, slug, action)` |
-| Provider Dashboard API | `requireProvider()` |
+| Property route without a record | `authorizeForSlug(session, slug, action)` under `/api/properties/[slug]/…`; `authorize(session, action, { propertyId })` when the id is known. There is **no** active-property fallback (D31) |
+| Platform Admin API | `requireProvider()` |
+| Org portal API (`/api/org/[orgSlug]/…`) | `authorizeOrg(session, orgSlug, 'org.view' \| 'org.profile.edit' \| 'org.members.manage')` |
 | Server page / layout | `requirePage(slug, action)`; for one record `requirePageRecord(slug, action, record)` (404 if out of scope) |
-| Provider Dashboard page | `requireProviderPage()` |
-| Tenant submission | `authorizeTenantSubmit(session, slug)` (`lib/tenant-submit.ts`) |
-| Client component (show/hide only) | `can(actor, action, record?)` — UX only, the server check is the control |
+| Org portal page | `requireOrgPage(orgSlug, action?)` |
+| Platform Admin page | `requireProviderPage()` |
+| Tenant submission | `authorizeTenantSubmit(session, slug)` (`lib/tenant-submit.ts`; the slug is required) |
+| Client component (show/hide only) | `can(actor, action, record?)` / `canOrg(actor, action)` — UX only, the server check is the control |
 
 New actions go into `lib/authz/permissions.ts`, the matrix file and `tests/authz/permissions.test.ts`.
 Providers are read-only inside a property (D2): set `provider: false` for any write action outside the
-Provider Dashboard.
+Provider Dashboard. Org Admin operations (invite, change, remove) live in `lib/org/members.ts` and are shared
+by the Platform Admin and org portal routes, which authorize first.
 
 ---
 
 ## URL Structure & Routing
 
 ```
-/login                         Unified login (property users); signed-in users are redirected
-/[slug]/*                      Admin Portal (staff; provider read-only support view)
+/login                         Unified login (property users and Org Admins); signed-in users are redirected
+/org/[orgSlug]/*               Org portal (Org Admins)
+/org/[orgSlug]/suspended       Public notice for a suspended or expired organization
+/[slug]/*                      Admin Portal (staff; Platform Admin read-only support view)
 /[slug]/tenant/*               Tenant Portal
 /[slug]/login                  Redirects to /login
 /[slug]/suspended              Public suspended notice
-/provider/login                Public provider login
-/provider/*                    Provider Dashboard
+/provider/login                Public Platform Admin login
+/provider/*                    Platform Admin (organizations, properties, activity)
 /sign-off/[token]              Public tenant sign-off (emailed link)
 /costing-approval/[token]      Public cost approval (emailed link)
-/invite/[token]                Accept invitation
+/invite/[token]                Accept a property or Org Admin invitation
 /reset-password                Password reset
 ```
 
-**Reserved slugs** (cannot be property slugs): `provider`, `sign-off`, `api`, `_next`, `admin`, `static`, `login`,
-`invite`, `reset-password`, `costing-approval`, `fault-reports`
+**Reserved slugs** (cannot be property slugs) live in `lib/reserved-slugs.ts`, shared by the middleware and
+property/organization creation: top-level routes (`provider`, `org`, `login`, `api`, `invite`, …), static files and
+page names (`new`, `suspended`).
 
 ### Middleware (`lib/supabase/middleware.ts`) — routing only, not authorization
 
-- Root `/` → provider: `/provider/properties`; property user: active `property_slug`; unauthenticated: `/login`
+- Root `/` and a signed-in `/login` → `homePath()`: provider: `/provider/organizations`; Org Admin:
+  `/org/<first org_slug>`; property user: active `property_slug` (or the first); unauthenticated: `/login`
 - `/provider/*` → requires `app_metadata.role === 'provider'`
-- `/[slug]/*` → requires a user with `property_slugs.includes(slug)` (array check, not equality)
-- Token pages, `/invite`, `/reset-password`, `/[slug]/suspended` are public
+- `/org/[orgSlug]/*` → requires `org_slugs.includes(orgSlug)` (provider passes; the org layout redirects it)
+- `/[slug]/*` → passes for the provider (read-only support view, D2), `property_slugs.includes(slug)`, or an Org
+  Admin whose RLS-scoped read of the property succeeds
+- Token pages, `/invite`, `/reset-password`, `/[slug]/suspended`, `/org/[orgSlug]/suspended` are public
 
 Pages and routes enforce access themselves with `lib/authz`; never rely on the middleware for it.
 
 ### Admin Portal Layout (`app/[slug]/(admin)/layout.tsx`)
 
 1. `requirePage(slug, 'portal.admin')`: tenants are redirected to `/[slug]/tenant`, users without an active
-   membership are signed out, suspended/expired licenses redirect to `/[slug]/suspended`
+   membership are signed out, suspended/expired licenses (organization or property, the most restrictive wins)
+   redirect to `/[slug]/suspended`
 2. If `app_metadata.property_slug !== slug`, updates `property_id` / `property_slug` with
-   `auth.admin.updateUserById()` so API routes act on the property being viewed
+   `auth.admin.updateUserById()` (the starting page after the next sign-in; API routes take the slug from the URL)
 3. Provider support views are audit-logged (at most once per 30 minutes, D24)
-4. Loads the user's properties (`property_ids[]`) for the Topbar switcher
+4. The Topbar loads the switcher list and unread notifications itself (`propertyId` prop)
 
 ---
 
@@ -388,7 +428,12 @@ create policy "Role-scoped read work_orders" on work_orders
 ## Database Schema (Key Tables)
 
 ```
-properties        id, slug (unique), name, license_status ('active'|'trial'|'suspended'), license_expires_at
+organizations     id, slug (unique), name, legal_name, contact_*, address, city, country, website,
+                  license_status ('active'|'trial'|'suspended'), license_expires_at   (the license, D29)
+organization_members      id, organization_id, user_id, email, full_name, org_role ('owner'|'admin'), is_active
+organization_invitations  id, organization_id, email, org_role, token_hash, expires_at, used_at
+properties        id, slug (unique), name, organization_id→organizations, property_type
+                  ('commercial'|'corporate'|'residential'), license_status, license_expires_at (mirror of the org's)
 sites             id, property_id→properties, name, address
 buildings         id, site_id→sites, name, floors
 assets            id, building_id→buildings, name, category, make, model, serial_no, status
@@ -397,7 +442,7 @@ floors            id, property_id, building_id (nullable), label (unique per pro
 tenant_companies  id, property_id, name, contact_email, contact_phone, is_active
 floor_occupancies id, property_id, floor_id, company_id, starts_on, ends_on (one open row per floor)
 engineers         id, property_id, user_id (nullable), email, full_name, role_id→roles, is_active,
-                  company_id (tenants only)
+                  company_id (tenants only), org_member_id + org_restore (org-managed Administrator rows, D30)
 roles             id, property_id, name (canonical snake_case names)
 invitations       id, property_id, email, role_name, company_id, token_hash, expires_at, used_at
 work_orders       id, property_id, company_id, floor_id, engineer_id, requested_by_id, wo_number (unique),
@@ -409,7 +454,7 @@ work_order_events / approval_trail / service_ratings / checklist_items   → wor
 inventory_items   id, property_id, name, quantity
 parts_used        id, work_order_id, inventory_item_id
 notifications     id, engineer_id, read
-audit_log         id, property_id, action, table_name, record_id, metadata (provider actions: actor_role)
+audit_log         id, property_id, organization_id, action, entity_type, entity_id, metadata (actor_role)
 ```
 
 **Engineers email uniqueness**: NOT globally unique. Same email can appear across properties. Unique only per
@@ -435,6 +480,11 @@ Rewrite migrations and their deploy constraints:
 | `022_role_aware_rls.sql` | Read-only role-aware RLS, `private` helpers, revokes Data API writes | — |
 | `023_private_storage.sql` | Private buckets, size/MIME limits | With the app version that has `/api/files` |
 | `024_hashed_tokens.sql` | Token hashes, raw tokens hashed in place, CHECK constraints | App **immediately after** (older code writes raw tokens) |
+| `025_organizations.sql` | Organizations, Org Admins and their invitations, `properties.organization_id` / `property_type`, org-managed Administrator rows; backfill (one organization per property); TEMPORARY trigger that gives old-app property inserts an organization; `my_memberships()` also checks the organization license and accepts `org_ids` | **Before** the Phase A app (it selects the new columns). Then run `rls_check.sql` (must be empty). Never re-run 022 after 029 |
+
+The organization rebuild continues with 026 (units), 027 (assets on property), 028 (per-property roles), 029
+(permission-driven RLS), 030 (cleanup: drops the temporary trigger) and 031 (destructive legacy drop) — see the
+rebuild plan; each phase ships its own app version.
 
 ---
 
@@ -454,25 +504,36 @@ Rewrite migrations and their deploy constraints:
 | Tenant sees "not linked to a company" | Tenant users are not auto-linked (D19) | An Admin/PM links them on the Floors & Tenants page |
 | Old cost estimate shown after a revision | `work_order_costings` has no unique `work_order_id`; each revision inserts a row and embeds come back unordered | Pick the estimate with `latestCosting()`, never `[0]` |
 | Work order status changed twice by concurrent clicks | Unconditional `.update().eq('id', id)` | Guard workflow updates with `.eq('status', expected).select('id')` and return 409 when no row changed |
+| A write lands in the wrong property with two tabs open | Routes acted on `app_metadata.property_id`, which the last opened tab sets | Property routes live under `/api/properties/[slug]/…` and use `authorizeForSlug` (D31) |
+| An Org Admin's Administrator row was edited from the property and then "restored" wrongly | Org-managed rows changed outside the organization | Property member routes answer 409 for rows with `org_member_id`; change Org Admins on the organization |
 
 ---
 
 ## Multi-Property Support
 
-One user can be a member of several properties, with a different role in each:
-- `property_ids[]` and `property_slugs[]` in `app_metadata` contain all accessible entries
-- `property_id` / `property_slug` = currently active (auto-updated on Admin Portal navigation)
+One user can be a member of several properties, with a different role in each, and an Org Admin of
+organizations:
+- `property_ids[]` / `property_slugs[]` list properties with a member row of the user's own; `org_ids[]` /
+  `org_slugs[]` list the organizations they administer. `syncUserAccess()` rebuilds them from the rows.
+- `property_id` / `property_slug` = the active property (auto-updated on Admin Portal navigation); it only picks
+  the starting page (D31)
 - Always resolve the role **for the property being acted on** (`authorize()` uses the record's property)
-- Topbar shows a `⇄` switcher dropdown if the user has 2+ properties
-- Switching calls `POST /api/switch-property` → updates `app_metadata` → `supabase.auth.refreshSession()` → navigate
+- The Topbar switcher lists properties with an active member row (`loadAccessibleProperties()`) and links to the
+  user's organizations
+- Switching calls `POST /api/switch-property` (checks the membership) → `supabase.auth.refreshSession()` → navigate
 
 Adding an existing user to a new property (same email already registered):
-- `findAuthUserByEmail()` + `grantPropertyAccess()` (`lib/auth-users.ts`) merge the property into the arrays
-  (never overwrite `property_ids`)
-- Insert a new `engineers` row for that property
+- `findAuthUserByEmail()`, insert the `engineers` row, then `syncUserAccess()` (older Platform Admin routes still
+  merge with `grantPropertyAccess()`; never overwrite `property_ids` by hand)
 
-Terminating an account (D23) suspends the license, deactivates the property's members and bans only users
-without another active membership; reactivation restores exactly those members.
+Org Admins (D30): accepting an organization invitation (`/invite/[token]`), adding a property to the organization
+(`createProperty()`) or reactivating an Org Admin provisions an org-managed Administrator row in every property
+(`lib/org/provisioning.ts`); deactivating or removing the Org Admin restores the user's own row or deletes the
+org-created one. An organization keeps at least one active owner.
+
+Terminating an organization (D23, D29) suspends its license and terminates each property: deactivates the
+property's members and bans only users without another active membership; reactivation restores exactly those
+members.
 
 ---
 

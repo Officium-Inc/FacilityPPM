@@ -23,7 +23,7 @@ export default async function TenantLayout({
         <Topbar
           title={`${context.property.name} Tenant Portal`}
           slug={slug}
-          properties={context.userProperties}
+          propertyId={context.property.id}
         />
         <main className="flex-1 overflow-y-auto bg-gray-50">
           <div className="min-h-full p-4 sm:p-6">

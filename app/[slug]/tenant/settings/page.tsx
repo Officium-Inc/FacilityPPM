@@ -23,6 +23,7 @@ export default async function TenantSettingsPage({ params }: Props) {
         <p className="mt-0.5 text-sm text-gray-500">Your profile and password for the {context.property.name} Tenant Portal.</p>
       </div>
       <ProfileClient
+        slug={context.property.slug}
         fullName={member?.full_name ?? context.actor.name}
         email={member?.email ?? context.actor.email ?? context.user.email ?? ''}
         phone={member?.phone ?? ''}

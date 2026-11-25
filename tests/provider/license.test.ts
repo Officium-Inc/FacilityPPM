@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  effectiveLicenseState,
+  isBlockedLicenseState,
   isLicenseStatus,
   licenseDateInput,
   licenseExpiryFromDate,
@@ -40,6 +42,40 @@ describe('licenseState', () => {
   })
 })
 
+describe('effectiveLicenseState (organization + property, D29)', () => {
+  const active = { license_status: 'active', license_expires_at: null }
+  const trial = { license_status: 'trial', license_expires_at: '2026-12-31T15:59:59.999Z' }
+  const suspended = { license_status: 'suspended', license_expires_at: null }
+  const expired = { license_status: 'active', license_expires_at: '2026-06-14T15:59:59.999Z' }
+
+  it('applies the most restrictive of the two licenses', () => {
+    expect(effectiveLicenseState(active, active, NOW)).toBe('active')
+    expect(effectiveLicenseState(trial, active, NOW)).toBe('trial')
+    expect(effectiveLicenseState(active, trial, NOW)).toBe('trial')
+    expect(effectiveLicenseState(suspended, active, NOW)).toBe('suspended')
+    expect(effectiveLicenseState(active, suspended, NOW)).toBe('suspended')
+    expect(effectiveLicenseState(expired, trial, NOW)).toBe('expired')
+    expect(effectiveLicenseState(expired, suspended, NOW)).toBe('suspended')
+  })
+
+  it('uses the property license alone before the property has an organization', () => {
+    expect(effectiveLicenseState(undefined, trial, NOW)).toBe('trial')
+    expect(effectiveLicenseState(undefined, expired, NOW)).toBe('expired')
+  })
+
+  it('fails closed on a missing organization row or property', () => {
+    expect(effectiveLicenseState(null, active, NOW)).toBe('suspended')
+    expect(effectiveLicenseState(active, null, NOW)).toBe('suspended')
+  })
+
+  it('blocks suspended and expired licenses only', () => {
+    expect(isBlockedLicenseState('suspended')).toBe(true)
+    expect(isBlockedLicenseState('expired')).toBe(true)
+    expect(isBlockedLicenseState('trial')).toBe(false)
+    expect(isBlockedLicenseState('active')).toBe(false)
+  })
+})
+
 describe('parseLicenseUpdate', () => {
   it('accepts a status and a future expiry date', () => {
     expect(parseLicenseUpdate({ license_status: 'active', license_expires_at: '2026-12-31' }, NOW)).toEqual({
@@ -76,6 +112,19 @@ describe('describeAuditEntry', () => {
       action: 'account.terminated',
       metadata: { deactivated_member_ids: ['a', 'b'], banned_user_ids: ['u'], reason: 'Contract ended' },
     })).toBe('Account terminated: 2 members deactivated, 1 sign-in blocked — Contract ended')
+  })
+
+  it('describes organization events', () => {
+    expect(describeAuditEntry({
+      action: 'organization.terminated',
+      metadata: { property_ids: ['p1', 'p2'], reason: 'Contract ended' },
+    })).toBe('Organization terminated: 2 properties terminated — Contract ended')
+    expect(describeAuditEntry({ action: 'org_member.invited', metadata: { email: 'a@b.co', org_role: 'owner' } }))
+      .toBe('Invited a@b.co as Owner')
+    expect(describeAuditEntry({
+      action: 'property.created',
+      metadata: { name: 'Tower 1', organization_name: 'Acme', property_type: 'commercial' },
+    })).toBe('Property "Tower 1" created in Acme (commercial)')
   })
 
   it('falls back to the action name', () => {

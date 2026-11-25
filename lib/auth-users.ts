@@ -61,6 +61,97 @@ export async function grantPropertyAccess(
   })
 }
 
+export interface AccessEntry {
+  id: string
+  slug: string
+}
+
+export interface UserAccessRows {
+  /** Properties with a member row of the user's own (not created by an organization membership). */
+  properties: AccessEntry[]
+  /** Organizations where the user is an active Org Admin. */
+  organizations: AccessEntry[]
+  /** Properties of those organizations. */
+  organizationProperties: AccessEntry[]
+}
+
+function uniqueEntries(entries: AccessEntry[]) {
+  const seen = new Map<string, AccessEntry>()
+  for (const entry of entries) if (entry.id && entry.slug && !seen.has(entry.id)) seen.set(entry.id, entry)
+  return [...seen.values()]
+}
+
+/**
+ * The app_metadata access lists for the given rows (pure). Org Admins reach the organization's properties
+ * through `org_ids`, so their JWT does not grow with every property. The active property is kept while it is
+ * still reachable. Other keys (`role`, `terminated_property_ids`) are kept; the meaningless `superadmin` role
+ * written by older code is dropped.
+ */
+export function buildAccessMetadata(meta: Record<string, unknown>, rows: UserAccessRows): Record<string, unknown> {
+  const next = { ...meta }
+  if (next.role === 'superadmin') delete next.role
+
+  const properties = uniqueEntries(rows.properties)
+  const organizations = uniqueEntries(rows.organizations)
+  const reachable = uniqueEntries([...properties, ...rows.organizationProperties])
+  const active = reachable.find((entry) => entry.id === meta.property_id) ?? reachable[0] ?? null
+
+  return {
+    ...next,
+    property_ids: properties.map((entry) => entry.id),
+    property_slugs: properties.map((entry) => entry.slug),
+    org_ids: organizations.map((entry) => entry.id),
+    org_slugs: organizations.map((entry) => entry.slug),
+    property_id: active?.id ?? null,
+    property_slug: active?.slug ?? null,
+  }
+}
+
+function relationEntry(value: unknown): AccessEntry | null {
+  const row = (Array.isArray(value) ? value[0] : value) as { id?: string; slug?: string } | null | undefined
+  return row?.id && row.slug ? { id: row.id, slug: row.slug } : null
+}
+
+/** Reads the member rows and Org Admin memberships that decide what the user may enter. */
+export async function loadUserAccessRows(service: SupabaseClient, userId: string): Promise<UserAccessRows> {
+  const [{ data: memberRows }, { data: orgRows }] = await Promise.all([
+    service.from('engineers').select('org_member_id, properties(id, slug)').eq('user_id', userId),
+    service.from('organization_members').select('organizations(id, slug)').eq('user_id', userId).eq('is_active', true),
+  ])
+
+  const properties = (memberRows ?? [])
+    .filter((row) => !row.org_member_id)
+    .map((row) => relationEntry(row.properties))
+    .filter((entry): entry is AccessEntry => Boolean(entry))
+  const organizations = (orgRows ?? [])
+    .map((row) => relationEntry(row.organizations))
+    .filter((entry): entry is AccessEntry => Boolean(entry))
+
+  const { data: orgProperties } = organizations.length
+    ? await service.from('properties').select('id, slug').in('organization_id', organizations.map((org) => org.id))
+    : { data: [] }
+
+  return { properties, organizations, organizationProperties: (orgProperties ?? []) as AccessEntry[] }
+}
+
+/**
+ * Rebuilds the user's access lists in app_metadata (`property_ids/slugs`, `org_ids/slugs`, the active property)
+ * from the database rows. Call it after any change to the user's member rows or Org Admin memberships.
+ * Platform Admin users are left unchanged.
+ */
+export async function syncUserAccess(service: SupabaseClient, userId: string): Promise<{ error: string | null }> {
+  const { data: userData, error: userError } = await service.auth.admin.getUserById(userId)
+  if (userError || !userData?.user) return { error: userError?.message ?? 'User not found.' }
+  const user = userData.user
+  if (user.app_metadata?.role === 'provider') return { error: null }
+
+  const rows = await loadUserAccessRows(service, userId)
+  const { error } = await service.auth.admin.updateUserById(userId, {
+    app_metadata: buildAccessMetadata({ ...(user.app_metadata ?? {}) }, rows),
+  })
+  return { error: error?.message ?? null }
+}
+
 /** Removes a property from the user's accessible properties (app_metadata). */
 export async function revokePropertyAccess(service: SupabaseClient, userId: string, propertyId: string) {
   const [{ data: userData }, { data: property }] = await Promise.all([

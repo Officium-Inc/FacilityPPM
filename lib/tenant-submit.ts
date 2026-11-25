@@ -1,34 +1,30 @@
 import { NextResponse } from 'next/server'
 import { authorize, type Denied, type Session } from '@/lib/authz/guard'
-import { activePropertyId, type MemberActor } from '@/lib/authz/actor'
+import type { MemberActor } from '@/lib/authz/actor'
 import { toStoredFileUrl } from '@/lib/storage-urls'
 
 export const SERVICE_REPORT_BUCKET = 'receipts'
 export const MAX_SERVICE_REPORT_PHOTOS = 6
 
 /**
- * Authorizes a tenant submitting a work request to the property `slug` (or their active property):
- * an active tenant member of that property.
+ * Authorizes a tenant submitting a work request to the property `slug`: an active tenant member of that
+ * property. The property always comes from the request, never from the user's "active property".
  */
 export async function authorizeTenantSubmit(
   session: Session,
   slug?: string
 ): Promise<{ ok: true; actor: MemberActor; propertyId: string; companyId: string } | Denied> {
-  let propertyId = activePropertyId(session.user)
-
-  if (slug) {
-    const { data: property } = await session.service
-      .from('properties')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle()
-    if (!property) return { ok: false, response: NextResponse.json({ error: 'Property not found.' }, { status: 404 }) }
-    propertyId = property.id as string
+  if (!slug) {
+    return { ok: false, response: NextResponse.json({ error: 'The property is missing from the request.' }, { status: 400 }) }
   }
 
-  if (!propertyId) {
-    return { ok: false, response: NextResponse.json({ error: 'No active property.' }, { status: 400 }) }
-  }
+  const { data: property } = await session.service
+    .from('properties')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle()
+  if (!property) return { ok: false, response: NextResponse.json({ error: 'Property not found.' }, { status: 404 }) }
+  const propertyId = property.id as string
 
   const access = await authorize(session, 'workRequest.submit', { propertyId })
   if (!access.ok) {

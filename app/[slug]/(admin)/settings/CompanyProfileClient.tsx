@@ -45,7 +45,7 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
     }
     setSaving(true)
     try {
-      const res = await fetch('/api/company', {
+      const res = await fetch(`/api/properties/${encodeURIComponent(property.slug)}/details`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

@@ -27,7 +27,7 @@ export default function LoginForm() {
     setError(null)
 
     const supabase = createClient()
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
       setError(error.message)
@@ -35,45 +35,23 @@ export default function LoginForm() {
       return
     }
 
-    const meta = data.user?.app_metadata ?? {}
-
-    if (meta.role === 'provider') {
-      router.push('/provider/properties')
-      router.refresh()
-      return
-    }
-
-    const userSlugs: string[] = (meta.property_slugs as string[] | undefined) ??
-      (meta.property_slug ? [meta.property_slug as string] : [])
-
-    if (userSlugs.length === 0) {
-      await supabase.auth.signOut()
-      setError('Your account is not assigned to any property. Contact your administrator.')
-      setLoading(false)
-      return
-    }
-
-    const destination = (meta.property_slug as string | undefined) ?? userSlugs[0]
-
-    // Check if the user is active in the destination property
-    const activeCheck = await fetch('/api/engineers/active-check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ propertySlug: destination }),
-    })
-    if (!activeCheck.ok) {
-      const result = await activeCheck.json().catch(() => ({}))
+    // The server rebuilds the access lists from the database and answers where this user starts
+    const activeCheck = await fetch('/api/engineers/active-check', { method: 'POST' })
+    const result = await activeCheck.json().catch(() => ({})) as { destination?: string; reason?: string }
+    if (!activeCheck.ok || !result.destination) {
       await supabase.auth.signOut()
       setError(
-        result?.reason === 'no-access'
-          ? 'Your account does not have access to this property. Contact your administrator.'
-          : 'Your account has been deactivated. Contact your administrator.'
+        result?.reason === 'deactivated'
+          ? 'Your account has been deactivated. Contact your administrator.'
+          : 'Your account is not assigned to any property or organization. Contact your administrator.'
       )
       setLoading(false)
       return
     }
 
-    router.push(`/${destination}`)
+    // Pick up the rebuilt access lists in the session token
+    await supabase.auth.refreshSession()
+    router.push(result.destination)
     router.refresh()
   }
 

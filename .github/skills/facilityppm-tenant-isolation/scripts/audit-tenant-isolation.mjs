@@ -51,6 +51,8 @@ const KNOWN_HELPERS = {
   authorize: { authz: true },
   authorizeForSlug: { authz: true },
   requireProvider: { authn: true, authz: true, service: true },
+  // Org portal routes (/api/org/[orgSlug]/…): active Org Admin + usable organization license (D30)
+  authorizeOrg: { authz: true },
   authorizeTenantSubmit: { authz: true },
   requireMondayPropertyAdmin: { authn: true, authz: true, service: true },
   // lib/approval-rules.ts + lib/approvals.ts: link expiry (when enforced) and one conditional, single-use decision

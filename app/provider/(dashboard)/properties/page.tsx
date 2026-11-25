@@ -3,9 +3,9 @@ import LicenseBadge from '@/components/provider/LicenseBadge'
 import { requireProviderPage } from '@/lib/authz/guard'
 import { loadProviderOverview } from '@/lib/provider/activity'
 import { getTerminatedPropertyIds } from '@/lib/provider/account-status'
-import { licenseDateInput, licenseState } from '@/lib/provider/license'
+import { propertyTypeLabel } from '@/lib/property-types'
 import { formatPHT } from '@/lib/utils'
-import { Plus, Eye } from 'lucide-react'
+import { AlertTriangle, Eye, Plus } from 'lucide-react'
 
 export default async function PropertiesPage() {
   const { service } = await requireProviderPage()
@@ -17,17 +17,19 @@ export default async function PropertiesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Control Panel</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{rows.length} property account{rows.length === 1 ? '' : 's'}</p>
+          <h2 className="text-xl font-bold text-gray-900">Properties</h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {rows.length} propert{rows.length === 1 ? 'y' : 'ies'} across all organizations
+          </p>
         </div>
         <Link
           href="/provider/properties/new"
           className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
-          Create Account
+          Add Property
         </Link>
       </div>
 
@@ -36,7 +38,7 @@ export default async function PropertiesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {['Property', 'Slug / URL', 'License', 'Members', 'Open WOs', 'Last Activity', 'Actions'].map((h) => (
+                {['Property', 'Organization', 'Slug / URL', 'License', 'Members', 'Open WOs', 'Last Activity', 'Actions'].map((h) => (
                   <th key={h} className="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {h}
                   </th>
@@ -46,17 +48,32 @@ export default async function PropertiesPage() {
             <tbody className="divide-y divide-gray-100">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                    No properties yet. Create your first account.
+                  <td colSpan={8} className="px-5 py-12 text-center text-gray-400">
+                    No properties yet. Create an organization, then add its first property.
                   </td>
                 </tr>
               ) : (
                 rows.map((prop) => {
                   const isTerminated = terminated.has(prop.id)
-                  const expiresOn = licenseDateInput(prop.license_expires_at)
                   return (
                     <tr key={prop.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-3 font-medium text-gray-900">{prop.name}</td>
+                      <td className="px-5 py-3">
+                        <div className="font-medium text-gray-900">{prop.name}</div>
+                        <div className="text-xs text-gray-400">{propertyTypeLabel(prop.property_type)}</div>
+                        {prop.activeAdministrators === 0 && (
+                          <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                            <AlertTriangle className="h-3 w-3" />
+                            No administrator
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-gray-600">
+                        {prop.organization ? (
+                          <Link href={`/provider/organizations/${prop.organization.slug}`} className="hover:underline">
+                            {prop.organization.name}
+                          </Link>
+                        ) : '—'}
+                      </td>
                       <td className="px-5 py-3 text-gray-600">
                         <div className="flex items-center gap-2">
                           <code className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded text-xs">/{prop.slug}</code>
@@ -72,10 +89,7 @@ export default async function PropertiesPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <LicenseBadge status={isTerminated ? 'terminated' : licenseState(prop)} />
-                          {expiresOn && !isTerminated && <span className="text-[11px] text-gray-400">until {expiresOn}</span>}
-                        </div>
+                        <LicenseBadge status={isTerminated ? 'terminated' : prop.license} />
                       </td>
                       <td className="px-5 py-3 text-gray-600">{prop.activeMembers}</td>
                       <td className="px-5 py-3 text-gray-600">{prop.summary.open}</td>
@@ -83,10 +97,7 @@ export default async function PropertiesPage() {
                         {prop.summary.lastActivityAt ? formatPHT(prop.summary.lastActivityAt) : '—'}
                       </td>
                       <td className="px-5 py-3">
-                        <Link
-                          href={`/provider/properties/${prop.slug}`}
-                          className="text-blue-600 hover:underline text-sm font-medium"
-                        >
+                        <Link href={`/provider/properties/${prop.slug}`} className="text-blue-600 hover:underline text-sm font-medium">
                           Manage
                         </Link>
                       </td>

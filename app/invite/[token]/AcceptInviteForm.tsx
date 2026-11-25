@@ -6,13 +6,16 @@ import { useRouter } from 'next/navigation'
 interface Props {
   token: string
   email: string
+  /** The property, or the organization for an Org Admin invitation. */
   propertyName: string
+  scope?: 'property' | 'organization'
   invitedName?: string | null
   isExistingUser: boolean
 }
 
-export default function AcceptInviteForm({ token, email, propertyName, invitedName, isExistingUser }: Props) {
+export default function AcceptInviteForm({ token, email, propertyName, scope = 'property', invitedName, isExistingUser }: Props) {
   const router = useRouter()
+  const isOrganization = scope === 'organization'
   const [fullName, setFullName] = useState(invitedName ?? '')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -71,7 +74,7 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
           </div>
           <h1 className="text-2xl font-bold text-gray-900">You&apos;re invited</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Join <strong>{propertyName}</strong> on Tenant360
+            {isOrganization ? 'Administer' : 'Join'} <strong>{propertyName}</strong> on Tenant360
           </p>
         </div>
 
@@ -83,7 +86,7 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
           {isExistingUser ? (
             <div>
               <p className="text-sm text-gray-600 mb-6">
-                You already have a Tenant360 account. Click below to add <strong>{propertyName}</strong> to your account.
+                You already have a Tenant360 account. Click below to add <strong>{propertyName}</strong> to your account{isOrganization ? ' as an organization administrator' : ''}.
               </p>
               <form onSubmit={handleSubmit}>
                 {error && (
@@ -96,7 +99,7 @@ export default function AcceptInviteForm({ token, email, propertyName, invitedNa
                   disabled={loading}
                   className="w-full bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-medium py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >
-                  {loading ? 'Adding property…' : `Accept & join ${propertyName}`}
+                  {loading ? (isOrganization ? 'Adding organization…' : 'Adding property…') : `Accept & join ${propertyName}`}
                 </button>
               </form>
             </div>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Bell, ChevronDown, Check, ArrowLeftRight, AtSign, ExternalLink } from 'lucide-react'
+import { LogOut, Bell, ChevronDown, Check, ArrowLeftRight, AtSign, ExternalLink, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatPHT } from '@/lib/utils'
 import LoadingState from './LoadingState'
@@ -37,6 +37,7 @@ export default function TopbarClient({
   signOutPath = '/provider/login',
   currentSlug,
   properties = [],
+  organizations = [],
   unreadNotifications = 0,
 }: {
   title?: string
@@ -44,8 +45,12 @@ export default function TopbarClient({
   signOutPath?: string
   currentSlug?: string
   properties?: PropertyOption[]
+  /** Organizations the user administers (links to the org portal). */
+  organizations?: PropertyOption[]
   unreadNotifications?: number
 }) {
+  // Notifications belong to the member row of the property being viewed
+  const notificationsUrl = currentSlug ? `/api/properties/${encodeURIComponent(currentSlug)}/notifications` : null
   const router = useRouter()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
@@ -74,9 +79,10 @@ export default function TopbarClient({
   }, [])
 
   const fetchNotifications = useCallback(async () => {
+    if (!notificationsUrl) return
     setNotifLoading(true)
     try {
-      const res = await fetch('/api/notifications')
+      const res = await fetch(notificationsUrl)
       if (res.ok) {
         const data: Notification[] = await res.json()
         setNotifications(data)
@@ -85,7 +91,7 @@ export default function TopbarClient({
     } finally {
       setNotifLoading(false)
     }
-  }, [])
+  }, [notificationsUrl])
 
   async function openNotifications() {
     setNotifOpen((prev) => !prev)
@@ -95,14 +101,15 @@ export default function TopbarClient({
   }
 
   async function markAllRead() {
-    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+    if (!notificationsUrl) return
+    await fetch(notificationsUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
     setUnread(0)
   }
 
   function handleNotifClick(n: Notification) {
-    if (!n.read) {
-      fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [n.id] }) })
+    if (!n.read && notificationsUrl) {
+      fetch(notificationsUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [n.id] }) })
         .then(() => {
           setNotifications((prev) => prev.map((x) => x.id === n.id ? { ...x, read: true } : x))
           setUnread((u) => Math.max(0, u - 1))
@@ -121,7 +128,7 @@ export default function TopbarClient({
     router.refresh()
   }
 
-  async function handleSwitchProperty(targetSlug: string, targetId: string, targetName: string) {
+  async function handleSwitchProperty(targetSlug: string, targetName: string) {
     if (targetSlug === currentSlug || switching) return
     setSwitching(true)
     setSwitchingTo(targetName)
@@ -131,7 +138,7 @@ export default function TopbarClient({
       await fetch('/api/switch-property', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: targetSlug, propertyId: targetId }),
+        body: JSON.stringify({ slug: targetSlug }),
       })
       const supabase = createClient()
       await supabase.auth.refreshSession()
@@ -142,7 +149,7 @@ export default function TopbarClient({
     }
   }
 
-  const showSwitcher = properties.length > 1
+  const showSwitcher = properties.length > 1 || organizations.length > 0
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white pl-14 pr-3 sm:pr-6 md:pl-6">
@@ -179,10 +186,25 @@ export default function TopbarClient({
                 <p className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Switch Property
                 </p>
+                {organizations.length > 0 && (
+                  <>
+                    {organizations.map((org) => (
+                      <a
+                        key={org.id}
+                        href={`/org/${org.slug}`}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <Building2 className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                        <span className="truncate">{org.name}</span>
+                      </a>
+                    ))}
+                    <div className="my-1 border-t border-gray-100" />
+                  </>
+                )}
                 {properties.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => handleSwitchProperty(p.slug, p.id, p.name)}
+                    onClick={() => handleSwitchProperty(p.slug, p.name)}
                     className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     <span className="truncate">{p.name}</span>

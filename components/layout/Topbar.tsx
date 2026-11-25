@@ -1,30 +1,36 @@
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/authz/guard'
+import { isProviderUser } from '@/lib/authz/actor'
+import { loadAccessibleOrganizations, loadAccessibleProperties, type AccessibleProperty } from '@/lib/access'
 import TopbarClient from './TopbarClient'
 
-interface PropertyOption {
-  id: string
-  name: string
-  slug: string
-}
-
+/**
+ * Top bar of the Admin and Tenant portals: the property switcher (from the user's member rows), links to the
+ * organizations they administer, and the unread notifications of their member row in `propertyId`.
+ */
 export default async function Topbar({
   title,
   slug,
-  properties = [],
+  propertyId,
 }: {
   title?: string
   slug?: string
-  properties?: PropertyOption[]
+  propertyId?: string
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
-  // Fetch unread notification count for the current engineer
   let unreadCount = 0
-  if (user) {
-    const propertyId = user.app_metadata?.property_id as string | undefined
+  let properties: AccessibleProperty[] = []
+  let organizations: AccessibleProperty[] = []
+
+  if (user && !isProviderUser(user)) {
+    const service = await createServiceClient()
+    ;[properties, organizations] = await Promise.all([
+      loadAccessibleProperties(service, user.id),
+      loadAccessibleOrganizations(service, user.id),
+    ])
+
     if (propertyId) {
-      const service = await createServiceClient()
       const { data: engineer } = await service
         .from('engineers')
         .select('id')
@@ -38,7 +44,6 @@ export default async function Topbar({
           .select('id', { count: 'exact', head: true })
           .eq('engineer_id', engineer.id)
           .eq('read', false)
-
         unreadCount = count ?? 0
       }
     }
@@ -53,6 +58,7 @@ export default async function Topbar({
       signOutPath={signOutPath}
       currentSlug={slug}
       properties={properties}
+      organizations={organizations}
       unreadNotifications={unreadCount}
     />
   )
