@@ -5,6 +5,7 @@ import { formatRoleName } from '@/lib/roles'
 import { toPdfJpeg } from '@/lib/image-upload'
 import { DEFAULT_WORK_ORDER_TERMS } from '@/lib/work-order-terms'
 import { downloadStoredFile } from '@/lib/storage-files'
+import type { Property } from '@/types'
 
 export const FORM_TITLE = 'WORK ORDER REQUEST'
 export const FORM_SUBTITLE = 'Maintenance and Engineering Service Report'
@@ -67,6 +68,14 @@ export interface WorkOrderFormData {
 
 type Rel<T> = T | T[] | null | undefined
 
+type FormProfile = Pick<Property, 'name' | 'legal_name' | 'address' | 'city' | 'country' | 'contact_phone'>
+
+interface FormProperty extends FormProfile {
+  fax: string | null
+  work_order_terms: string | null
+  organization: Rel<FormProfile>
+}
+
 function one<T>(value: Rel<T>): T | null {
   if (!value) return null
   return Array.isArray(value) ? value[0] ?? null : value
@@ -82,6 +91,10 @@ function present(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function formatProfileAddress(profile: FormProfile | null): string | null {
+  return [profile?.address, profile?.city, profile?.country].map(present).filter(Boolean).join(', ') || null
+}
+
 /** Builds the Work Order Request form for a work order. It fills in as the workflow progresses. */
 export async function loadWorkOrderForm(
   service: SupabaseClient,
@@ -93,7 +106,7 @@ export async function loadWorkOrderForm(
     .select(`
       *,
       engineers!work_orders_engineer_id_fkey(id, full_name, email, roles:property_roles(name)),
-      properties(*),
+      properties(*, organization:organizations!properties_organization_id_fkey(name, legal_name, address, city, country, contact_phone)),
       work_order_reports!work_order_reports_work_order_id_fkey(*),
       work_order_costings!work_order_costings_work_order_id_fkey(*),
       work_order_completion_evidence!work_order_completion_evidence_work_order_id_fkey(*)
@@ -107,7 +120,8 @@ export async function loadWorkOrderForm(
   const costings = wo.work_order_costings as Rel<Record<string, any>>
   const costing = latestCosting(costings ? (Array.isArray(costings) ? costings : [costings]) : [])
   const evidence = one(wo.work_order_completion_evidence as Rel<Record<string, any>>)
-  const property = one(wo.properties as Rel<Record<string, any>>)
+  const property = one(wo.properties as Rel<FormProperty>)
+  const organization = one(property?.organization)
   const engineer = one(wo.engineers as Rel<PersonRow>)
 
   const [{ data: assignedEvents }, { data: trailRows }] = await Promise.all([
@@ -144,8 +158,8 @@ export async function loadWorkOrderForm(
     position: present(formatRoleName(one(person?.roles)?.name, '')),
   })
 
-  const corporation = present(property?.legal_name) ?? present(property?.name) ?? 'Property'
-  const phone = present(property?.contact_phone)
+  const propertyName = present(property?.legal_name) ?? present(property?.name) ?? 'Property'
+  const phone = present(organization?.contact_phone) ?? present(property?.contact_phone)
   const fax = present(property?.fax)
   const contactParts = [phone ? `Tel. Nos. ${phone}` : null, fax ? `Fax ${fax}` : null].filter(Boolean)
 
@@ -210,8 +224,8 @@ export async function loadWorkOrderForm(
 
   return {
     status: wo.status,
-    corporation,
-    addressLine: [property?.address, property?.city, property?.country].map(present).filter(Boolean).join(', ') || null,
+    corporation: present(organization?.legal_name) ?? present(organization?.name) ?? propertyName,
+    addressLine: formatProfileAddress(organization) ?? formatProfileAddress(property),
     contactLine: contactParts.length > 0 ? contactParts.join('  |  ') : null,
     title: FORM_TITLE,
     subtitle: FORM_SUBTITLE,
@@ -223,7 +237,7 @@ export async function loadWorkOrderForm(
     location: present(report?.location_notes),
     startAt: (assignedEvents ?? [])[0]?.created_at ?? null,
     completedAt: evidence?.submitted_at ?? wo.signed_at ?? null,
-    serviceProvider: isThirdParty && contractorName ? contractorName : corporation,
+    serviceProvider: isThirdParty && contractorName ? contractorName : propertyName,
     serviceContact: isThirdParty ? present(wo.contractor_contact) ?? engineerName : engineerName,
     leadTime: getPriorityOption(wo.priority)?.sla ?? null,
     description: present(report?.fault_description),

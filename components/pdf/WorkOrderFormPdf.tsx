@@ -83,7 +83,7 @@ export default function WorkOrderFormPdf({ data, photoBuffers = [] }: { data: Wo
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.corporation}>{data.corporation.toUpperCase()}</Text>
+            <Text style={styles.corporation}>{data.corporation}</Text>
             {data.addressLine ? <Text style={styles.headerLine}>{data.addressLine}</Text> : null}
             {data.contactLine ? <Text style={styles.headerLine}>{data.contactLine}</Text> : null}
           </View>

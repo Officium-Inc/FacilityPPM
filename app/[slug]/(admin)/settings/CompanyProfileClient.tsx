@@ -82,7 +82,8 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
         <div className="border-b border-gray-100 px-6 py-4">
           <h3 className="text-sm font-semibold text-gray-900">Company details</h3>
           <p className="mt-0.5 text-xs text-gray-500">
-            Shown on reports and receipts generated for this property
+            Used on property reports and receipts. The service report takes its letterhead from the Organization Profile,
+            uses the details here when a name, address, or phone is missing, and includes the fax when set.
           </p>
         </div>
         <div className="space-y-4 p-6">
@@ -104,7 +105,7 @@ export default function CompanyProfileClient({ property, canManage }: Props) {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-700">Corporation name <span className="font-normal text-gray-400">(printed on the Work Order Request form)</span></label>
+            <label className="mb-1 block text-xs font-medium text-gray-700">Corporation name</label>
             <input
               type="text"
               value={form.legal_name}

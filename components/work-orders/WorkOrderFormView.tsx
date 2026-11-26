@@ -48,8 +48,8 @@ export function WorkOrderFormSheet({ data }: { data: WorkOrderFormData }) {
   return (
     <div className="space-y-4 p-4 text-sm text-gray-900 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-lg font-bold uppercase leading-tight text-[#1a3a57]">{data.corporation}</p>
+        <div className="min-w-0 break-words">
+          <p className="text-lg font-bold leading-tight text-[#1a3a57]">{data.corporation}</p>
           {data.addressLine && <p className="mt-0.5 text-xs text-gray-600">{data.addressLine}</p>}
           {data.contactLine && <p className="text-xs text-gray-600">{data.contactLine}</p>}
         </div>
