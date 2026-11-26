@@ -21,6 +21,29 @@
 -- organization_invitations has no policies (service role only).
 --
 -- Run BEFORE deploying the Phase A app. Safe to re-run. Never re-run 022 after 029.
+-- Requires 021, 022 and 024 (checked below: the script stops before changing anything if one is missing).
+
+-- ── Preconditions ──────────────────────────────────────────────────────────
+
+do $$
+begin
+  if to_regclass('public.tenant_companies') is null
+     or not exists (
+       select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = 'properties' and column_name = 'license_expires_at'
+     ) then
+    raise exception 'Migration 021_floors_companies.sql has not been applied. Apply 019–024 in order, then re-run 025.';
+  end if;
+  if to_regprocedure('private.is_provider()') is null or to_regprocedure('private.my_memberships()') is null then
+    raise exception 'Migration 022_role_aware_rls.sql has not been applied (private.is_provider / private.my_memberships are missing). Apply 022–024 in order, then re-run 025.';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'invitations' and column_name = 'token_hash'
+  ) then
+    raise exception 'Migration 024_hashed_tokens.sql has not been applied. Apply it, then re-run 025.';
+  end if;
+end $$;
 
 -- ── Organizations ──────────────────────────────────────────────────────────
 

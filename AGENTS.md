@@ -383,7 +383,8 @@ import { cn } from '@/lib/utils'
 ## Public Token Links (sign-off, cost approval, invitation)
 
 - Create: `const token = generateLinkToken()`; store **only** `hashToken(token)` in `work_orders.sign_off_token_hash`,
-  `work_orders.costing_token_hash` or `invitations.token_hash`; the raw token goes only into the email.
+  `work_orders.costing_token_hash`, `invitations.token_hash` or `organization_invitations.token_hash`; the raw token
+  goes only into the email. `/invite/[token]` looks the hash up in `invitations`, then `organization_invitations`.
 - Look up: `if (!isPlausibleToken(token)) → 404`, then `.eq('<column>_hash', hashToken(token))`.
 - The raw columns (`sign_off_token`, `costing_token`, `invitations.token`) stay null — CHECK constraints from
   migration 024 reject any write to them.
@@ -400,9 +401,10 @@ the Data API, where a signed-in user's JWT reaches the database directly (migrat
 
 - `anon`: no table access. `authenticated`: **SELECT only**, no write policies or privileges.
 - Policies mirror the matrix through `security definer` helpers in the non-exposed `private` schema:
-  `private.is_provider()`, `private.my_memberships()` (active member, current role, usable license,
-  property in `app_metadata.property_ids`), `staff_property_ids()`, `manager_property_ids()`,
-  `member_property_ids()`, `assigned_work()`, `tenant_company_ids()`, `my_engineer_ids()`.
+  `private.is_provider()`, `private.my_memberships()` (active member, current role, usable property **and**
+  organization license, property in `app_metadata.property_ids` or its organization in `org_ids`),
+  `staff_property_ids()`, `manager_property_ids()`, `member_property_ids()`, `assigned_work()`,
+  `tenant_company_ids()`, `my_engineer_ids()`, `my_org_ids()` (active Org Admin, usable license, in `org_ids`).
 
 ```sql
 create policy "Role-scoped read work_orders" on work_orders
@@ -418,7 +420,8 @@ create policy "Role-scoped read work_orders" on work_orders
 
 - Work order detail tables (`work_order_reports`, `_costings`, `_completion_evidence`, `_comments`, `_events`,
   `checklist_items`, `approval_trail`, `service_ratings`) are readable exactly when the work order is.
-- `invitations` and `property_monday_integrations` have no policies (service role only).
+- `invitations`, `organization_invitations` and `property_monday_integrations` have no policies (service role
+  only). Org Admins read their `organizations` row and its `organization_members`.
 - **New table**: enable RLS and add a role-aware SELECT policy with the helpers in the same migration; no
   INSERT/UPDATE/DELETE policies.
 - Verify with `supabase/tests/rls_check.sql` in the SQL Editor (empty result = pass).
