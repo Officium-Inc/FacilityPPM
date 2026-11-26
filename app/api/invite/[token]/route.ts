@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { resolveCanonicalRoleId } from '@/lib/roles'
-import { toPropertyRole } from '@/lib/authz/permissions'
+import { loadRole } from '@/lib/property-roles'
 import { findAuthUserByEmail, syncUserAccess } from '@/lib/auth-users'
 import { joinOrganization } from '@/lib/org/members'
 import { hashToken, isPlausibleToken } from '@/lib/token'
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: invite } = await service
     .from('invitations')
-    .select('id, email, invited_name, role_name, company_id, expires_at, used_at, properties(id, name, slug)')
+    .select('id, email, invited_name, property_role_id, company_id, expires_at, used_at, properties(id, name, slug)')
     .eq('token_hash', tokenHash)
     .maybeSingle()
 
@@ -35,20 +34,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'This invitation link has expired.' }, { status: 410 })
   }
 
-  const roleName = toPropertyRole(invite.role_name as string | null)
-  if (!roleName) {
+  const rawProperty = invite.properties as InviteProperty | InviteProperty[] | null
+  const property = Array.isArray(rawProperty) ? rawProperty[0] : rawProperty
+  if (!property) return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
+
+  // The invited role must still exist in the property (a deleted role makes the invitation unusable)
+  const role = await loadRole(service, property.id, invite.property_role_id)
+  if (!role) {
     return NextResponse.json(
       { error: 'This invitation has no valid role. Ask your administrator to send a new invitation.' },
       { status: 400 }
     )
   }
-
-  const rawProperty = invite.properties as InviteProperty | InviteProperty[] | null
-  const property = Array.isArray(rawProperty) ? rawProperty[0] : rawProperty
-  if (!property) return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
-
-  const roleId = await resolveCanonicalRoleId(service, roleName)
-  if (!roleId) return NextResponse.json({ error: 'Could not resolve the invited role.' }, { status: 500 })
 
   const email = (invite.email as string).trim().toLowerCase()
   const existingUser = await findAuthUserByEmail(service, email)
@@ -99,9 +96,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   const memberError = await ensureMember(service, {
     propertyId: property.id,
     userId,
-    roleId,
-    // Tenant invitations name the company the new member belongs to
-    companyId: roleName === 'tenant' ? ((invite.company_id as string | null) ?? null) : null,
+    propertyRoleId: role.id,
+    // Tenant-portal invitations name the company the new member belongs to
+    companyId: role.portal === 'tenant' ? ((invite.company_id as string | null) ?? null) : null,
     email,
     fullName: existingUser
       ? full_name?.trim() || (existingUser.user_metadata?.full_name as string | undefined) || displayName
@@ -210,9 +207,10 @@ async function acceptOrganizationInvite(
 /** Creates the member row, or reactivates/links an existing one with the invited role. */
 async function ensureMember(
   service: Awaited<ReturnType<typeof createServiceClient>>,
-  input: { propertyId: string; userId: string; roleId: string; companyId: string | null; email: string; fullName: string }
+  input: { propertyId: string; userId: string; propertyRoleId: string; companyId: string | null; email: string; fullName: string }
 ): Promise<string | null> {
-  const membership = { role_id: input.roleId, company_id: input.companyId, is_active: true }
+  // The sync trigger (026) keeps engineers.role_id in step for older app versions
+  const membership = { property_role_id: input.propertyRoleId, company_id: input.companyId, is_active: true }
 
   const { data: byUser } = await service
     .from('engineers')

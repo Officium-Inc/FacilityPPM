@@ -5,6 +5,7 @@ import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { syncTenant360WorkOrder } from '@/lib/monday/tenant360'
 import { isPriority } from '@/lib/priority'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
+import { isEligibleAssignee } from '@/lib/property-roles'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -61,6 +62,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     .maybeSingle()
 
   if (!assignee) return NextResponse.json({ error: 'Engineer not found in this property.' }, { status: 400 })
+  // Only Service Group members whose role can do the work may be assigned (D33)
+  if (!(await isEligibleAssignee(service, wo.property_id as string, engineerId, 'workRequest.execute'))) {
+    return NextResponse.json({ error: 'Choose a Service Group member whose role can do the work.' }, { status: 400 })
+  }
 
   // Rename REPT- number to proper WO- number on first assignment
   const isReactiveReport = (wo.wo_number as string).startsWith('REPT-')

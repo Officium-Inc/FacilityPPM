@@ -51,3 +51,16 @@ describe('latestCosting', () => {
     expect(latestCosting(null)).toBeNull()
   })
 })
+
+describe('formatRoleName', () => {
+  it('labels stored machine keys and shows custom role names as typed', async () => {
+    const { formatRoleName } = await import('@/lib/roles')
+    expect(formatRoleName('head_engineer')).toBe('Head Engineer')
+    expect(formatRoleName('service group')).toBe('Service Group')
+    expect(formatRoleName('provider')).toBe('Platform Admin')
+    expect(formatRoleName('Electrical Team')).toBe('Electrical Team')
+    expect(formatRoleName('HVAC Crew')).toBe('HVAC Crew')
+    expect(formatRoleName('Engineer')).toBe('Engineer')
+    expect(formatRoleName('', '—')).toBe('—')
+  })
+})

@@ -4,6 +4,8 @@ import WorkOrderFilters from '@/components/work-orders/WorkOrderFilters'
 import { formatPHT } from '@/lib/utils'
 import { requirePage } from '@/lib/authz/guard'
 import { can } from '@/lib/authz/permissions'
+import { applyWorkOrderScope } from '@/lib/authz/records'
+import { loadAssignableMembers } from '@/lib/property-roles'
 import type { WorkOrder, Priority } from '@/types'
 import { Ban } from 'lucide-react'
 import NewWorkOrderModal from './NewWorkOrderModal'
@@ -33,8 +35,8 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
   const { service, property, actor } = await requirePage(slug, 'workRequest.view')
   const propertyId = property.id
 
-  // Service Group members only list the work assigned to them (D14)
-  let workOrderQuery = service
+  // Members with assigned scope (Service Group) only list the work assigned to them (D14)
+  const baseQuery = service
     .from('work_orders')
     .select(`
       *,
@@ -43,25 +45,19 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
       ppm_schedules(id, title, assets(id, name, buildings(id, name, sites(id, name))))
     `)
     .eq('property_id', propertyId)
-  if (actor.kind === 'member' && actor.role === 'service_group') {
-    workOrderQuery = workOrderQuery.eq('engineer_id', actor.engineerId)
-  }
+  const workOrderQuery = applyWorkOrderScope(baseQuery, actor)
   const canCreate = can(actor, 'maintenance.manage')
 
-  const [{ data: workOrders }, { data: rawSchedules }, { data: engineersList }, { data: companyRows }] = await Promise.all([
-    workOrderQuery.order('scheduled_date', { ascending: true }),
+  const [{ data: workOrders }, { data: rawSchedules }, assignees, { data: companyRows }] = await Promise.all([
+    workOrderQuery ? workOrderQuery.order('scheduled_date', { ascending: true }) : Promise.resolve({ data: [] }),
     service
       .from('ppm_schedules')
       .select('id, title, assets!inner(id, name, buildings!inner(sites!inner(property_id)))')
       .eq('assets.buildings.sites.property_id', propertyId)
       .eq('is_active', true)
       .order('title'),
-    service
-      .from('engineers')
-      .select('id, full_name')
-      .eq('property_id', propertyId)
-      .eq('is_active', true)
-      .order('full_name'),
+    // Only Service Group members who can do the work may be assigned (D33)
+    canCreate ? loadAssignableMembers(service, propertyId, 'workRequest.execute') : Promise.resolve([]),
     service
       .from('tenant_companies')
       .select('id, name')
@@ -102,7 +98,7 @@ export default async function WorkOrdersPage({ params, searchParams }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Work Orders</h2>
           <p className="text-sm text-gray-500 mt-0.5">{all.length} total</p>
         </div>
-        {canCreate && <NewWorkOrderModal slug={slug} schedules={schedules} engineers={engineersList ?? []} />}
+        {canCreate && <NewWorkOrderModal slug={slug} schedules={schedules} engineers={assignees.map(({ id, full_name }) => ({ id, full_name }))} />}
       </div>
 
       <WorkOrderFilters total={all.length} filtered={wos.length} companies={companies} />

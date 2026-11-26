@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeForSlug, requireSession } from '@/lib/authz/guard'
+import { isEligibleAssignee } from '@/lib/property-roles'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -44,15 +45,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       .maybeSingle()
     if (!schedule) return NextResponse.json({ error: 'Schedule not found in this property.' }, { status: 400 })
   }
-  if (body.engineer_id) {
-    const { data: engineer } = await service
-      .from('engineers')
-      .select('id')
-      .eq('id', body.engineer_id)
-      .eq('property_id', propertyId)
-      .eq('is_active', true)
-      .maybeSingle()
-    if (!engineer) return NextResponse.json({ error: 'Engineer not found in this property.' }, { status: 400 })
+  // Only Service Group members whose role can do the work may be assigned (D33)
+  if (body.engineer_id && !(await isEligibleAssignee(service, propertyId, body.engineer_id, 'workRequest.execute'))) {
+    return NextResponse.json({ error: 'Choose a Service Group member whose role can do the work.' }, { status: 400 })
   }
   // Check WO number uniqueness
   const { data: existing } = await service

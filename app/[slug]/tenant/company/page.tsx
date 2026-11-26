@@ -1,9 +1,13 @@
 import { Building2, Layers, Mail, Phone, User, Users } from 'lucide-react'
 import { getTenantCompany, getTenantPortalContext } from '@/lib/tenant'
-import { roleNameFromRelation } from '@/lib/roles'
 
 interface Props {
   params: Promise<{ slug: string }>
+}
+
+function rolePortal(value: unknown) {
+  const row = (Array.isArray(value) ? value[0] : value) as { portal?: string } | null | undefined
+  return row?.portal ?? null
 }
 
 /** The tenant's company: its floors in the building and the colleagues who share its requests. */
@@ -16,13 +20,13 @@ export default async function TenantCompanyPage({ params }: Props) {
 
   const { data: memberRows } = await context.service
     .from('engineers')
-    .select('id, full_name, email, roles(name)')
+    .select('id, full_name, email, property_role:property_roles(portal)')
     .eq('property_id', context.property.id)
     .eq('company_id', company.id)
     .eq('is_active', true)
     .order('full_name')
 
-  const colleagues = (memberRows ?? []).filter((member) => roleNameFromRelation(member.roles) === 'tenant')
+  const colleagues = (memberRows ?? []).filter((member) => rolePortal(member.property_role) === 'tenant')
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

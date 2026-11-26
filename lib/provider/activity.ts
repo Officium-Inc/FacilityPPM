@@ -1,10 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { roleNameFromRelation } from '@/lib/roles'
 import { effectiveLicenseState, type LicenseState } from '@/lib/provider/license'
 
 /** Read-only activity data for the Provider Dashboard. Callers must have passed `requireProviderPage()`. */
 
 type Service = SupabaseClient
+
+/** Whether an embedded `property_role:property_roles(is_locked)` is the locked Administrator role. */
+function holdsAdministratorRole(value: unknown) {
+  const row = (Array.isArray(value) ? value[0] : value) as { is_locked?: boolean } | null | undefined
+  return row?.is_locked === true
+}
 
 const OPEN_STATUSES = new Set(['new_report', 'inspecting', 'costing', 'assigned', 'in_progress', 'svc_submitted', 'scheduled', 'on_hold', 'overdue'])
 const AWAITING_TENANT_STATUSES = new Set(['pending_approval', 'verified'])
@@ -133,7 +138,7 @@ export async function loadProviderOverview(service: Service, options: { events?:
       .select('id, name, slug, license_status, license_expires_at, property_type, organization_id, created_at, organization:organizations(id, name, slug, license_status, license_expires_at)')
       .order('name'),
     service.from('work_orders').select('property_id, status, updated_at'),
-    service.from('engineers').select('property_id, is_active, roles(name)'),
+    service.from('engineers').select('property_id, is_active, property_role:property_roles(is_locked)'),
     options.events === false
       ? Promise.resolve({ data: [] })
       : service
@@ -152,10 +157,10 @@ export async function loadProviderOverview(service: Service, options: { events?:
   }
   const activeMembers = new Map<string, number>()
   const activeAdministrators = new Map<string, number>()
-  for (const member of (members ?? []) as Array<{ property_id: string; is_active: boolean; roles: unknown }>) {
+  for (const member of (members ?? []) as Array<{ property_id: string; is_active: boolean; property_role: unknown }>) {
     if (!member.is_active) continue
     activeMembers.set(member.property_id, (activeMembers.get(member.property_id) ?? 0) + 1)
-    if (roleNameFromRelation(member.roles) === 'admin') {
+    if (holdsAdministratorRole(member.property_role)) {
       activeAdministrators.set(member.property_id, (activeAdministrators.get(member.property_id) ?? 0) + 1)
     }
   }

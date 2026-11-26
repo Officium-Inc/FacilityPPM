@@ -1,12 +1,11 @@
 ﻿'use client'
 
 import { useId, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import type { WorkOrder, Engineer, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting, WorkOrderCompletionEvidence } from '@/types'
+import Modal from '@/components/ui/Modal'
+import type { WorkOrder, Priority, ProvidedBy, CostingLineItem, WorkOrderCosting, WorkOrderCompletionEvidence } from '@/types'
 import { Send, RefreshCw, ClipboardCheck, UserCheck, Paperclip, X, Ban, Plus, Calculator, Check, Undo2 } from 'lucide-react'
 import { cn, formatPHT } from '@/lib/utils'
-import { normalizeRoleName } from '@/lib/roles'
 import { PRIORITY_OPTIONS, priorityOptionLabel, suggestDueDate } from '@/lib/priority'
 import { PROVIDED_BY_OPTIONS, costingToLineItems, lineItemTotal, roundMoney, summarizeLineItems } from '@/lib/costing'
 
@@ -20,9 +19,21 @@ interface AssignJobSummary {
   approvedCost?: number | null
 }
 
+/** A member who can be picked in this form (built on the server from roles, D33). */
+export interface PickableMember {
+  id: string
+  full_name: string
+  email: string
+}
+
 interface WorkOrderActionsProps {
   workOrder: WorkOrder
-  engineers?: Engineer[]
+  /** Service Group members whose role can record inspections. */
+  inspectors?: PickableMember[]
+  /** Service Group members whose role can do the work. */
+  executors?: PickableMember[]
+  /** Tenant-portal members of the work order's company who may approve the estimate and sign off. */
+  approvers?: PickableMember[]
   slug: string
   /** What the signed-in user may do with this work order (from lib/authz). The API enforces the same rules. */
   permissions: WorkOrderActionPermissions
@@ -74,7 +85,7 @@ function uploadKindLabel(url: string) {
 }
 
 /** The action form of the current workflow step, shown inside the current step's card. */
-export default function WorkOrderActions({ workOrder, engineers = [], slug: _slug, permissions, existingCosting = null, existingEvidence = null, jobSummary = {} }: WorkOrderActionsProps) {
+export default function WorkOrderActions({ workOrder, inspectors = [], executors = [], approvers = [], slug: _slug, permissions, existingCosting = null, existingEvidence = null, jobSummary = {} }: WorkOrderActionsProps) {
   const router = useRouter()
   const formId = useId()
   /** The API path of the request in flight; every action is disabled meanwhile. */
@@ -141,13 +152,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   function addCostingItem() {
     setCostingItems((items) => [...items, blankCostingItem()])
   }
-  const getRoleName = (roles: unknown): string => {
-    if (!roles) return ''
-    if (Array.isArray(roles)) return normalizeRoleName((roles as Array<{ name?: string }>)[0]?.name)
-    return normalizeRoleName((roles as { name?: string })?.name)
-  }
-  const tenants = engineers.filter(e => getRoleName(e.roles) === 'tenant' && e.is_active)
-  const serviceGroup = engineers.filter(e => getRoleName(e.roles) === 'service_group' && e.is_active)
+  const tenants = approvers
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
@@ -210,7 +215,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
   }
 
   async function approveVerification() {
-    const t = engineers.find(e => e.id === verifyTenantId)
+    const t = approvers.find(e => e.id === verifyTenantId)
     if (!workOrder.tenant_email && !t) { setMessage({ type: 'error', text: 'Please select the tenant who will sign off.' }); return }
     await apiPost(api('verify'), { notes: verifyNotes, tenantEmail: t?.email, tenantName: t?.full_name })
   }
@@ -246,14 +251,14 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
 
       {status === 'new_report' && (
         <div className="space-y-4">
-          {serviceGroup.length === 0 ? (
-            <p className={WARNING}>No service group members found. Add a member with the &ldquo;Service Group&rdquo; role first.</p>
+          {inspectors.length === 0 ? (
+            <p className={WARNING}>No one can inspect yet. Add a member whose role is a Service Group role that can record inspections.</p>
           ) : (
             <div>
               <label htmlFor={`${formId}-inspector`} className={LABEL}>Inspection team</label>
               <select id={`${formId}-inspector`} value={assignInspectionTeamId} onChange={(e) => setAssignInspectionTeamId(e.target.value)} className={INPUT}>
                 <option value="">Select a service team member…</option>
-                {serviceGroup.map((eng) => (
+                {inspectors.map((eng) => (
                   <option key={eng.id} value={eng.id}>{eng.full_name}</option>
                 ))}
               </select>
@@ -400,28 +405,39 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           </div>
 
           {/* Modal */}
-          {costingModalOpen && (
-            typeof document !== 'undefined' && createPortal(
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!loading) setCostingModalOpen(false) }} />
-              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">{workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Build a cost breakdown and send it to the tenant for approval.</p>
-                  </div>
+          <Modal
+            open={costingModalOpen}
+            onClose={() => { if (!loading) setCostingModalOpen(false) }}
+            dismissible={!loading}
+            size="xl"
+            title={workOrder.rejection_reason ? 'Revise Cost Estimate' : 'Prepare Cost Estimate'}
+            description="Build a cost breakdown and send it to the tenant for approval."
+            footer={<>
                   <button
-                    onClick={() => { if (!loading) setCostingModalOpen(false) }}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    aria-label="Close"
+                    type="button"
+                    onClick={() => setCostingModalOpen(false)}
+                    disabled={loading}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
-                    <X className="w-4 h-4" />
+                    Close
                   </button>
-                </div>
-
-                {/* Body — scrollable */}
-                <div className="px-6 py-5 space-y-6 overflow-y-auto">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={async () => {
+                      if (!selectedCostingTenantId) { setMessage({ type: 'error', text: 'Please select a tenant to send the approval to.' }); return }
+                      const t = tenants.find(e => e.id === selectedCostingTenantId)
+                      const ok = await apiPost(api('costing'), { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
+                      if (ok) setCostingModalOpen(false)
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Send className="w-4 h-4" />
+                    {loading ? 'Sending…' : 'Send Cost Approval to Tenant'}
+                  </button>
+            </>}
+          >
+                <div className="space-y-6">
                   {message && (
                     <div className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                       {message.text}
@@ -540,7 +556,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                   <section className="space-y-2">
                     <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Send Approval To</h3>
                     {tenants.length === 0 ? (
-                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+                      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">No tenant of this company can approve yet. Invite a tenant user of the company (a Tenant Portal role that can approve) first.</p>
                     ) : (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Tenant <span className="text-red-500">*</span></label>
@@ -565,37 +581,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                     />
                   </div>
                 </div>
-
-                {/* Footer */}
-                <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setCostingModalOpen(false)}
-                    disabled={loading}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={async () => {
-                      if (!selectedCostingTenantId) { setMessage({ type: 'error', text: 'Please select a tenant to send the approval to.' }); return }
-                      const t = tenants.find(e => e.id === selectedCostingTenantId)
-                      const ok = await apiPost(api('costing'), { labourHours, labourRate, lineItems: costingItems, notes: costingNotes, tenantEmail: t?.email ?? '', tenantName: t?.full_name ?? '' })
-                      if (ok) setCostingModalOpen(false)
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    <Send className="w-4 h-4" />
-                    {loading ? 'Sending…' : 'Send Cost Approval to Tenant'}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-            )
-          )}
+          </Modal>
         </>
       )}
 
@@ -626,28 +612,37 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           </ActionRow>
 
           {/* Modal */}
-          {assignModalOpen && (
-            typeof document !== 'undefined' && createPortal(
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { if (!loading) setAssignModalOpen(false) }} />
-              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">Assign Work Order</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Fill in the details below to assign and start work.</p>
-                  </div>
-                  <button
-                    onClick={() => { if (!loading) setAssignModalOpen(false) }}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                    aria-label="Close"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Form body — mirrors New Work Order form layout */}
-                <div className="px-6 py-5 space-y-5">
+          <Modal
+            open={assignModalOpen}
+            onClose={() => { if (!loading) setAssignModalOpen(false) }}
+            dismissible={!loading}
+            size="lg"
+            title="Assign Work Order"
+            description="Fill in the details below to assign and start work."
+            footer={<>
+                    <button
+                      type="button"
+                      onClick={() => setAssignModalOpen(false)}
+                      disabled={loading}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={async () => {
+                        const ok = await apiPost(api('assign'), { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority })
+                        if (ok) setAssignModalOpen(false)
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      {loading ? 'Assigning…' : 'Assign Work Order'}
+                    </button>
+            </>}
+          >
+                <div className="space-y-5">
                   {message && (
                     <div className={`rounded-lg px-3 py-2 text-sm ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                       {message.text}
@@ -711,8 +706,8 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                     <label className="block text-sm font-medium text-gray-700 mb-1">Assign Service Team Member <span className="text-red-500">*</span></label>
                     <select value={assignEngineerId} onChange={(e) => setAssignEngineerId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                       <option value="">— Select team member —</option>
-                      {serviceGroup.length === 0 && <option disabled>No service group members found</option>}
-                      {serviceGroup.map((eng) => (
+                      {executors.length === 0 && <option disabled>No Service Group members can do the work</option>}
+                      {executors.map((eng) => (
                         <option key={eng.id} value={eng.id}>{eng.full_name}</option>
                       ))}
                     </select>
@@ -758,34 +753,8 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
                     />
                   </div>
 
-                  <div className="flex justify-end gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setAssignModalOpen(false)}
-                      disabled={loading}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={async () => {
-                        const ok = await apiPost(api('assign'), { engineerId: assignEngineerId, dueDate, instructions: assignInstructions, priority: assignPriority })
-                        if (ok) setAssignModalOpen(false)
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-700 hover:bg-green-800 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <UserCheck className="w-4 h-4" />
-                      {loading ? 'Assigning…' : 'Assign Work Order'}
-                    </button>
-                  </div>
                 </div>
-              </div>
-            </div>,
-            document.body
-            )
-          )}
+          </Modal>
         </>
       )}
 
@@ -876,7 +845,7 @@ export default function WorkOrderActions({ workOrder, engineers = [], slug: _slu
           </div>
           {!workOrder.tenant_email && (
             tenants.length === 0 ? (
-              <p className={WARNING}>No tenant-role members found. Add a member with the &ldquo;Tenant&rdquo; role first.</p>
+              <p className={WARNING}>No tenant of this company can approve yet. Invite a tenant user of the company (a Tenant Portal role that can approve) first.</p>
             ) : (
               <div>
                 <label htmlFor={`${formId}-sign-off-tenant`} className={LABEL}>Tenant who signs off</label>

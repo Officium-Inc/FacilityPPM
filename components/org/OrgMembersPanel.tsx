@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Mail, Pencil, RefreshCw, Trash2, Users, X } from 'lucide-react'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import {
   assignableOrgRoles,
   canManageOrgMember,
@@ -43,6 +44,7 @@ export default function OrgMembersPanel({ apiBase, organizationName, members, in
   const [editActive, setEditActive] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [listMessage, setListMessage] = useState<Message>(null)
+  const [confirmRemove, setConfirmRemove] = useState<OrgMemberView | null>(null)
 
   const [inviteName, setInviteName] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -104,7 +106,7 @@ export default function OrgMembersPanel({ apiBase, organizationName, members, in
   }
 
   async function remove(member: OrgMemberView) {
-    if (!window.confirm(`Remove ${member.email} from ${organizationName}? They lose Administrator access to every property of the organization.`)) return
+    setConfirmRemove(null)
     setBusyId(member.id)
     const { ok, data } = await call(`${apiBase}/members/${member.id}`, 'DELETE')
     setBusyId(null)
@@ -200,7 +202,7 @@ export default function OrgMembersPanel({ apiBase, organizationName, members, in
                                 <button onClick={() => startEdit(member)} className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600" title="Edit">
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
-                                <button onClick={() => remove(member)} disabled={busyId === member.id} className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40" title="Remove from the organization">
+                                <button onClick={() => setConfirmRemove(member)} disabled={busyId === member.id} className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40" title="Remove from the organization">
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
                               </>
@@ -273,6 +275,16 @@ export default function OrgMembersPanel({ apiBase, organizationName, members, in
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmRemove)}
+        title="Remove organization administrator"
+        message={<>Remove <strong>{confirmRemove?.email}</strong> from {organizationName}? They lose Administrator access to every property of the organization.</>}
+        confirmLabel="Remove"
+        danger
+        onConfirm={() => confirmRemove && remove(confirmRemove)}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   )
 }

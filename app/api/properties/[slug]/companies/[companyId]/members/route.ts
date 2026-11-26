@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeForSlug, requireSession } from '@/lib/authz/guard'
-import { roleNameFromRelation } from '@/lib/roles'
 
 interface Params {
   params: Promise<{ slug: string; companyId: string }>
@@ -25,12 +24,14 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const [{ data: company }, { data: member }] = await Promise.all([
     service.from('tenant_companies').select('id, is_active').eq('id', companyId).eq('property_id', propertyId).maybeSingle(),
-    service.from('engineers').select('id, roles(name)').eq('id', body.engineerId).eq('property_id', propertyId).maybeSingle(),
+    service.from('engineers').select('id, property_role:property_roles(portal)').eq('id', body.engineerId).eq('property_id', propertyId).maybeSingle(),
   ])
   if (!company) return NextResponse.json({ error: 'Company not found.' }, { status: 404 })
   if (!company.is_active) return NextResponse.json({ error: 'This company is deactivated.' }, { status: 409 })
   if (!member) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
-  if (roleNameFromRelation(member.roles) !== 'tenant') {
+  // Only members with a Tenant Portal role belong to a company
+  const memberRole = member.property_role as { portal?: string } | { portal?: string }[] | null
+  if ((Array.isArray(memberRole) ? memberRole[0] : memberRole)?.portal !== 'tenant') {
     return NextResponse.json({ error: 'Only tenant users can be linked to a company.' }, { status: 400 })
   }
 

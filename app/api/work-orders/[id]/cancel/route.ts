@@ -39,7 +39,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!access.ok) return access.response
   const { actor } = access
 
-  const isTenant = actor.kind === 'member' && actor.role === 'tenant'
+  // Tenant Portal members may only cancel before the inspection starts (D9)
+  const isTenant = actor.kind === 'member' && actor.portal === 'tenant'
   const cancellable = isTenant ? TENANT_CANCELLABLE_STATUSES : STAFF_CANCELLABLE_STATUSES
   if (!cancellable.includes(wo.status)) {
     return NextResponse.json(

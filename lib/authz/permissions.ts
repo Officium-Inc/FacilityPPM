@@ -1,81 +1,41 @@
 /**
- * The permission matrix in code. Source of truth:
- * .github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md
+ * Permission checks (D32). A member's permissions come from their property role (`property_roles` +
+ * `property_role_permissions`); the catalog of keys is lib/authz/catalog.ts and the default roles are
+ * lib/authz/templates.ts. Human-readable rules: .github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md.
  *
  * Pure (no server imports) so client components can use `can()` to show or hide controls.
  * Hiding a control is only UX; server routes and pages enforce the same rules with lib/authz/guard.ts.
  */
-import { normalizeRoleName } from '@/lib/roles'
+import {
+  PERMISSION_CATALOG,
+  administratorPermissions,
+  isPermissionKey,
+  normalizePermissions,
+  type Action,
+  type Permissions,
+  type Portal,
+  type Scope,
+} from './catalog'
+import type { WorkType } from './templates'
 
-export const PROPERTY_ROLES = ['admin', 'property_manager', 'head_engineer', 'service_group', 'tenant'] as const
-export type PropertyRole = (typeof PROPERTY_ROLES)[number]
-
-/** How far a role's permission reaches inside its property. */
-export type Scope =
-  | 'property' // any record of the property
-  | 'assigned' // records assigned to the member (work_orders.engineer_id)
-  | 'company' // records of the tenant's own company / own requests
-
-interface ActionRule {
-  roles: Partial<Record<PropertyRole, Scope>>
-  /** Providers manage properties from the Provider Dashboard; inside a property they are read-only (D2). */
-  provider: boolean
-}
-
-const STAFF = { admin: 'property', property_manager: 'property', head_engineer: 'property' } as const
-const MANAGERS = { admin: 'property', property_manager: 'property' } as const
-
-export const PERMISSIONS = {
-  // Portals
-  'portal.admin': { roles: { ...STAFF, service_group: 'property' }, provider: true },
-  'portal.tenant': { roles: { tenant: 'property' }, provider: false },
-
-  // Property customization (Admin Portal)
-  'property.profile.edit': { roles: MANAGERS, provider: false },
-  'property.integrations.manage': { roles: MANAGERS, provider: false },
-  'floors.view': { roles: STAFF, provider: true },
-  'floors.manage': { roles: { admin: 'property' }, provider: false },
-  'companies.manage': { roles: MANAGERS, provider: false },
-  'members.view': { roles: STAFF, provider: true },
-  'members.manage': { roles: MANAGERS, provider: false },
-  'maintenance.view': { roles: STAFF, provider: true },
-  'maintenance.manage': { roles: STAFF, provider: false },
-
-  // Work requests
-  'workRequest.view': {
-    roles: { ...STAFF, service_group: 'assigned', tenant: 'company' },
-    provider: true,
-  },
-  'workRequest.submit': { roles: { tenant: 'company' }, provider: false },
-  'workRequest.submitOnBehalf': { roles: STAFF, provider: false },
-  'workRequest.review': { roles: STAFF, provider: false },
-  'workRequest.inspect': { roles: { ...STAFF, service_group: 'assigned' }, provider: false },
-  'workRequest.assign': { roles: STAFF, provider: false },
-  'workRequest.execute': { roles: { ...STAFF, service_group: 'assigned' }, provider: false },
-  'workRequest.cancel': { roles: { ...STAFF, tenant: 'company' }, provider: false },
-  'workRequest.waive': { roles: { property_manager: 'property' }, provider: false },
-  'workRequest.waivedList': { roles: MANAGERS, provider: true },
-  'workRequest.approve': { roles: { tenant: 'company' }, provider: false },
-  'workRequest.comment': {
-    roles: { ...STAFF, service_group: 'assigned', tenant: 'company' },
-    provider: false,
-  },
-
-  // Provider Dashboard
-  'provider.manage': { roles: {}, provider: true },
-} satisfies Record<string, ActionRule>
-
-export type Action = keyof typeof PERMISSIONS
+export type { Action, PermissionKey, Permissions, Portal, Scope } from './catalog'
 
 export type ProviderActorLike = { kind: 'provider' }
+
 export type MemberActorLike = {
   kind: 'member'
-  role: PropertyRole
+  portal: Portal
+  /** Effective permissions (computed for the locked Administrator role). */
+  permissions: Permissions
+  /** Holds the locked Administrator role (exempt from the escalation rules). */
+  isAdministrator?: boolean
+  roleId?: string
   propertyId?: string
   engineerId?: string
   companyId?: string | null
   email?: string | null
 }
+
 export type ActorLike = ProviderActorLike | MemberActorLike
 
 /** The record fields used for scoping. Work orders select these columns before authorizing. */
@@ -88,10 +48,45 @@ export interface ScopedRecord {
   reported_by_contact?: string | null
 }
 
-/** Maps a stored role name to a property role. Unknown, empty and retired (`viewer`) roles map to null. */
-export function toPropertyRole(roleName: string | null | undefined): PropertyRole | null {
-  const normalized = normalizeRoleName(roleName)
-  return (PROPERTY_ROLES as readonly string[]).includes(normalized) ? (normalized as PropertyRole) : null
+/** A role as stored: portal, lock and its raw grants. */
+export interface RoleGrants {
+  portal: Portal
+  locked: boolean
+  permissions: unknown
+}
+
+/**
+ * Effective permissions of a role: every staff permission for the locked Administrator role, otherwise the
+ * stored grants cleaned for the role's portal (unknown keys and wrong scopes dropped: fail closed).
+ */
+export function rolePermissions(role: RoleGrants): Permissions {
+  if (role.locked && role.portal === 'staff') return administratorPermissions()
+  return normalizePermissions(role.permissions, role.portal)
+}
+
+/** Grants from `property_role_permissions` rows. */
+export function grantsFromRows(rows: unknown): Record<string, string> {
+  const grants: Record<string, string> = {}
+  if (!Array.isArray(rows)) return grants
+  for (const row of rows as Array<{ permission_key?: unknown; scope?: unknown }>) {
+    if (typeof row?.permission_key === 'string' && typeof row.scope === 'string') grants[row.permission_key] = row.scope
+  }
+  return grants
+}
+
+/** Platform Admin inside a property: the read-only support view (D2). */
+function providerCan(action: Action) {
+  if (action === 'portal.admin' || action === 'provider.manage') return true
+  if (action === 'portal.tenant') return false
+  return isPermissionKey(action) ? PERMISSION_CATALOG[action].provider : false
+}
+
+function memberScope(actor: MemberActorLike, action: Action): Scope | null {
+  // Portal access comes from the role's portal, not from a grant
+  if (action === 'portal.admin') return actor.portal === 'staff' ? 'property' : null
+  if (action === 'portal.tenant') return actor.portal === 'tenant' ? 'property' : null
+  if (action === 'provider.manage' || !isPermissionKey(action)) return null
+  return actor.permissions?.[action] ?? null
 }
 
 /**
@@ -102,9 +97,16 @@ export function isTenantRecord(actor: MemberActorLike, record: ScopedRecord) {
   return Boolean(actor.companyId) && record.company_id === actor.companyId
 }
 
-/** Whether the actor is a tenant who still has to be linked to a company by the property team (D19). */
+/** Whether the actor is a tenant-portal member who still has to be linked to a company (D19). */
 export function isUnlinkedTenant(actor: ActorLike | null | undefined) {
-  return actor?.kind === 'member' && actor.role === 'tenant' && !actor.companyId
+  return actor?.kind === 'member' && actor.portal === 'tenant' && !actor.companyId
+}
+
+/** The scope `actor` holds for `action`, or null (UX helpers such as "show only assigned work"). */
+export function scopeOf(actor: ActorLike | null | undefined, action: Action): Scope | null {
+  if (!actor) return null
+  if (actor.kind === 'provider') return providerCan(action) ? 'property' : null
+  return memberScope(actor, action)
 }
 
 /**
@@ -113,10 +115,9 @@ export function isUnlinkedTenant(actor: ActorLike | null | undefined) {
  */
 export function can(actor: ActorLike | null | undefined, action: Action, record?: ScopedRecord): boolean {
   if (!actor) return false
-  const rule: ActionRule = PERMISSIONS[action]
-  if (actor.kind === 'provider') return rule.provider
+  if (actor.kind === 'provider') return providerCan(action)
 
-  const scope = rule.roles[actor.role]
+  const scope = memberScope(actor, action)
   if (!scope) return false
   // Company-scoped permissions need a company; unlinked tenants get none (D19)
   if (scope === 'company' && !actor.companyId) return false
@@ -133,19 +134,36 @@ export function can(actor: ActorLike | null | undefined, action: Action, record?
   }
 }
 
-/** Roles `actor` may give to a member (D6): Property Managers cannot create Admins or other Property Managers. */
-export function assignableRoles(actor: ActorLike | null | undefined): readonly PropertyRole[] {
-  if (!actor) return []
-  if (actor.kind === 'provider' || actor.role === 'admin') return PROPERTY_ROLES
-  if (actor.role === 'property_manager') return ['head_engineer', 'service_group', 'tenant']
-  return []
-}
+/** The serializable subset of an actor that client components receive (menus, show/hide). */
+export type ClientActor =
+  | ProviderActorLike
+  | {
+      kind: 'member'
+      portal: Portal
+      permissions: Permissions
+      isAdministrator: boolean
+      roleId: string
+      workType: WorkType
+      propertyId: string
+      engineerId: string
+      companyId: string | null
+    }
 
-/** Whether `actor` may edit, deactivate or remove a member whose current role is `targetRole` (D6). */
-export function canManageMember(actor: ActorLike | null | undefined, targetRole: string | null | undefined) {
-  if (!actor) return false
-  if (actor.kind === 'provider' || actor.role === 'admin') return true
-  if (actor.role !== 'property_manager') return false
-  const target = toPropertyRole(targetRole)
-  return target !== 'admin' && target !== 'property_manager'
+export function toClientActor(
+  actor:
+    | ProviderActorLike
+    | (MemberActorLike & { isAdministrator: boolean; roleId: string; workType: WorkType; propertyId: string; engineerId: string })
+): ClientActor {
+  if (actor.kind === 'provider') return { kind: 'provider' }
+  return {
+    kind: 'member',
+    portal: actor.portal,
+    permissions: { ...actor.permissions },
+    isAdministrator: actor.isAdministrator,
+    roleId: actor.roleId,
+    workType: actor.workType,
+    propertyId: actor.propertyId,
+    engineerId: actor.engineerId,
+    companyId: actor.companyId ?? null,
+  }
 }

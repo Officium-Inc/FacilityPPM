@@ -126,8 +126,8 @@ export default function ProfileClient({ slug, fullName, email, phone, roleName }
           {roleName && (
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-700">Role</label>
-              <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-medium capitalize text-gray-700">
-                {roleName.replace(/_/g, ' ')}
+              <span className="inline-block rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                {roleName}
               </span>
             </div>
           )}

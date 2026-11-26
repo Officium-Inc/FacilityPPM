@@ -1,5 +1,6 @@
 import NewWorkOrderForm from './NewWorkOrderForm'
 import { requirePage } from '@/lib/authz/guard'
+import { loadAssignableMembers } from '@/lib/property-roles'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -10,19 +11,15 @@ export default async function NewWorkOrderPage({ params }: Props) {
   const { service, property } = await requirePage(slug, 'maintenance.manage')
   const propertyId = property.id
 
-  const [{ data: rawSchedules }, { data: engineers }] = await Promise.all([
+  const [{ data: rawSchedules }, assignees] = await Promise.all([
     service
       .from('ppm_schedules')
       .select('id, title, assets!inner(id, name, buildings!inner(sites!inner(property_id)))')
       .eq('assets.buildings.sites.property_id', propertyId)
       .eq('is_active', true)
       .order('title'),
-    service
-      .from('engineers')
-      .select('id, full_name')
-      .eq('property_id', propertyId)
-      .eq('is_active', true)
-      .order('full_name'),
+    // Only Service Group members who can do the work may be assigned (D33)
+    loadAssignableMembers(service, propertyId, 'workRequest.execute'),
   ])
 
   // Normalize assets relation (Supabase returns array; we expect single or null)
@@ -36,7 +33,7 @@ export default async function NewWorkOrderPage({ params }: Props) {
     <NewWorkOrderForm
       slug={slug}
       schedules={schedules ?? []}
-      engineers={engineers ?? []}
+      engineers={assignees.map(({ id, full_name }) => ({ id, full_name }))}
     />
   )
 }

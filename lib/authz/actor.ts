@@ -1,7 +1,8 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
-import { roleNameFromRelation } from '@/lib/roles'
 import { isOrgRole, type OrgRole } from '@/lib/org/roles'
-import { toPropertyRole, type PropertyRole } from './permissions'
+import type { Permissions, Portal } from './catalog'
+import { PROPERTY_ROLE_COLUMNS, parsePropertyRole } from './property-role'
+import type { SystemRoleKey, WorkType } from './templates'
 
 export interface ProviderActor {
   kind: 'provider'
@@ -10,6 +11,7 @@ export interface ProviderActor {
   name: string
 }
 
+/** An active member of one property, with the property role they hold there (D32). */
 export interface MemberActor {
   kind: 'member'
   userId: string
@@ -17,7 +19,16 @@ export interface MemberActor {
   name: string
   propertyId: string
   engineerId: string
-  role: PropertyRole
+  roleId: string
+  roleName: string
+  portal: Portal
+  workType: WorkType
+  systemKey: SystemRoleKey | null
+  /** Holds the locked Administrator role (every staff permission; exempt from escalation rules). */
+  isAdministrator: boolean
+  /** Effective permissions of the role. */
+  permissions: Permissions
+  /** Tenant-portal members only, while their company is active (D19). */
   companyId: string | null
 }
 
@@ -55,10 +66,10 @@ export function userOrgSlugs(user: Pick<User, 'app_metadata'>): string[] {
 }
 
 /**
- * Resolves who the user is inside `propertyId`: a provider, or an active member with a current role.
+ * Resolves who the user is inside `propertyId`: a provider, or an active member with a property role.
  * The property must be in the user's `property_ids`, or belong to one of the user's organizations
  * (`org_ids`); that is necessary but not sufficient: users without a member row, deactivated members and
- * members with a retired/unknown role get no access.
+ * members without a (valid) property role get no access.
  */
 export async function resolveMembership(
   service: SupabaseClient,
@@ -79,7 +90,9 @@ export async function resolveMembership(
 
   const { data } = await service
     .from('engineers')
-    .select('id, full_name, email, is_active, company_id, roles(name), company:tenant_companies(is_active), property:properties(organization_id)')
+    .select(
+      `id, full_name, email, is_active, company_id, company:tenant_companies(is_active), property:properties(organization_id), property_role:property_roles(${PROPERTY_ROLE_COLUMNS})`
+    )
     .eq('user_id', user.id)
     .eq('property_id', propertyId)
     .maybeSingle()
@@ -92,13 +105,14 @@ export async function resolveMembership(
   }
   if (data.is_active === false) return { status: 'deactivated' }
 
-  const role = toPropertyRole(roleNameFromRelation(data.roles))
-  if (!role) return { status: 'no-access' }
+  // No role, a role of another property or a malformed one: no access (fail closed)
+  const role = parsePropertyRole(data.property_role)
+  if (!role || (role.propertyId && role.propertyId !== propertyId)) return { status: 'no-access' }
 
-  // A tenant of a deactivated company is treated as not linked (no request access)
+  // Only tenant-portal members belong to a company; a deactivated company counts as not linked (D19)
   const companyRow = data.company as { is_active?: boolean } | { is_active?: boolean }[] | null
   const companyActive = (Array.isArray(companyRow) ? companyRow[0] : companyRow)?.is_active === true
-  const companyId = role === 'tenant' && companyActive ? ((data.company_id as string | null) ?? null) : null
+  const companyId = role.portal === 'tenant' && companyActive ? ((data.company_id as string | null) ?? null) : null
 
   return {
     status: 'ok',
@@ -109,7 +123,13 @@ export async function resolveMembership(
       name: (data.full_name as string | null) || user.email || 'Unknown',
       propertyId,
       engineerId: data.id as string,
-      role,
+      roleId: role.id,
+      roleName: role.name,
+      portal: role.portal,
+      workType: role.workType,
+      systemKey: role.systemKey,
+      isAdministrator: role.isLocked,
+      permissions: role.permissions,
       companyId,
     },
   }
@@ -177,14 +197,22 @@ export async function resolveActor(service: SupabaseClient, user: User, property
   return membership.status === 'ok' ? membership.actor : null
 }
 
-/** Actor fields for the work order event log. */
+/**
+ * Actor fields for the work order event log. The stored role is a label snapshot: the role's name for staff
+ * (custom names included), `'tenant'` for tenant-portal members (the workflow reads it) and `'provider'` for
+ * Platform Admin (labels show "Platform Admin").
+ */
 export function actorLog(actor: Actor) {
   return {
     actorName: actor.name,
     actorEmail: actor.email,
-    // The stored value stays 'provider' (labels show "Platform Admin")
-    actorRole: actor.kind === 'provider' ? 'provider' : actor.role,
+    actorRole: actorRoleLabel(actor),
   }
+}
+
+export function actorRoleLabel(actor: Actor) {
+  if (actor.kind === 'provider') return 'provider'
+  return actor.portal === 'tenant' ? 'tenant' : actor.roleName
 }
 
 /** The member row id of the actor, or null for providers. */

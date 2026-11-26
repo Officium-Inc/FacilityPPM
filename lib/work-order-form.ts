@@ -92,7 +92,7 @@ export async function loadWorkOrderForm(
     .from('work_orders')
     .select(`
       *,
-      engineers!work_orders_engineer_id_fkey(id, full_name, email, roles(name)),
+      engineers!work_orders_engineer_id_fkey(id, full_name, email, roles:property_roles(name)),
       properties(*),
       work_order_reports!work_order_reports_work_order_id_fkey(*),
       work_order_costings!work_order_costings_work_order_id_fkey(*),
@@ -135,7 +135,7 @@ export async function loadWorkOrderForm(
   if (personIds.length > 0) {
     const { data: personRows } = await service
       .from('engineers')
-      .select('id, full_name, roles(name)')
+      .select('id, full_name, roles:property_roles(name)')
       .in('id', personIds)
     for (const person of (personRows ?? []) as unknown as PersonRow[]) people.set(person.id, person)
   }

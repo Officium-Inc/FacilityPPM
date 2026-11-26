@@ -92,8 +92,8 @@ export default function SettingsHubClient({
           {
             key: 'roles',
             label: 'Roles & Permissions',
-            description: 'Control what admins, managers, engineers and viewers can do',
-            href: `/${slug}/settings?tab=members`,
+            description: 'Create roles, choose their permissions and whether they are Engineers or Service Group',
+            href: `/${slug}/settings/roles`,
             icon: ShieldCheck,
             iconClass: 'bg-violet-50 text-violet-600',
           },

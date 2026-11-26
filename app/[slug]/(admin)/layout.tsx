@@ -1,4 +1,5 @@
 import { requirePage } from '@/lib/authz/guard'
+import { toClientActor } from '@/lib/authz/permissions'
 import { recordSupportView } from '@/lib/provider/support'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
@@ -30,7 +31,7 @@ export default async function DashboardLayout({
   // Platform Admin support views are read-only and audit-logged (D2)
   if (actor.kind === 'provider') await recordSupportView(service, user.id, property.id)
 
-  const navActor = actor.kind === 'provider' ? { kind: 'provider' as const } : { kind: 'member' as const, role: actor.role }
+  const navActor = toClientActor(actor)
 
   return (
     <div className="flex h-dvh overflow-hidden bg-gray-50">

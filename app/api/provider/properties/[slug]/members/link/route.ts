@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProvider } from '@/lib/authz/guard'
-import { normalizeRoleName, resolveCanonicalRoleId } from '@/lib/roles'
+import { loadRole } from '@/lib/property-roles'
 import { logProviderAction, requestIp } from '@/lib/provider/accounts'
 
 interface Params {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const body = await request.json() as {
     email?: string
     full_name?: string
-    role_id?: string | null
+    property_role_id?: string | null
   }
 
   const normalizedEmail = body.email?.trim().toLowerCase()
@@ -37,21 +37,15 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
   }
 
-  const requestedRoleId = body.role_id?.trim() || null
-  if (!requestedRoleId) {
+  if (!body.property_role_id) {
     return NextResponse.json({ error: 'Select a role.' }, { status: 400 })
   }
-  const { data: role } = await service
-    .from('roles')
-    .select('name')
-    .eq('id', requestedRoleId)
-    .maybeSingle()
-  const roleName = normalizeRoleName(role?.name)
-  // The retired viewer role grants no access (D1)
-  const roleId = roleName && roleName !== 'viewer' ? await resolveCanonicalRoleId(service, roleName) : null
-  if (!roleId) {
-    return NextResponse.json({ error: 'Selected role was not found.' }, { status: 400 })
+  // Any role of this property (Platform Admin may give Administrator too)
+  const role = await loadRole(service, property.id, body.property_role_id)
+  if (!role) {
+    return NextResponse.json({ error: 'Selected role was not found in this property.' }, { status: 400 })
   }
+  const roleName = role.name
 
   const { data: existingMemberships } = await service
     .from('engineers')
@@ -119,12 +113,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     .insert({
       property_id: property.id,
       user_id: sourceMembership.user_id,
-      role_id: roleId,
+      property_role_id: role.id,
       full_name: displayName,
       email: normalizedEmail,
       is_active: true,
     })
-    .select('*, roles(id, name)')
+    .select('*')
     .single()
 
   if (engErr) {

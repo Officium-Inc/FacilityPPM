@@ -1,13 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { resolveCanonicalRoleId } from '@/lib/roles'
 import { syncUserAccess } from '@/lib/auth-users'
 
 /**
  * Org-managed Administrator rows (D30). Every active Org Admin has an Administrator member row in every
  * property of the organization, marked with `engineers.org_member_id`:
  *   - the organization creates the row when the user had none (`org_restore` null), or
- *   - takes over the user's own row and keeps its previous state in `org_restore` ({ role_id, is_active,
- *     company_id }).
+ *   - takes over the user's own row and keeps its previous state in `org_restore` ({ property_role_id, role_id,
+ *     is_active, company_id }; rows taken over before migration 026 only have role_id).
+ * The row holds the property's locked Administrator role (D32); the sync trigger keeps engineers.role_id in step.
  * Deprovisioning restores taken-over rows and deletes the rows the organization created (every reference to a
  * member row is `on delete set null`, so history keeps its names and links). Call `syncUserAccess()` after.
  * Callers must have authorized the change; these functions use the service client.
@@ -23,14 +23,32 @@ export interface OrgMemberRef {
   full_name: string | null
 }
 
+interface OrgRestore {
+  property_role_id?: string | null
+  role_id?: string | null
+  is_active?: boolean
+  company_id?: string | null
+}
+
 interface MemberRow {
   id: string
   property_id: string
   role_id: string | null
+  property_role_id: string | null
   is_active: boolean
   company_id: string | null
   org_member_id: string | null
-  org_restore: { role_id?: string | null; is_active?: boolean; company_id?: string | null } | null
+  org_restore: OrgRestore | null
+}
+
+/** The locked Administrator role of each property. */
+async function administratorRoles(service: Service, propertyIds: string[]) {
+  const { data } = await service
+    .from('property_roles')
+    .select('id, property_id')
+    .in('property_id', propertyIds)
+    .eq('system_key', 'admin')
+  return new Map(((data ?? []) as Array<{ id: string; property_id: string }>).map((row) => [row.property_id, row.id]))
 }
 
 /** Makes the Org Admin an Administrator in `propertyIds` (default: every property of the organization). */
@@ -39,17 +57,15 @@ export async function provisionOrgMember(
   member: OrgMemberRef,
   propertyIds?: string[]
 ): Promise<{ errors: string[] }> {
-  const adminRoleId = await resolveCanonicalRoleId(service, 'admin')
-  if (!adminRoleId) return { errors: ['Could not resolve the Administrator role.'] }
-
   const ids = propertyIds ?? (
     (await service.from('properties').select('id').eq('organization_id', member.organization_id)).data ?? []
   ).map((row) => row.id as string)
   if (ids.length === 0) return { errors: [] }
 
+  const adminRoles = await administratorRoles(service, ids)
   const { data: existing, error: loadError } = await service
     .from('engineers')
-    .select('id, property_id, role_id, is_active, company_id, org_member_id, org_restore')
+    .select('id, property_id, role_id, property_role_id, is_active, company_id, org_member_id, org_restore')
     .eq('user_id', member.user_id)
     .in('property_id', ids)
   if (loadError) return { errors: [loadError.message] }
@@ -58,12 +74,17 @@ export async function provisionOrgMember(
   const errors: string[] = []
 
   for (const propertyId of ids) {
+    const adminRoleId = adminRoles.get(propertyId)
+    if (!adminRoleId) {
+      errors.push(`Property ${propertyId} has no Administrator role (run migration 026).`)
+      continue
+    }
     const row = byProperty.get(propertyId)
     if (!row) {
       const { error } = await service.from('engineers').insert({
         property_id: propertyId,
         user_id: member.user_id,
-        role_id: adminRoleId,
+        property_role_id: adminRoleId,
         full_name: member.full_name?.trim() || member.email,
         email: member.email,
         is_active: true,
@@ -74,22 +95,22 @@ export async function provisionOrgMember(
     }
 
     if (row.org_member_id === member.id) {
-      if (row.role_id === adminRoleId && row.is_active && !row.company_id) continue
+      if (row.property_role_id === adminRoleId && row.is_active && !row.company_id) continue
       const { error } = await service
         .from('engineers')
-        .update({ role_id: adminRoleId, is_active: true, company_id: null })
+        .update({ property_role_id: adminRoleId, is_active: true, company_id: null })
         .eq('id', row.id)
       if (error) errors.push(error.message)
       continue
     }
 
     // The user's own row: remember its state, then make it an org-managed Administrator row
-    const restore = row.org_member_id && row.org_restore
+    const restore: OrgRestore = row.org_member_id && row.org_restore
       ? row.org_restore
-      : { role_id: row.role_id, is_active: row.is_active, company_id: row.company_id }
+      : { property_role_id: row.property_role_id, role_id: row.role_id, is_active: row.is_active, company_id: row.company_id }
     const { error } = await service
       .from('engineers')
-      .update({ role_id: adminRoleId, is_active: true, company_id: null, org_member_id: member.id, org_restore: restore })
+      .update({ property_role_id: adminRoleId, is_active: true, company_id: null, org_member_id: member.id, org_restore: restore })
       .eq('id', row.id)
     if (error) errors.push(error.message)
   }
@@ -112,18 +133,25 @@ export async function deprovisionOrgMember(service: Service, memberId: string): 
       if (error) errors.push(error.message)
       continue
     }
-    const restore = {
-      role_id: row.org_restore.role_id ?? null,
-      is_active: row.org_restore.is_active ?? false,
-      org_member_id: null,
-      org_restore: null,
-    }
+    const saved = row.org_restore
+    // Rows taken over before migration 026 only remember role_id; the sync trigger maps it to the property role
+    const role = 'property_role_id' in saved
+      ? { property_role_id: saved.property_role_id ?? null }
+      : { role_id: saved.role_id ?? null }
+    const restore = { ...role, is_active: saved.is_active ?? false, org_member_id: null, org_restore: null }
     let { error } = await service
       .from('engineers')
-      .update({ ...restore, company_id: row.org_restore.company_id ?? null })
+      .update({ ...restore, company_id: saved.company_id ?? null })
       .eq('id', row.id)
     // The company may have been deleted meanwhile: restore the rest
     if (error) ({ error } = await service.from('engineers').update({ ...restore, company_id: null }).eq('id', row.id))
+    // The previous role may have been deleted meanwhile: leave the member without a role and inactive
+    if (error) {
+      ({ error } = await service
+        .from('engineers')
+        .update({ property_role_id: null, is_active: false, company_id: null, org_member_id: null, org_restore: null })
+        .eq('id', row.id))
+    }
     if (error) errors.push(error.message)
   }
   return { errors }

@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PropertyActivityPanel from '@/components/provider/PropertyActivityPanel'
 import { describeAuditEntry, LICENSE_HISTORY_ACTIONS } from '@/lib/provider/audit-labels'
-import { formatRoleName, getCanonicalRoleRows, normalizeRoleName } from '@/lib/roles'
+import type { PropertyRole } from '@/lib/authz/property-role'
 import { PROPERTY_TYPE_LABELS, PROPERTY_TYPES, isPropertyType } from '@/lib/property-types'
 import { formatPHT } from '@/lib/utils'
 import type { ActivityEvent, AuditEntry, PropertySummary } from '@/lib/provider/activity'
-import type { Property, Engineer, Role } from '@/types'
+import type { Property, Engineer } from '@/types'
 import {
   Users, Trash2, UserPlus, Mail, Pencil, Check, X,
   AlertTriangle, BarChart3, Building2, RefreshCw, Activity, Shield,
@@ -29,7 +29,8 @@ interface Props {
   /** The owning organization: the license, termination and Org Admins are managed there (D29, D30). */
   organization: { name: string; slug: string } | null
   engineers: Engineer[]
-  roles: Role[]
+  /** The property's roles (Administrator first). */
+  roles: PropertyRole[]
   stats: { workOrders: number; assets: number; sites: number }
   invitations: Invitation[]
   account: { terminated: boolean; terminatedAt: string | null; reason: string | null }
@@ -61,11 +62,13 @@ export default function PropertyManageClient({ property, organization, engineers
   const [tab, setTab] = useState<Tab>('overview')
   const [propertyType, setPropertyType] = useState(isPropertyType(property.property_type) ? property.property_type : 'commercial')
   const licenseHistory = activity.audit.filter((entry) => LICENSE_HISTORY_ACTIONS.has(entry.action))
-  const activeAdministrators = engineers.filter((member) => member.is_active && normalizeRoleName(member.roles?.name) === 'admin').length
+  const roleById = new Map(roles.map((role) => [role.id, role]))
+  const roleNameOf = (roleId: string | null | undefined) => (roleId && roleById.get(roleId)?.name) || '—'
+  const activeAdministrators = engineers.filter((member) => member.is_active && member.property_role_id && roleById.get(member.property_role_id)?.isLocked).length
   // The retired viewer role grants no access, so it is not offered (D1)
-  const roleRows = getCanonicalRoleRows(roles).filter((r) => normalizeRoleName(r.name) !== 'viewer')
+  const roleRows = roles
   const defaultExistingRoleId =
-    roleRows.find((r) => r.name === 'tenant')?.id ??
+    roleRows.find((r) => r.systemKey === 'tenant')?.id ??
     roleRows[0]?.id ??
     ''
 
@@ -172,7 +175,7 @@ export default function PropertyManageClient({ property, organization, engineers
       body: JSON.stringify({
         full_name: existingName,
         email: existingEmail,
-        role_id: roleId || null,
+        property_role_id: roleId || null,
       }),
     })
     const data = await res.json()
@@ -265,7 +268,7 @@ export default function PropertyManageClient({ property, organization, engineers
 
   function startEdit(member: Engineer) {
     setEditingId(member.id)
-    setEditRoleId(member.role_id ?? '')
+    setEditRoleId(member.property_role_id ?? '')
     setEditActive(member.is_active)
     setMemberMsg(null)
   }
@@ -274,7 +277,7 @@ export default function PropertyManageClient({ property, organization, engineers
     const current = memberList.find((m) => m.id === memberId)
     // Only send the role when it changed, so a status change works for members of retired roles
     const payload: Record<string, unknown> = { is_active: editActive }
-    if (editRoleId && editRoleId !== current?.role_id) payload.role_id = editRoleId
+    if (editRoleId && editRoleId !== current?.property_role_id) payload.property_role_id = editRoleId
     const res = await fetch(`/api/provider/properties/${property.slug}/members/${memberId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -290,7 +293,7 @@ export default function PropertyManageClient({ property, organization, engineers
             ? {
                 ...m,
                 is_active: editActive,
-                ...(payload.role_id ? { role_id: editRoleId, roles: roleRows.find((r) => r.id === editRoleId) } : {}),
+                ...(payload.property_role_id ? { property_role_id: editRoleId } : {}),
               }
             : m
         )
@@ -506,12 +509,12 @@ export default function PropertyManageClient({ property, organization, engineers
                           >
                             <option value="" disabled>Select role…</option>
                             {roleRows.map((r) => (
-                              <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
+                              <option key={r.id} value={r.id}>{r.name}</option>
                             ))}
                           </select>
                         ) : (
                           <span className="text-gray-700">
-                            {formatRoleName(member.roles?.name, '—')}
+                            {roleNameOf(member.property_role_id)}
                             {member.org_member_id && (
                               <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700" title="Administrator through the organization; managed on the organization">
                                 Org Admin
@@ -697,7 +700,7 @@ export default function PropertyManageClient({ property, organization, engineers
                   >
                     <option value="" disabled>Select role</option>
                     {roleRows.map((r) => (
-                      <option key={r.id} value={r.id}>{formatRoleName(r.name)}</option>
+                      <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </select>
                 </div>

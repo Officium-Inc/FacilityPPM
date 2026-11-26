@@ -6,6 +6,7 @@ import StatusBadge from '@/components/work-orders/StatusBadge'
 import NewServiceRequestModal from './NewServiceRequestModal'
 import { requirePage } from '@/lib/authz/guard'
 import { can } from '@/lib/authz/permissions'
+import { applyWorkOrderScope } from '@/lib/authz/records'
 import { loadFloorsAndCompanies } from '@/lib/floors'
 
 interface Props {
@@ -28,7 +29,7 @@ export default async function ServiceRequestsPage({ params }: Props) {
     .map((company) => ({ id: company.id, name: company.name, floors: company.floors.map((floor) => ({ id: floor.id, label: floor.label })) }))
 
   // Query reactive work orders directly, embed fault reports as children
-  let reportQuery = service
+  const baseQuery = service
     .from('work_orders')
     .select(`
       id,
@@ -44,10 +45,11 @@ export default async function ServiceRequestsPage({ params }: Props) {
     `)
     .eq('property_id', property.id)
     .eq('type', 'reactive')
-  if (actor.kind === 'member' && actor.role === 'service_group') {
-    reportQuery = reportQuery.eq('engineer_id', actor.engineerId)
-  }
-  const { data: reactiveWOs } = await reportQuery.order('created_at', { ascending: false })
+  // Members with assigned scope (Service Group) only list the work assigned to them (D14)
+  const reportQuery = applyWorkOrderScope(baseQuery, actor)
+  const { data: reactiveWOs } = reportQuery
+    ? await reportQuery.order('created_at', { ascending: false })
+    : { data: [] }
 
   type ReportRow = {
     id: string

@@ -263,7 +263,8 @@ export async function requirePage(slug: string, action: Action): Promise<PageCon
   if (actor.kind === 'member' && isLicenseBlocked(property)) redirect(`/${slug}/suspended`)
 
   if (!can(actor, action)) {
-    if (actor.kind === 'member' && actor.role === 'tenant') redirect(`/${slug}/tenant`)
+    // Each portal has a page every member of it may open (portal.admin / portal.tenant), so this cannot loop
+    if (actor.kind === 'member' && actor.portal === 'tenant') redirect(`/${slug}/tenant`)
     redirect(`/${slug}`)
   }
 

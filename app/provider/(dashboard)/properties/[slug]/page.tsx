@@ -7,7 +7,8 @@ import { getAccountStatus } from '@/lib/provider/account-status'
 import { loadPropertyActivity } from '@/lib/provider/activity'
 import { effectiveLicenseState, licenseDateInput } from '@/lib/provider/license'
 import { propertyTypeLabel } from '@/lib/property-types'
-import type { Property, Engineer, Role } from '@/types'
+import { loadPropertyRoles } from '@/lib/property-roles'
+import type { Property, Engineer } from '@/types'
 import { ArrowLeft, Eye } from 'lucide-react'
 
 interface Props {
@@ -38,14 +39,14 @@ export default async function PropertyManagePage({ params, searchParams }: Props
 
   const [
     { data: engineers },
-    { data: roles },
+    roles,
     { count: assetCount },
     { data: invitations },
     account,
     activity,
   ] = await Promise.all([
-    service.from('engineers').select('*, roles(id, name)').eq('property_id', prop.id).order('full_name'),
-    service.from('roles').select('id, name').order('name'),
+    service.from('engineers').select('*').eq('property_id', prop.id).order('full_name'),
+    loadPropertyRoles(service, prop.id),
     buildingIds.length
       ? service.from('assets').select('id', { count: 'exact', head: true }).in('building_id', buildingIds)
       : Promise.resolve({ count: 0 }),
@@ -104,7 +105,7 @@ export default async function PropertyManagePage({ params, searchParams }: Props
         property={prop}
         organization={organization ? { name: organization.name, slug: organization.slug } : null}
         engineers={(engineers as Engineer[]) ?? []}
-        roles={(roles as Role[]) ?? []}
+        roles={roles}
         stats={{ workOrders: activity.summary.total, assets: assetCount ?? 0, sites: siteIds.length }}
         invitations={(invitations ?? []) as Array<{
           id: string; email: string; invited_name: string | null

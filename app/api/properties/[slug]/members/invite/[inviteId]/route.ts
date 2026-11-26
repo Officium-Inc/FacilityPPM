@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { canManageMember } from '@/lib/authz/permissions'
+import { canManageMemberRole } from '@/lib/authz/escalation'
 import { authorizeForSlug, requireSession } from '@/lib/authz/guard'
+import { loadRole } from '@/lib/property-roles'
 
 interface Params {
   params: Promise<{ slug: string; inviteId: string }>
@@ -20,13 +21,14 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   // Verify the invitation belongs to this property
   const { data: inv } = await service
     .from('invitations')
-    .select('id, property_id, role_name')
+    .select('id, property_id, property_role_id')
     .eq('id', inviteId)
     .eq('property_id', propertyId)
     .maybeSingle()
 
   if (!inv) return NextResponse.json({ error: 'Invitation not found.' }, { status: 404 })
-  if (!canManageMember(access.actor, inv.role_name)) {
+  const role = inv.property_role_id ? await loadRole(service, propertyId, inv.property_role_id) : null
+  if (!canManageMemberRole(access.actor, role)) {
     return NextResponse.json({ error: 'You cannot manage invitations for this role.' }, { status: 403 })
   }
 

@@ -128,6 +128,8 @@ export interface Engineer {
   company_id?: string | null
   /** Set on Administrator rows that exist because of an Org Admin membership (D30); managed from the organization. */
   org_member_id?: string | null
+  /** The member's property role (D32). */
+  property_role_id?: string | null
   full_name: string
   email: string
   phone: string | null

@@ -1,7 +1,12 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+/**
+ * Role labels for display. Roles themselves are per-property records (`property_roles`, lib/authz/property-role.ts);
+ * this file only turns stored role strings into labels: the role names snapshotted in work order history
+ * (`work_order_events.actor_role`, `approval_trail.actor_role`, `work_order_comments.author_role`) and the old
+ * machine keys stored before custom roles (D32). Client-safe.
+ */
 
-/** Canonical role names stored in `roles.name`. `viewer` is retired (D1): it is only kept so old rows display. */
-export const ROLE_ORDER = [
+/** The old fixed role keys. `viewer` is retired (D1): it is only kept so old rows display. */
+const ROLE_ORDER = [
   'admin',
   'property_manager',
   'head_engineer',
@@ -10,17 +15,7 @@ export const ROLE_ORDER = [
   'viewer',
 ] as const
 
-export type CanonicalRoleName = (typeof ROLE_ORDER)[number]
-
-export interface RoleOption {
-  value: string
-  label: string
-}
-
-export interface RoleRow {
-  id: string
-  name: string
-}
+type CanonicalRoleName = (typeof ROLE_ORDER)[number]
 
 const ROLE_LABELS: Record<CanonicalRoleName, string> = {
   admin: 'Administrator',
@@ -43,11 +38,6 @@ const ROLE_ALIASES: Record<string, CanonicalRoleName> = {
   viewer: 'viewer',
 }
 
-/** Names a canonical role may still have in databases where migration 020 has not run yet. */
-const LEGACY_ROLE_NAMES: Partial<Record<CanonicalRoleName, string[]>> = {
-  service_group: ['service group'],
-}
-
 function roleKey(roleName: string) {
   return roleName
     .trim()
@@ -67,82 +57,22 @@ function toTitleCase(value: string) {
     .join(' ')
 }
 
+/** The old machine key of a role name (`Head Engineer` → `head_engineer`), or the name itself. Used for colours. */
 export function normalizeRoleName(roleName?: string | null) {
   if (!roleName?.trim()) return ''
   const trimmed = roleName.trim()
   return ROLE_ALIASES[roleKey(trimmed)] ?? trimmed
 }
 
-export function isCanonicalRoleName(roleName?: string | null): roleName is CanonicalRoleName {
-  return ROLE_ORDER.includes(roleName as CanonicalRoleName)
-}
-
+/**
+ * A role for display. Stored machine keys (`head_engineer`, `tenant`, legacy `service group`, `provider`) get
+ * their label; names people typed for custom roles (D32) are shown as typed, so "Engineer" stays "Engineer".
+ */
 export function formatRoleName(roleName?: string | null, fallback = '-') {
   if (!roleName?.trim()) return fallback
   if (roleName === 'provider') return 'Platform Admin'
-  const normalized = normalizeRoleName(roleName)
+  const trimmed = roleName.trim()
+  if (!/^[a-z0-9 _-]+$/.test(trimmed)) return trimmed
+  const normalized = normalizeRoleName(trimmed)
   return ROLE_LABELS[normalized as CanonicalRoleName] ?? toTitleCase(normalized)
-}
-
-/** Reads `roles(name)` from an embedded Supabase relation (object or single-element array). */
-export function roleNameFromRelation(roles: unknown) {
-  if (!roles) return ''
-  const row = Array.isArray(roles) ? (roles[0] as { name?: string } | undefined) : (roles as { name?: string })
-  return normalizeRoleName(row?.name)
-}
-
-export function roleOptions(roles: readonly string[]): RoleOption[] {
-  return roles.map((value) => ({ value, label: formatRoleName(value) }))
-}
-
-export function getCanonicalRoleRows<T extends RoleRow>(roles: T[]) {
-  const byName = new Map<CanonicalRoleName, T>()
-
-  for (const role of roles) {
-    const normalized = normalizeRoleName(role.name)
-    if (!isCanonicalRoleName(normalized)) continue
-
-    const current = byName.get(normalized)
-    if (!current || role.name === normalized) {
-      byName.set(normalized, role)
-    }
-  }
-
-  return ROLE_ORDER
-    .map((roleName) => byName.get(roleName))
-    .filter((role): role is T => Boolean(role))
-}
-
-/** Returns the id of the canonical role row, creating it if it is missing. */
-export async function resolveCanonicalRoleId(
-  service: SupabaseClient,
-  roleName?: string | null
-): Promise<string | null> {
-  const normalizedRoleName = normalizeRoleName(roleName)
-  if (!isCanonicalRoleName(normalizedRoleName)) return null
-
-  const names = [normalizedRoleName, ...(LEGACY_ROLE_NAMES[normalizedRoleName] ?? [])]
-  const { data: existing } = await service
-    .from('roles')
-    .select('id, name')
-    .in('name', names)
-
-  const match = existing?.find((row) => row.name === normalizedRoleName) ?? existing?.[0]
-  if (match) return match.id
-
-  const { data: created, error } = await service
-    .from('roles')
-    .insert({ name: normalizedRoleName })
-    .select('id')
-    .single()
-
-  if (!error) return created?.id ?? null
-
-  const { data: racedExisting } = await service
-    .from('roles')
-    .select('id')
-    .eq('name', normalizedRoleName)
-    .maybeSingle()
-
-  return racedExisting?.id ?? null
 }

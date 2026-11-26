@@ -1,6 +1,8 @@
 # Portal & Role Permission Matrix
 
-Target model for the 3-portal rewrite. **Deny by default**: an action not listed, or a role without ✅/🔒,
+The tables below are the **default roles** every property starts with. Since D32 Administrators create custom roles
+per property (Settings → Roles & Permissions) from the same permission keys (`lib/authz/catalog.ts`), so a custom
+role's column is whatever its grants say. **Deny by default**: an action not listed, or a role without ✅/🔒,
 is forbidden. Cells tagged `Dn` were defaulted when the rewrite was planned — see the
 [decision log](#decision-log) and update both the cell and the log if the product owner overrides one.
 
@@ -50,9 +52,11 @@ organization's properties through `app_metadata.org_ids` plus their org-managed 
 | Remove a tenant company from a floor | ✅ | ❌ (D4) | ❌ | ❌ | ❌ |
 | Add / edit / deactivate tenant companies | ✅ | ✅ (D5) | ❌ | ❌ | ❌ |
 | Invite / deactivate tenant users (under a company) | ✅ | ✅ (D5) | ❌ | ❌ | ❌ |
-| Invite / deactivate Head Engineer, Service Group | ✅ | ✅ (D6) | ❌ | ❌ | ❌ |
-| Invite / deactivate Administrator, Property Manager | ✅ | ❌ (D6) | ❌ | ❌ | ❌ |
-| Change a member's role | ✅ (never to/from provider) | 🔒 only between Head Engineer / Service Group (D6) | ❌ | ❌ | ❌ |
+| Invite / deactivate Head Engineer, Service Group | ✅ | ✅ (D6 → D32 escalation rule) | ❌ | ❌ | ❌ |
+| Invite / deactivate Administrator, Property Manager | ✅ | ❌ (D6 → D32 escalation rule) | ❌ | ❌ | ❌ |
+| Change a member's role | ✅ (never to/from provider) | 🔒 only to roles with less access than their own (D32) | ❌ | ❌ | ❌ |
+| Create / edit / delete roles (`roles.manage`) | ✅ | ❌ (grantable) | ❌ | ❌ | ❌ |
+| Read the audit log (`audit.view`) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Integrations (e.g. Monday.com) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Assets, PPM schedules, reports (existing modules) | ✅ | ✅ | ✅ | ❌ | ❌ (D15) |
 
@@ -64,7 +68,7 @@ organization's properties through `app_metadata.org_ids` plus their org-managed 
 | View work requests | ✅ property | ✅ property | ✅ property | 🔒 assigned (D14) | 🔒 own company (D10) |
 | Review: start inspection, prepare/revise costing, verify or send back for rework (D28) | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Record inspection findings | ✅ | ✅ | ✅ | 🔒 assigned (D20) | ❌ |
-| Waive charges (and remove a waiver) | ❌ (D8) | ✅ (D8) | ❌ (D8) | ❌ | ❌ |
+| Waive charges (and remove a waiver) | ✅ (D32, supersedes D8) | ✅ | ❌ | ❌ | ❌ |
 | View the Waived Orders list | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Assign engineers / Service Group | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Start work, update progress, upload completion evidence | ✅ | ✅ | ✅ | 🔒 assigned (D14) | ❌ |
@@ -110,9 +114,9 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D3 | Property Manager may edit the property profile | Matches current code (`MANAGE_ROLES`) |
 | D4 | Floors and floor-tenant assignment are Administrator-only | Spec: "Administrators can also customize their property" |
 | D5 | Admin and Property Manager manage tenant companies and tenant users | Spec: Admin Portal users "add tenants"; PM "manages the building" |
-| D6 | PM manages Head Engineer / Service Group / tenants but not Admins or other PMs | Prevents privilege escalation by PMs |
+| D6 | PM manages Head Engineer / Service Group / tenants but not Admins or other PMs. **Generalized by D32**: anyone but an Administrator may give or manage only roles strictly below their own access | Prevents privilege escalation by PMs |
 | D7 | Admin, PM, Head Engineer may submit on behalf of a tenant company (must pick company + floor) | Current admin "Service Report" page does this |
-| D8 | Waiving charges is **Property Manager only** (user override 2026-11-05); Admins and PMs can view the Waived Orders list | Product owner decision |
+| D8 | ``Waiving charges is **Property Manager only**`` **Superseded by D32**: the locked Administrator role holds every staff permission, waiving included; waiving stays a separate permission any role can be given | Product owner decision (2026-11-05), superseded 2026-11-26 |
 | D9 | Head Engineer may cancel; tenants may cancel their company's request only while `new_report` | Head Engineer leads the job; tenants can withdraw before inspection starts |
 | D10 | Tenants see all requests of their company, not only their own submissions | Spec frames the portal per company |
 | D11 | A company can occupy several floors; a floor has at most one current company | Spec: each floor is occupied by a different company |
@@ -137,4 +141,8 @@ the spec is silent). Override by editing the table cell and the entry here.
 | D30 | **Org Admins** (`organization_members`, role `owner` or `admin`) are Administrators in every property of their organization, including properties added later. The Administrator rows are org-managed (`engineers.org_member_id`): taking over a member row of their own keeps its previous state in `org_restore`, and removing or deactivating the Org Admin restores that row or deletes the row the organization created. Property-level member routes refuse to change or remove org-managed rows (409). Org Admins edit the organization profile and manage Org Admins in the org portal; only owners give, change or remove the owner role, the organization keeps at least one active owner, and nobody changes their own org access (Platform Admin may override). Org Admins reach properties through `app_metadata.org_ids`, not one `property_ids` entry per property; `syncUserAccess()` rebuilds both lists from the database rows (on sign-in and after every membership change) | Plan decisions 1, 2 and 6; a JWT that does not grow with each property |
 | D31 | API routes never act on the "active property" (`app_metadata.property_id`): every property-scoped route names the property in its URL (`/api/properties/[slug]/…`, `authorizeForSlug`) and `authorize()` has no active-property fallback. The active property only chooses where a user lands after signing in | Two tabs on two properties wrote to the wrong one |
 
-The matrix in code is `lib/authz/permissions.ts`; `tests/authz/permissions.test.ts` mirrors this file row by row.
+| D32 | **Custom roles per property** (migrations 026/027). A role belongs to one property and one portal (staff = Admin Portal, tenant = Tenant Portal; fixed at creation) and holds grants: a permission key from `lib/authz/catalog.ts` (mirrored by `permission_keys`) with a scope (staff: `property` or `assigned`; tenant: `company`). Granting a key also grants what it implies (e.g. execute ⇒ view, at the same scope or narrower). Every property is seeded once with the 5 default roles (the matrix above); defaults are editable and deletable, a deleted default never comes back. The **Administrator** role is locked: every staff key at property scope, computed (so new modules are included), never edited or deleted. **Escalation rule** (replaces D6): Administrators (and so Org Admins) are exempt; anyone else may give, manage, edit or delete a staff role only when its grants are a strict subset of their own, and may give tenant roles when they hold `members.manage`. Nobody edits the role they hold; the last active Administrator cannot be demoted, deactivated or removed. Only `roles.manage` (Administrator by default) edits roles. Unknown keys and scopes fail closed. RLS reads permissions, not role names | Whiteboard decisions 3, 5, 6, 7; multi-tenant RBAC practice (roles scoped to the tenant, built from permission primitives, escalation guardrails) |
+| D33 | Staff roles have a **work type**: None (office roles, e.g. Administrator, Property Manager), Engineer (the supervising engineer, e.g. Head Engineer) or Service Group (manpower). Only members whose role is **Service Group** can be picked when work is assigned: for the inspection when the role holds `workRequest.inspect`, for the work (assign step and PPM "Assigned to") when it holds `workRequest.execute`. Lists and routes apply the same rule (`loadAssignableMembers` / `isEligibleAssignee`), so Administrators and Org Admins are never assignable. Tenant roles have no work type | User decision 2026-11-26: "Service Group is the manpower assigned to fix the requested issue" |
+
+The permissions in code are `lib/authz/catalog.ts` (keys) and `lib/authz/templates.ts` (the default roles);
+`tests/authz/permissions.test.ts` mirrors this file row by row for the default roles and checks migration 026's seed.

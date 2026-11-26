@@ -3,9 +3,8 @@ import WorkOrderTable from '@/components/dashboard/WorkOrderTable'
 import EngineerWorkload from '@/components/dashboard/EngineerWorkload'
 import PpmCalendar from '@/components/dashboard/PpmCalendar'
 import { CheckCircle, ClipboardList, Package, Users } from 'lucide-react'
-import { roleNameFromRelation } from '@/lib/roles'
 import { requirePage } from '@/lib/authz/guard'
-import { can } from '@/lib/authz/permissions'
+import { applyWorkOrderScope } from '@/lib/authz/records'
 import type { WorkOrder } from '@/types'
 
 interface Props {
@@ -17,13 +16,14 @@ export default async function DashboardPage({ params }: Props) {
   const { service, property, actor } = await requirePage(slug, 'portal.admin')
   const propertyId = property.id
 
-  // Service Group members only see the work assigned to them (D14)
-  const seesAllWork = can(actor, 'maintenance.view')
-  let workOrderQuery = service
-    .from('work_orders')
-    .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name), ppm_schedules(id, title, assets(id, name))`)
-    .eq('property_id', propertyId)
-  if (!seesAllWork && actor.kind === 'member') workOrderQuery = workOrderQuery.eq('engineer_id', actor.engineerId)
+  // Members with assigned scope (Service Group) only see the work assigned to them (D14)
+  const workOrderQuery = applyWorkOrderScope(
+    service
+      .from('work_orders')
+      .select(`*, engineers!work_orders_engineer_id_fkey(id, full_name), ppm_schedules(id, title, assets(id, name))`)
+      .eq('property_id', propertyId),
+    actor
+  )
 
   const [
     { data: workOrders },
@@ -32,8 +32,8 @@ export default async function DashboardPage({ params }: Props) {
     { data: schedules },
   ] = await Promise.all([
     workOrderQuery
-      .order('created_at', { ascending: false })
-      .limit(10),
+      ? workOrderQuery.order('created_at', { ascending: false }).limit(10)
+      : Promise.resolve({ data: [] }),
     service
       .from('assets')
       .select('id, buildings!inner(sites!inner(property_id))', { count: 'exact', head: true })
@@ -41,7 +41,7 @@ export default async function DashboardPage({ params }: Props) {
       .eq('status', 'active'),
     service
       .from('engineers')
-      .select('id, full_name, is_active, roles(name)')
+      .select('id, full_name, is_active, property_role:property_roles(work_type)')
       .eq('property_id', propertyId)
       .eq('is_active', true),
     service
@@ -61,10 +61,13 @@ export default async function DashboardPage({ params }: Props) {
     (wo) => wo.status !== 'completed' && wo.status !== 'cancelled'
   ).length
 
-  const allEngineers = (engineers ?? []) as unknown as Array<{ id: string; full_name: string; is_active: boolean; roles: unknown }>
-  const serviceGroupEngineers = allEngineers.filter(
-    (e) => roleNameFromRelation(e.roles) === 'service_group'
-  )
+  // Workload of the manpower: members whose role has the Service Group work type (D33)
+  type WorkloadRow = { id: string; full_name: string; is_active: boolean; property_role: { work_type?: string } | { work_type?: string }[] | null }
+  const allEngineers = (engineers ?? []) as unknown as WorkloadRow[]
+  const serviceGroupEngineers = allEngineers.filter((e) => {
+    const role = Array.isArray(e.property_role) ? e.property_role[0] : e.property_role
+    return role?.work_type === 'service_group'
+  })
 
   const engineerWorkloadMap: Record<string, number> = {}
   wos.forEach((wo) => {

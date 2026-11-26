@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authorize, requireSession } from '@/lib/authz/guard'
-import { actorEngineerId, actorLog } from '@/lib/authz/actor'
+import { actorEngineerId, actorLog, actorRoleLabel } from '@/lib/authz/actor'
 import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
 import { parseSendBack, sendBackBlocker, SEND_BACK_EVENT_TYPE } from '@/lib/verification-rules'
@@ -67,7 +67,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     work_order_id: wo.id,
     stage: 'final_verification',
     actor_name: actor.name || 'Head Engineer',
-    actor_role: 'head_engineer',
+    // The reviewer's role (any role with workRequest.review), stored as a label snapshot
+    actor_role: actorRoleLabel(actor),
     decision: 'rejected',
     reason: input.reason,
   })

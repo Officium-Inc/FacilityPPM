@@ -5,6 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowDown, ArrowUp, Building2, Layers, Link2, Pencil, Plus, Trash2, UserPlus, Users, X } from 'lucide-react'
 import type { CompanyWithFloors, FloorWithTenant } from '@/lib/floors'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
+
+interface PendingConfirm {
+  title: string
+  message: string
+  confirmLabel: string
+  run: () => void
+}
 
 export interface TenantMember {
   id: string
@@ -43,6 +51,7 @@ export default function FloorsTenantsClient({
 }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const [newFloor, setNewFloor] = useState({ label: '', level: '' })
@@ -216,8 +225,12 @@ export default function FloorsTenantsClient({
                                   className={`${SECONDARY} text-xs`}
                                   disabled={busy === `vacate-${floor.id}`}
                                   onClick={() => {
-                                    if (!confirm(`Remove ${floor.company?.name} from ${floor.label}?`)) return
-                                    void call(`vacate-${floor.id}`, `${base}/floors/${floor.id}/occupancy`, 'DELETE', undefined, 'Tenant removed from the floor.')
+                                    setPendingConfirm({
+                                      title: 'Remove tenant',
+                                      message: `Remove ${floor.company?.name} from ${floor.label}?`,
+                                      confirmLabel: 'Remove',
+                                      run: () => void call(`vacate-${floor.id}`, `${base}/floors/${floor.id}/occupancy`, 'DELETE', undefined, 'Tenant removed from the floor.'),
+                                    })
                                   }}
                                 >
                                   Remove tenant
@@ -238,8 +251,12 @@ export default function FloorsTenantsClient({
                                 title={floor.company ? 'Remove the tenant first' : 'Delete floor'}
                                 disabled={Boolean(floor.company) || busy === `delete-${floor.id}`}
                                 onClick={() => {
-                                  if (!confirm(`Delete ${floor.label}?`)) return
-                                  void call(`delete-${floor.id}`, `${base}/floors/${floor.id}`, 'DELETE', undefined, 'Floor deleted.')
+                                  setPendingConfirm({
+                                    title: 'Delete floor',
+                                    message: `Delete ${floor.label}? This cannot be undone.`,
+                                    confirmLabel: 'Delete',
+                                    run: () => void call(`delete-${floor.id}`, `${base}/floors/${floor.id}`, 'DELETE', undefined, 'Floor deleted.'),
+                                  })
                                 }}
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -388,8 +405,14 @@ export default function FloorsTenantsClient({
                                 className={`${SECONDARY} text-xs`}
                                 disabled={busy === `toggle-${company.id}`}
                                 onClick={() => {
-                                  if (company.is_active && !confirm(`Deactivate ${company.name}? Its floors become vacant and its users lose access to requests.`)) return
-                                  void call(`toggle-${company.id}`, `${base}/companies/${company.id}`, 'PATCH', { isActive: !company.is_active }, company.is_active ? 'Company deactivated.' : 'Company reactivated.')
+                                  const toggleCompany = () => void call(`toggle-${company.id}`, `${base}/companies/${company.id}`, 'PATCH', { isActive: !company.is_active }, company.is_active ? 'Company deactivated.' : 'Company reactivated.')
+                                  if (!company.is_active) return toggleCompany()
+                                  setPendingConfirm({
+                                    title: 'Deactivate company',
+                                    message: `Deactivate ${company.name}? Its floors become vacant and its users lose access to requests.`,
+                                    confirmLabel: 'Deactivate',
+                                    run: toggleCompany,
+                                  })
                                 }}
                               >
                                 {company.is_active ? 'Deactivate' : 'Reactivate'}
@@ -479,6 +502,20 @@ export default function FloorsTenantsClient({
           </table>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ''}
+        message={pendingConfirm?.message ?? ''}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        danger
+        onConfirm={() => {
+          const action = pendingConfirm
+          setPendingConfirm(null)
+          action?.run()
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </div>
   )
 }

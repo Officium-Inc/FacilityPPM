@@ -3,6 +3,7 @@ import { authorize, requireSession } from '@/lib/authz/guard'
 import { actorLog } from '@/lib/authz/actor'
 import { WORK_ORDER_SCOPE_COLUMNS } from '@/lib/authz/records'
 import { logWorkOrderEvent } from '@/lib/work-order-events'
+import { isEligibleAssignee } from '@/lib/property-roles'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -43,6 +44,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     .maybeSingle()
 
   if (!assignee) return NextResponse.json({ error: 'Service team member not found.' }, { status: 404 })
+  // Only Service Group members whose role can record inspections may inspect (D33)
+  if (!(await isEligibleAssignee(service, wo.property_id as string, engineerId, 'workRequest.inspect'))) {
+    return NextResponse.json({ error: 'Choose a Service Group member whose role can record inspections.' }, { status: 400 })
+  }
 
   const now = new Date().toISOString()
   const { error } = await service

@@ -79,6 +79,15 @@ export async function createAdminInvite(
     .maybeSingle()
   if (existing) return fail(409, 'A pending invitation for this email already exists.')
 
+  // The property's locked Administrator role (migration 026)
+  const { data: adminRole } = await service
+    .from('property_roles')
+    .select('id')
+    .eq('property_id', property.id)
+    .eq('system_key', 'admin')
+    .maybeSingle()
+  if (!adminRole) return fail(500, 'This property has no Administrator role. Run migration 026.')
+
   // Only the token's hash is stored; the raw token goes in the email
   const token = generateLinkToken()
   const { data: invite, error: inviteError } = await service
@@ -87,6 +96,7 @@ export async function createAdminInvite(
       property_id: property.id,
       email: normalizedEmail,
       invited_name: name?.trim() || null,
+      property_role_id: adminRole.id,
       role_name: 'admin',
       token_hash: hashToken(token),
     })

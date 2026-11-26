@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { requirePage } from '@/lib/authz/guard'
-import { can } from '@/lib/authz/permissions'
+import { can, toClientActor } from '@/lib/authz/permissions'
+import { formatRoleName } from '@/lib/roles'
+import { loadPropertyRoles } from '@/lib/property-roles'
 import EngineersClient from '../engineers/EngineersClient'
 import ApiKeysClient from './ApiKeysClient'
 import SettingsHubClient from './SettingsHubClient'
@@ -55,21 +57,21 @@ export default async function SettingsPage({ params, searchParams }: Props) {
   const canManageMembers = can(actor, 'members.manage')
   const canManageIntegrations = can(actor, 'property.integrations.manage')
   const canEditProfile = can(actor, 'property.profile.edit')
-  const navActor = actor.kind === 'provider' ? { kind: 'provider' as const } : { kind: 'member' as const, role: actor.role }
+  const navActor = toClientActor(actor)
 
-  const [{ data: engineers }, { data: roles }, { data: pendingInvitations }, { data: property }, { data: companies }] = await Promise.all([
+  const [{ data: engineers }, roles, { data: pendingInvitations }, { data: property }, { data: companies }] = await Promise.all([
     canViewMembers
       ? service
         .from('engineers')
-        .select('*, roles(id, name)')
+        .select('id, full_name, email, phone, certifications, is_active, property_role_id, org_member_id')
         .eq('property_id', propertyId)
         .order('full_name')
       : Promise.resolve({ data: [] }),
-    service.from('roles').select('id, name').order('name'),
+    loadPropertyRoles(service, propertyId),
     canViewMembers
       ? service
         .from('invitations')
-        .select('id, email, invited_name, role_name, invited_by, created_at, expires_at')
+        .select('id, email, invited_name, role_name, property_role_id, invited_by, created_at, expires_at')
         .eq('property_id', propertyId)
         .is('used_at', null)
         .gt('expires_at', new Date().toISOString())
@@ -128,7 +130,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
           fullName={myEngineer?.full_name ?? (user.user_metadata?.full_name as string | undefined) ?? ''}
           email={myEngineer?.email ?? user.email ?? ''}
           phone={myEngineer?.phone ?? ''}
-          roleName={actor.kind === 'provider' ? 'provider' : actor.role}
+          roleName={actor.kind === 'provider' ? formatRoleName('provider') : actor.roleName}
         />
       ) : activeTab === 'company' ? (
         property ? (
@@ -140,7 +142,7 @@ export default async function SettingsPage({ params, searchParams }: Props) {
         <EngineersClient
           slug={slug}
           engineers={engineers ?? []}
-          roles={roles ?? []}
+          roles={roles}
           invitations={pendingInvitations ?? []}
           canManageMembers={canManageMembers}
           actor={navActor}

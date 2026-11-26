@@ -36,9 +36,11 @@ const ROLE_STYLES: Record<string, { bg: string; text: string; label: string }> =
   viewer:           { bg: 'bg-gray-100',   text: 'text-gray-600',   label: 'Viewer' },
 }
 
+/** Colours by role kind; the label is the stored role (custom role names as typed, D32). */
 function getRoleStyle(role: string) {
-  const normalized = normalizeRoleName(role)
-  return ROLE_STYLES[normalized] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: formatRoleName(normalized) }
+  const style = ROLE_STYLES[normalizeRoleName(role)]
+  const label = formatRoleName(role)
+  return style ? { ...style, label } : { bg: 'bg-gray-100', text: 'text-gray-600', label }
 }
 
 /** Render a comment body with @mentions highlighted in blue */

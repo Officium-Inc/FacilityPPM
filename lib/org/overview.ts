@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { roleNameFromRelation } from '@/lib/roles'
 import { effectiveLicenseState, type LicenseState } from '@/lib/provider/license'
 import { getTerminatedPropertyIds } from '@/lib/provider/account-status'
 import type { AuditEntry } from '@/lib/provider/activity'
@@ -10,6 +9,12 @@ import type { AuditEntry } from '@/lib/provider/activity'
  */
 
 type Service = SupabaseClient
+
+/** Whether an embedded `property_role:property_roles(is_locked)` is the locked Administrator role. */
+function holdsAdministratorRole(value: unknown) {
+  const row = (Array.isArray(value) ? value[0] : value) as { is_locked?: boolean } | null | undefined
+  return row?.is_locked === true
+}
 
 const OPEN_STATUSES = new Set(['new_report', 'inspecting', 'costing', 'assigned', 'in_progress', 'svc_submitted', 'scheduled', 'on_hold', 'overdue'])
 
@@ -64,7 +69,7 @@ export async function loadOrganizationProperties(
 
   const ids = rows.map((row) => row.id)
   const [{ data: members }, { data: workOrders }, terminated] = await Promise.all([
-    service.from('engineers').select('property_id, is_active, roles(name)').in('property_id', ids),
+    service.from('engineers').select('property_id, is_active, property_role:property_roles(is_locked)').in('property_id', ids),
     service.from('work_orders').select('property_id, status').in('property_id', ids),
     getTerminatedPropertyIds(service),
   ])
@@ -77,9 +82,9 @@ export async function loadOrganizationProperties(
     }
     return counts
   }
-  type MemberRow = { property_id: string; is_active: boolean; roles: unknown }
+  type MemberRow = { property_id: string; is_active: boolean; property_role: unknown }
   const activeMembers = count(members as MemberRow[] | null, (m) => m.property_id, (m) => m.is_active)
-  const activeAdmins = count(members as MemberRow[] | null, (m) => m.property_id, (m) => m.is_active && roleNameFromRelation(m.roles) === 'admin')
+  const activeAdmins = count(members as MemberRow[] | null, (m) => m.property_id, (m) => m.is_active && holdsAdministratorRole(m.property_role))
   const open = count(
     workOrders as Array<{ property_id: string | null; status: string }> | null,
     (w) => w.property_id,

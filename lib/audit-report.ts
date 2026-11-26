@@ -159,7 +159,8 @@ export async function loadAuditReportData(
   if (personIds.length > 0) {
     const { data: personRows } = await service
       .from('engineers')
-      .select('id, full_name, email, roles(name)')
+      // The member's property role (D32), read through the old `roles` shape
+      .select('id, full_name, email, roles:property_roles(name)')
       .in('id', personIds)
     for (const person of (personRows ?? []) as unknown as PersonRow[]) people.set(person.id, person)
   }
@@ -244,7 +245,8 @@ export async function loadAuditReportData(
       key: SEND_BACK_EVENT_TYPE,
       name: entry.actor_name ?? 'Head Engineer',
       email: null,
-      role: 'Head Engineer',
+      // The reviewer's role as recorded (older rows: 'head_engineer')
+      role: roleLabel(entry.actor_role) ?? 'Head Engineer',
       step: 'Final verification',
       decision: 'Sent back',
       reason: entry.reason ?? null,
@@ -259,7 +261,7 @@ export async function loadAuditReportData(
       key: 'final_verified',
       name: verification?.actor_name ?? person?.full_name ?? 'Head Engineer',
       email: person?.email ?? null,
-      role: personRole(person) ?? 'Head Engineer',
+      role: roleLabel(verification?.actor_role) ?? personRole(person) ?? 'Head Engineer',
       step: 'Final verification',
       decision: 'Approved',
       reason: wo.head_engineer_notes ?? null,

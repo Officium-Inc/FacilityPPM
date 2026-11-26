@@ -135,7 +135,7 @@ export default function NewWorkOrderForm({ slug, schedules, engineers }: Props) 
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Engineer (optional)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Assigned to (Service Group, optional)</label>
           <select
             value={form.engineer_id}
             onChange={(e) => set('engineer_id', e.target.value)}

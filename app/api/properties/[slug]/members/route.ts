@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveCanonicalRoleId, roleNameFromRelation } from '@/lib/roles'
-import { assignableRoles, canManageMember, toPropertyRole } from '@/lib/authz/permissions'
+import { canAssignRole, canManageMemberRole } from '@/lib/authz/escalation'
+import { PROPERTY_ROLE_COLUMNS, parsePropertyRole } from '@/lib/authz/property-role'
 import { authorizeForSlug, requireSession, type Service } from '@/lib/authz/guard'
+import { countActiveAdministrators, loadRole } from '@/lib/property-roles'
 import { syncUserAccess } from '@/lib/auth-users'
 
 interface Params {
@@ -10,8 +11,9 @@ interface Params {
 
 const ORG_MANAGED_ERROR =
   'This Administrator comes from the organization. Change their access from the organization’s administrators.'
+const LAST_ADMIN_ERROR = 'The property must keep at least one active Administrator.'
 
-/** Member management for the property in the URL: Administrators and Property Managers (D6). */
+/** Member management for the property in the URL: roles with `members.manage`, within the escalation rules. */
 async function memberManager(params: Params['params']) {
   const { slug } = await params
   const session = await requireSession()
@@ -26,7 +28,7 @@ async function memberManager(params: Params['params']) {
 async function loadTarget(service: Service, propertyId: string, id: string) {
   const { data } = await service
     .from('engineers')
-    .select('id, user_id, org_member_id, roles(name)')
+    .select(`id, user_id, is_active, org_member_id, property_role:property_roles(${PROPERTY_ROLE_COLUMNS})`)
     .eq('id', id)
     .eq('property_id', propertyId)
     .maybeSingle()
@@ -34,7 +36,8 @@ async function loadTarget(service: Service, propertyId: string, id: string) {
   return {
     id: data.id as string,
     userId: data.user_id as string | null,
-    role: roleNameFromRelation(data.roles),
+    isActive: data.is_active !== false,
+    role: parsePropertyRole(data.property_role),
     // Org-managed Administrator rows are changed from the organization (D30)
     orgManaged: Boolean(data.org_member_id),
   }
@@ -45,11 +48,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   if ('error' in ctx) return ctx.error
   const { propertyId, service, actor } = ctx
 
-  const body = await request.json() as {
+  const body = await request.json().catch(() => ({})) as {
     full_name?: string
     email?: string
     phone?: string
-    role_name?: string
+    property_role_id?: string
     certifications?: string
   }
 
@@ -60,12 +63,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
 
-  const role = toPropertyRole(body.role_name)
-  if (!role || !assignableRoles(actor).includes(role)) {
-    return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
+  const role = await loadRole(service, propertyId, body.property_role_id)
+  if (!role) return NextResponse.json({ error: 'Select a role of this property.' }, { status: 400 })
+  if (!canAssignRole(actor, role)) {
+    return NextResponse.json({ error: 'You cannot give this role.' }, { status: 403 })
   }
 
-  // Check duplicate within this property
   const { data: dupe } = await service
     .from('engineers')
     .select('id')
@@ -77,15 +80,13 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'A member with this email already exists in this property.' }, { status: 409 })
   }
 
-  const roleId = await resolveCanonicalRoleId(service, role)
-  if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
-
+  // Tenant-portal members start without a company until linked on Floors & Tenants (D19)
   const { data, error } = await service.from('engineers').insert({
     property_id: propertyId,
     full_name: body.full_name.trim(),
     email: body.email.trim().toLowerCase(),
     phone: body.phone?.trim() || null,
-    role_id: roleId,
+    property_role_id: role.id,
     certifications: body.certifications?.trim() || null,
     is_active: true,
   }).select('id').single()
@@ -102,9 +103,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if ('error' in ctx) return ctx.error
   const { user, propertyId, service, actor } = ctx
 
-  const body = await request.json() as {
+  const body = await request.json().catch(() => ({})) as {
     id?: string
-    role_name?: string
+    property_role_id?: string
     is_active?: boolean
     phone?: string
     certifications?: string
@@ -115,39 +116,47 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const target = await loadTarget(service, propertyId, body.id)
   if (!target) return NextResponse.json({ error: 'Member not found.' }, { status: 404 })
 
-  if (!canManageMember(actor, target.role)) {
+  if (!canManageMemberRole(actor, target.role)) {
     return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
   }
 
   const isSelf = target.userId === user.id
   const updates: Record<string, unknown> = {}
 
-  const changesAccess = (body.role_name !== undefined && toPropertyRole(body.role_name) !== toPropertyRole(target.role)) ||
-    body.is_active !== undefined
-  if (target.orgManaged && changesAccess) {
+  const roleChanges = body.property_role_id !== undefined && body.property_role_id !== target.role?.id
+  const activeChanges = body.is_active !== undefined && body.is_active !== target.isActive
+  if (target.orgManaged && (roleChanges || activeChanges)) {
     return NextResponse.json({ error: ORG_MANAGED_ERROR }, { status: 409 })
   }
 
-  if (body.role_name !== undefined) {
-    const role = toPropertyRole(body.role_name)
-    if (role !== toPropertyRole(target.role)) {
-      if (isSelf) return NextResponse.json({ error: 'You cannot change your own role.' }, { status: 403 })
-      if (!role || !assignableRoles(actor).includes(role)) {
-        return NextResponse.json({ error: 'You cannot assign this role.' }, { status: 403 })
-      }
-      const roleId = await resolveCanonicalRoleId(service, role)
-      if (!roleId) return NextResponse.json({ error: 'Invalid role.' }, { status: 400 })
-      updates.role_id = roleId
-      // Only tenant members belong to a company
-      if (role !== 'tenant') updates.company_id = null
+  let nextRole = target.role
+  if (roleChanges) {
+    if (isSelf) return NextResponse.json({ error: 'You cannot change your own role.' }, { status: 403 })
+    const role = await loadRole(service, propertyId, body.property_role_id)
+    if (!role) return NextResponse.json({ error: 'Select a role of this property.' }, { status: 400 })
+    if (!canAssignRole(actor, role)) {
+      return NextResponse.json({ error: 'You cannot give this role.' }, { status: 403 })
     }
+    updates.property_role_id = role.id
+    // Only tenant-portal members belong to a company
+    if (role.portal !== 'tenant') updates.company_id = null
+    nextRole = role
   }
-  if (body.is_active !== undefined) {
+  if (activeChanges) {
+    if (typeof body.is_active !== 'boolean') return NextResponse.json({ error: 'Invalid status.' }, { status: 400 })
     if (isSelf && body.is_active === false) {
       return NextResponse.json({ error: 'You cannot deactivate your own account.' }, { status: 403 })
     }
     updates.is_active = body.is_active
   }
+
+  // Demoting or deactivating an active Administrator must leave another one (org-managed rows count)
+  const losesAdministrator = target.role?.isLocked && target.isActive &&
+    (!nextRole?.isLocked || updates.is_active === false)
+  if (losesAdministrator && (await countActiveAdministrators(service, propertyId, target.id)) === 0) {
+    return NextResponse.json({ error: LAST_ADMIN_ERROR }, { status: 409 })
+  }
+
   if (body.phone !== undefined) updates.phone = body.phone?.trim() || null
   if (body.certifications !== undefined) updates.certifications = body.certifications?.trim() || null
 
@@ -174,8 +183,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'You cannot remove yourself.' }, { status: 403 })
   }
   if (target.orgManaged) return NextResponse.json({ error: ORG_MANAGED_ERROR }, { status: 409 })
-  if (!canManageMember(actor, target.role)) {
+  if (!canManageMemberRole(actor, target.role)) {
     return NextResponse.json({ error: 'You cannot manage members with this role.' }, { status: 403 })
+  }
+  if (target.role?.isLocked && target.isActive && (await countActiveAdministrators(service, propertyId, target.id)) === 0) {
+    return NextResponse.json({ error: LAST_ADMIN_ERROR }, { status: 409 })
   }
 
   const { error } = await service.from('engineers').delete().eq('id', target.id).eq('property_id', propertyId)

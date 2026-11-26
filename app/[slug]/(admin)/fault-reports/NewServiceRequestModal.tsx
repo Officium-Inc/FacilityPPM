@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Plus, X } from 'lucide-react'
+import { AlertTriangle, Plus } from 'lucide-react'
+import Modal from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { PRIORITY_OPTIONS, priorityOptionLabel } from '@/lib/priority'
 
@@ -45,6 +46,7 @@ export default function NewServiceRequestModal({
   variant = 'primary',
 }: Props) {
   const router = useRouter()
+  const formId = useId()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,29 +125,35 @@ export default function NewServiceRequestModal({
         {triggerLabel}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
-
-          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">New Service Report</h2>
-                <p className="mt-0.5 text-sm text-gray-500">
-                  Submit a report to start the maintenance workflow.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-                aria-label="Close service report form"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
+      <Modal
+        open={open}
+        onClose={close}
+        dismissible={!(loading)}
+        size="lg"
+        title="New Service Report"
+        description="Submit a report to start the maintenance workflow."
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={close}
+              disabled={loading}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={formId}
+              disabled={loading}
+              className="rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:opacity-50"
+            >
+              {loading ? 'Submitting...' : 'Submit Service Report'}
+            </button>
+          </>
+        }
+      >
+            <form id={formId} onSubmit={handleSubmit} className="space-y-5">
               {error && (
                 <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -243,27 +251,8 @@ export default function NewServiceRequestModal({
                 </Field>
               </div>
 
-              <div className="flex justify-end gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={close}
-                  disabled={loading}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:opacity-50"
-                >
-                  {loading ? 'Submitting...' : 'Submit Service Report'}
-                </button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </>
   )
 }

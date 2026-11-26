@@ -107,7 +107,7 @@ export const getTenantPortalContext = cache(async (slug: string): Promise<Tenant
     actor,
     property: property as TenantProperty,
     engineer: { id: actor.engineerId, full_name: actor.name, email: actor.email ?? '', is_active: true },
-    role: actor.role,
+    role: actor.roleName,
     service,
   }
 })

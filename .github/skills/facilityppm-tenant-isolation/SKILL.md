@@ -16,7 +16,8 @@ Three portals share one Supabase project. The **Provider** (`app_metadata.role =
 property. Inside a property, **staff** (Administrator, Property Manager, Head Engineer, Service Group) run the
 Admin Portal and **Tenants** (one company per floor) use the Tenant Portal. Property scope comes from
 `app_metadata.property_ids[]` (service-role controlled); the per-property role comes from
-`engineers.role_id → roles.name` (resolved server-side). The browser holds the anon key **and** the user JWT,
+`engineers.property_role_id → property_roles` + `property_role_permissions` (custom roles per property, D32;
+resolved server-side). The browser holds the anon key **and** the user JWT,
 so anything RLS allows can be read directly through the Supabase Data API — the Next.js layer is not the
 only gate. Since migration 022 RLS is read-only and mirrors the matrix (D25); all writes go through route
 handlers with the service role after `lib/authz` checks, so those checks are the real write boundary.
@@ -62,8 +63,9 @@ Details, code templates and RLS templates: [supabase-authz-patterns.md](./refere
 2. Server entry point: route handlers call `requireSession()` then `authorize(session, '<action>', { record })`
    (or `{ propertyId }`) from `lib/authz/guard.ts`; Provider Dashboard routes call `requireProvider()`; pages call
    `requirePage(slug, '<action>')` / `requirePageRecord(...)`. Work order queries select
-   `WORK_ORDER_SCOPE_COLUMNS` (`lib/authz/records.ts`) before authorizing. New actions go into
-   `lib/authz/permissions.ts` **and** `tests/authz/permissions.test.ts`. Never compare role strings in routes.
+   `WORK_ORDER_SCOPE_COLUMNS` (`lib/authz/records.ts`) before authorizing. New permissions go into
+   `lib/authz/catalog.ts`, a migration's `permission_keys` upsert **and** `tests/authz/`. Never compare role names in
+   routes: decide on permissions and role attributes (`actor.portal`, work type, `isAdministrator`).
 3. Database change: add a new numbered, re-runnable migration in `supabase/migrations/` that enables RLS and
    adds a role-aware SELECT policy built on the `private` helpers in the same file (templates in the
    reference); no write policies. Extend `supabase/tests/rls_check.sql` for new tables. Load
@@ -118,10 +120,13 @@ Suppressing a reviewed false positive: add `// audit-allow: <reason>` inside the
   sign-off link (`isAwaitingSignOff()`, D22). Keep them until no rows use them.
 - **Raw token columns still exist** (`sign_off_token`, `costing_token`, `invitations.token`), always null and
   blocked by CHECK constraints (024). Write only `*_token_hash`.
-- **`roles` is readable by every signed-in user** (role names only, all properties) — acceptable, but don't add
-  sensitive columns to it.
-- **Providers are read-only inside a property** (D2): a new write action must have `provider: false` in
-  `PERMISSIONS` unless it belongs to the Provider Dashboard.
+- **The legacy `roles` table is readable by every signed-in user** (role names only) — acceptable; property roles
+  are readable only by members of their property.
+- **Providers are read-only inside a property** (D2): a new write permission must have `provider: false` in
+  `lib/authz/catalog.ts`.
+- **Role escalation** (D32): giving, editing or deleting a role goes through `lib/authz/escalation.ts` (strict
+  subset of the actor's own grants; Administrators exempt), and assignment pickers/routes go through
+  `loadAssignableMembers` / `isEligibleAssignee` (Service Group work type only, D33).
 
 Fixed by the rewrite (for reviewing older branches): property-only RLS, `USING (true)` / token-presence /
 public invitation policies, unauthenticated PDF routes, cross-property work order reads, staff checks that let

@@ -62,8 +62,8 @@ holds the license; only Platform Admin creates organizations and properties (D29
 
 Who may do what is defined in
 [`.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md`](.github/skills/facilityppm-tenant-isolation/references/portal-role-matrix.md)
-(the matrix + decision log D1–D31) and implemented in `lib/authz/permissions.ts` (property roles) and
-`lib/org/roles.ts` (Org Admins). **Deny by default.** The UI says "Platform Admin"; routes and
+(the matrix + decision log D1–D33) and implemented in `lib/authz/` (custom property roles: catalog, templates,
+`can()`, escalation) and `lib/org/roles.ts` (Org Admins). **Deny by default.** The UI says "Platform Admin"; routes and
 `app_metadata.role` keep `provider`.
 
 ---
@@ -113,10 +113,16 @@ app/
     engineers/active-check/       Login: rebuild access lists, answer the starting page
     switch-property/  auth/
 components/
+  ui/                             Modal (shared dialog: sizes sm/md/lg/xl, Esc, focus, scroll lock), ConfirmDialog
   layout/  dashboard/  work-orders/  tenant/  sign-off/  provider/  org/  settings/  pdf/
 lib/
   authz/
-    permissions.ts                The permission matrix: PERMISSIONS, can(), assignableRoles(), canManageMember()
+    catalog.ts                    Permission keys (module, portals, scopes, implies, provider), normalizePermissions()
+    templates.ts                  The 5 default roles (Administrator locked) and work types (None/Engineer/Service Group)
+    permissions.ts                can(), scopeOf(), rolePermissions(), toClientActor() (client-safe)
+    escalation.ts                 canAssignRole(), canManageMemberRole(), canEditRole(): strict-subset rule
+    property-role.ts              parsePropertyRole(), PROPERTY_ROLE_COLUMNS, isAssignableRole() (client-safe)
+    role-input.ts                 parseRoleInput() for the Roles API
     actor.ts                      resolveMembership() / resolveOrgMembership(): provider, active member, Org Admin
     guard.ts                      requireSession(), authorize(), authorizeForSlug(), authorizeOrg(), requireProvider(),
                                   requirePage(), requirePageRecord(), requireOrgPage(), requireProviderPage()
@@ -133,7 +139,9 @@ lib/
     client.ts                     Browser client factory (auth only)
     server.ts                     Server client factories (see below)
     middleware.ts                 Routing (not authorization)
-  roles.ts                        Canonical role names + normalizeRoleName()
+  property-roles.ts               loadPropertyRoles(), loadRole(), loadAssignableMembers(), isEligibleAssignee(),
+                                  countActiveAdministrators() (server)
+  roles.ts                        Labels for stored role strings (formatRoleName)
   storage-urls.ts                 Stored file URLs ↔ /api/files URLs, file ownership by path (client-safe)
   storage-files.ts                Signed URLs and downloads with the service role (server-only)
   token.ts                        Link tokens: generateLinkToken(), hashToken(), isPlausibleToken()
@@ -182,9 +190,12 @@ properties through `org_ids`, so the JWT does not grow with each property.
 Provider users have `{ "role": "provider" }`. Property users have **no** `role` in `app_metadata` (older code
 wrote `"superadmin"`; it is ignored and removed by `syncUserAccess()` / `grantPropertyAccess()`).
 
-**The role inside a property** comes from the `engineers` row for `(user_id, property_id)`: `role_id → roles.name`
-(normalized by `normalizeRoleName()`), `is_active`, and `company_id` for tenants. Canonical roles: `admin`,
-`property_manager`, `head_engineer`, `service_group`, `tenant`; `viewer` is retired (D1).
+**The role inside a property** comes from the `engineers` row for `(user_id, property_id)`: `property_role_id →
+property_roles` (D32) with its grants in `property_role_permissions`, plus `is_active` and `company_id` for
+Tenant Portal roles. Every property has 5 default roles (Administrator, which is locked and holds every staff
+permission; Property Manager; Head Engineer; Service Group; Tenant) and any custom roles its Administrators create.
+A role has a portal (staff or tenant, fixed) and, for staff, a work type: None, Engineer or Service Group (D33).
+The global `roles` table and `engineers.role_id` are legacy, kept in step by a sync trigger until migration 031.
 `property_ids` (or `org_ids` for the property's organization) is necessary but not sufficient: without an active
 `engineers` row with a current role, the user has no access to that property. Org Admins have org-managed
 Administrator rows (`engineers.org_member_id`) in every property of their organization; property-level member
@@ -210,10 +221,14 @@ storage directly: RLS is read-only and there are no write privileges (migration 
 
 ### Authorization Pattern (`lib/authz`)
 
-Never compare role strings in routes or pages. Every action is a key of `PERMISSIONS` in
-`lib/authz/permissions.ts`; `authorize()` / `requirePage*()` resolve the membership for the **record's**
-property, check `is_active`, the license (suspended or expired ⇒ blocked) and the role's scope
-(`property`, `assigned` for Service Group, `company` for tenants).
+Never compare role names in routes or pages. Every action is a permission key of `lib/authz/catalog.ts` (plus
+`portal.admin` / `portal.tenant`, which come from the role's portal); `authorize()` / `requirePage*()` resolve the
+membership and its property role for the **record's** property, check `is_active`, the license (suspended or
+expired ⇒ blocked) and the grant's scope (`property`; `assigned` = work orders whose `engineer_id` is the member;
+`company` = the tenant's company). Decide on role **attributes**, never names: `actor.portal` (tenant vs staff),
+the work type (who can be assigned work: Service Group roles holding `workRequest.inspect` / `workRequest.execute`,
+via `loadAssignableMembers()` / `isEligibleAssignee()`) and `actor.isAdministrator` (the locked role). List queries
+apply `applyWorkOrderScope(query, actor)`.
 
 **API route (work order):**
 
@@ -256,9 +271,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 | Tenant submission | `authorizeTenantSubmit(session, slug)` (`lib/tenant-submit.ts`; the slug is required) |
 | Client component (show/hide only) | `can(actor, action, record?)` / `canOrg(actor, action)` — UX only, the server check is the control |
 
-New actions go into `lib/authz/permissions.ts`, the matrix file and `tests/authz/permissions.test.ts`.
-Providers are read-only inside a property (D2): set `provider: false` for any write action outside the
-Provider Dashboard. Org Admin operations (invite, change, remove) live in `lib/org/members.ts` and are shared
+A new permission (module) goes into `lib/authz/catalog.ts`, a new migration's `permission_keys` upsert (the
+Administrator role gets it automatically), the matrix file and `tests/authz/*` (the catalog test compares the code
+with migration 026's seed). Providers are read-only inside a property (D2): set `provider: false` for any write
+permission. Giving, editing and managing roles follows `lib/authz/escalation.ts` (strict subset; Administrators are
+exempt), and the last active Administrator of a property cannot be demoted, deactivated or removed. Org Admin operations (invite, change, remove) live in `lib/org/members.ts` and are shared
 by the Platform Admin and org portal routes, which authorize first.
 
 ---
@@ -400,21 +417,22 @@ The app reads and writes data only on the server with the service role after `li
 the Data API, where a signed-in user's JWT reaches the database directly (migration 022, D25):
 
 - `anon`: no table access. `authenticated`: **SELECT only**, no write policies or privileges.
-- Policies mirror the matrix through `security definer` helpers in the non-exposed `private` schema:
-  `private.is_provider()`, `private.my_memberships()` (active member, current role, usable property **and**
-  organization license, property in `app_metadata.property_ids` or its organization in `org_ids`),
-  `staff_property_ids()`, `manager_property_ids()`, `member_property_ids()`, `assigned_work()`,
-  `tenant_company_ids()`, `my_engineer_ids()`, `my_org_ids()` (active Org Admin, usable license, in `org_ids`).
+- Policies are driven by role **permissions** (migration 027, D32) through `security definer` helpers in the
+  non-exposed `private` schema: `my_member_roles()` (active member with a property role, usable property **and**
+  organization license, property in `app_metadata.property_ids` or its organization in `org_ids`), `my_grants()`
+  (the Administrator role: every staff key), `scope_property_ids(key)`, `scope_assigned(key)`, `scope_company_ids(key)`,
+  `my_company_ids()`, `member_property_ids()`, `my_engineer_ids()`, `is_provider()`, `my_org_ids()`. The 022
+  helpers (`staff_property_ids`, …) remain as permission-based wrappers until 030.
 
 ```sql
 create policy "Role-scoped read work_orders" on work_orders
   for select to authenticated
   using (
     (select private.is_provider())
-    or property_id in (select private.staff_property_ids())                       -- staff: property
-    or (property_id, engineer_id) in (select aw.property_id, aw.engineer_id
-                                      from private.assigned_work() aw)            -- Service Group: assigned
-    or company_id in (select private.tenant_company_ids())                        -- tenants: own company
+    or property_id in (select private.scope_property_ids('workRequest.view'))             -- property scope
+    or (property_id, engineer_id) in (select a.property_id, a.engineer_id
+                                      from private.scope_assigned('workRequest.view') a)  -- assigned work
+    or company_id in (select private.scope_company_ids('workRequest.view'))               -- own company
   );
 ```
 
@@ -444,10 +462,14 @@ ppm_schedules     id, asset_id→assets, title, frequency, interval_days, next_d
 floors            id, property_id, building_id (nullable), label (unique per property), level, sort_order
 tenant_companies  id, property_id, name, contact_email, contact_phone, is_active
 floor_occupancies id, property_id, floor_id, company_id, starts_on, ends_on (one open row per floor)
-engineers         id, property_id, user_id (nullable), email, full_name, role_id→roles, is_active,
+permission_keys   key, module, label, portals[], scopes[]   (catalog mirror of lib/authz/catalog.ts)
+property_roles    id, property_id, name, description, portal ('staff'|'tenant'), work_type ('none'|'engineer'|
+                  'service_group'), system_key (5 defaults), is_locked (Administrator), updated_at
+property_role_permissions  role_id, property_id, permission_key, scope ('property'|'assigned'|'company')
+engineers         id, property_id, user_id (nullable), email, full_name, property_role_id→property_roles, is_active,
                   company_id (tenants only), org_member_id + org_restore (org-managed Administrator rows, D30)
-roles             id, property_id, name (canonical snake_case names)
-invitations       id, property_id, email, role_name, company_id, token_hash, expires_at, used_at
+roles             id, name (legacy global role names; engineers.role_id follows property_role_id via trigger)
+invitations       id, property_id, email, property_role_id, role_name (legacy), company_id, token_hash, expires_at, used_at
 work_orders       id, property_id, company_id, floor_id, engineer_id, requested_by_id, wo_number (unique),
                   type, status, priority, tenant_email, tenant_name,
                   sign_off_token_hash, sign_off_expires_at, signed_at, costing_token_hash,
@@ -485,9 +507,12 @@ Rewrite migrations and their deploy constraints:
 | `024_hashed_tokens.sql` | Token hashes, raw tokens hashed in place, CHECK constraints | App **immediately after** (older code writes raw tokens) |
 | `025_organizations.sql` | Organizations, Org Admins and their invitations, `properties.organization_id` / `property_type`, org-managed Administrator rows; backfill (one organization per property); TEMPORARY trigger that gives old-app property inserts an organization; `my_memberships()` also checks the organization license and accepts `org_ids` | **Before** the Phase A app (it selects the new columns). Then run `rls_check.sql` (must be empty). Never re-run 022 after 029 |
 
-The organization rebuild continues with 026 (units), 027 (assets on property), 028 (per-property roles), 029
-(permission-driven RLS), 030 (cleanup: drops the temporary trigger) and 031 (destructive legacy drop) — see the
-rebuild plan; each phase ships its own app version.
+| `026_property_roles.sql` | Permission catalog, per-property roles with portal and work type, grants, the 5 default roles seeded per property (and by a permanent trigger for new properties), members and invitations mapped to property roles, sync triggers between `role_id`/`role_name` and `property_role_id` | **Before** the custom-roles app |
+| `027_permission_rls.sql` | RLS on permission keys instead of role names (`my_grants()`, `scope_*()`), read policies for the role tables | Right after 026, then `rls_check.sql` (must be empty) |
+
+The organization rebuild continues with 028 (units), 029 (assets on property), 030 (cleanup: drops the temporary
+triggers and the 022 helpers) and 031 (destructive legacy drop: global `roles`, `engineers.role_id`, sites,
+buildings); see the rebuild plan. Each phase ships its own app version.
 
 ---
 
@@ -508,6 +533,8 @@ rebuild plan; each phase ships its own app version.
 | Old cost estimate shown after a revision | `work_order_costings` has no unique `work_order_id`; each revision inserts a row and embeds come back unordered | Pick the estimate with `latestCosting()`, never `[0]` |
 | Work order status changed twice by concurrent clicks | Unconditional `.update().eq('id', id)` | Guard workflow updates with `.eq('status', expected).select('id')` and return 409 when no row changed |
 | A write lands in the wrong property with two tabs open | Routes acted on `app_metadata.property_id`, which the last opened tab sets | Property routes live under `/api/properties/[slug]/…` and use `authorizeForSlug` (D31) |
+| The Org Admin (or any office role) shows up in "Assigned to" | Pickers listed every active member | Assignment lists and routes accept only Service Group roles holding inspect/execute (`loadAssignableMembers`, `isEligibleAssignee`, D33) |
+| A custom role name shows a default label (e.g. "Engineer" → "Head Engineer") | Labels mapped names through the old aliases | `formatRoleName()` only maps lowercase machine keys; typed names show as typed |
 | An Org Admin's Administrator row was edited from the property and then "restored" wrongly | Org-managed rows changed outside the organization | Property member routes answer 409 for rows with `org_member_id`; change Org Admins on the organization |
 
 ---

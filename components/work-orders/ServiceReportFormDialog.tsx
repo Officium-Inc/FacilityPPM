@@ -36,9 +36,9 @@ export default function ServiceReportFormDialog({ woNumber, pdfHref, children }:
         aria-labelledby={titleId}
         // A click on the backdrop lands on the dialog element itself
         onClick={(event) => { if (event.target === event.currentTarget) close() }}
-        className="m-auto max-h-[90dvh] w-[min(64rem,calc(100%-2rem))] overflow-hidden rounded-xl bg-white p-0 shadow-xl backdrop:bg-gray-900/50"
+        className="m-auto max-h-[92dvh] w-[min(80rem,calc(100%-2rem))] overflow-hidden rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-gray-900/50"
       >
-        <div className="flex max-h-[90dvh] flex-col">
+        <div className="flex max-h-[92dvh] flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-5 py-3">
             <div className="min-w-0">
               <h2 id={titleId} className="text-base font-semibold text-gray-900">Service Report Form</h2>

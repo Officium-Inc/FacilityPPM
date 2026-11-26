@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendInviteEmail } from '@/lib/email'
 import { generateLinkToken, hashToken } from '@/lib/token'
-import { assignableRoles, toPropertyRole } from '@/lib/authz/permissions'
+import { canAssignRole } from '@/lib/authz/escalation'
 import { authorizeForSlug, requireSession } from '@/lib/authz/guard'
+import { loadRole } from '@/lib/property-roles'
 
 interface Params {
   params: Promise<{ slug: string }>
@@ -18,27 +19,28 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!access.ok) return access.response
   const { propertyId } = access
 
-  const body = await request.json() as {
+  const body = await request.json().catch(() => ({})) as {
     email?: string
     name?: string
-    role_name?: string
+    property_role_id?: string
     company_id?: string
   }
-  const roleName = toPropertyRole(body.role_name)
 
   if (!body.email?.trim()) {
     return NextResponse.json({ error: 'Email is required.' }, { status: 400 })
   }
-  if (!roleName) {
-    return NextResponse.json({ error: 'Select a role for this invitation.' }, { status: 400 })
+  const role = await loadRole(service, propertyId, body.property_role_id)
+  if (!role) {
+    return NextResponse.json({ error: 'Select a role of this property for this invitation.' }, { status: 400 })
   }
-  if (!assignableRoles(access.actor).includes(roleName)) {
+  // Escalation rule: only roles with less access than the inviter's own (Administrators: any role)
+  if (!canAssignRole(access.actor, role)) {
     return NextResponse.json({ error: 'You cannot invite members with this role.' }, { status: 403 })
   }
 
-  // Tenant users are invited into one of the property's companies
+  // Tenant-portal members are invited into one of the property's companies
   let companyId: string | null = null
-  if (roleName === 'tenant') {
+  if (role.portal === 'tenant') {
     if (!body.company_id) {
       return NextResponse.json({ error: 'Select the company this tenant user belongs to.' }, { status: 400 })
     }
@@ -98,7 +100,9 @@ export async function POST(request: NextRequest, { params }: Params) {
       property_id: propertyId,
       email,
       invited_name: body.name?.trim() || null,
-      role_name: roleName,
+      property_role_id: role.id,
+      // Kept for older app versions (the sync trigger also sets it)
+      role_name: role.systemKey ?? role.name,
       company_id: companyId,
       invited_by: user.email ?? null,
       token_hash: hashToken(inviteToken),

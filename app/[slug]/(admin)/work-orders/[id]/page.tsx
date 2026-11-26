@@ -10,6 +10,7 @@ import { WorkOrderFormSheet } from '@/components/work-orders/WorkOrderFormView'
 import { loadWorkOrderForm } from '@/lib/work-order-form'
 import { getPropertyBySlug, requirePageRecord } from '@/lib/authz/guard'
 import { can } from '@/lib/authz/permissions'
+import { loadAssignableMembers, loadTenantApprovers } from '@/lib/property-roles'
 import { createServiceClient } from '@/lib/supabase/server'
 import type { WoComment, MentionableEngineer } from '@/components/work-orders/WoCommentsSection'
 import { formatPHT } from '@/lib/utils'
@@ -100,12 +101,17 @@ export default async function WorkOrderDetailPage({ params }: Props) {
   }
   const canComment = can(actor, 'workRequest.comment', wo)
 
-  // Workflow history, engineers list and comments
-  const [{ data: trailData }, { data: eventRows }, { data: engineersList }, { data: rawComments }] = await Promise.all([
+  // Workflow history, members (names, mentions), the people who can be picked in the forms, and comments.
+  // Pickers come from roles (D33): inspectors/executors are Service Group members, approvers the company's tenants.
+  const propertyId = wo.property_id as string
+  const [{ data: trailData }, { data: eventRows }, { data: engineersList }, { data: rawComments }, inspectors, executors, approvers] = await Promise.all([
     service.from('approval_trail').select('stage, actor_name, actor_role, decision, reason, created_at').eq('work_order_id', id).order('created_at'),
     service.from('work_order_events').select('event_type, step, actor_name, actor_role, decision, reason, metadata, created_at').eq('work_order_id', id).order('created_at'),
-    service.from('engineers').select('id, full_name, email, is_active, roles(id, name)').eq('property_id', wo.property_id).eq('is_active', true),
+    service.from('engineers').select('id, full_name, email, is_active').eq('property_id', propertyId).eq('is_active', true).order('full_name'),
     service.from('work_order_comments').select('id, author_name, author_role, message, created_at').eq('work_order_id', id).order('created_at', { ascending: true }),
+    permissions.review ? loadAssignableMembers(service, propertyId, 'workRequest.inspect') : Promise.resolve([]),
+    permissions.assign ? loadAssignableMembers(service, propertyId, 'workRequest.execute') : Promise.resolve([]),
+    permissions.review ? loadTenantApprovers(service, propertyId, (wo.company_id as string | null) ?? null) : Promise.resolve([]),
   ])
 
   const workOrder = wo as WorkOrder
@@ -204,7 +210,9 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               <WorkOrderActions
                 key={`${workOrder.status}:${workOrder.execution_mode}`}
                 workOrder={workOrder}
-                engineers={engineers}
+                inspectors={inspectors}
+                executors={executors}
+                approvers={approvers}
                 slug={slug}
                 permissions={permissions}
                 jobSummary={assignJobSummary}

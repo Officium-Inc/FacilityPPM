@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProvider, type Service } from '@/lib/authz/guard'
-import { resolveCanonicalRoleId } from '@/lib/roles'
+import { systemRoleId } from '@/lib/property-roles'
 import { logProviderAction, requestIp, type ProviderContext } from '@/lib/provider/accounts'
 
 interface Params {
@@ -42,7 +42,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Property not found.' }, { status: 404 })
   }
 
-  const roleId = await resolveCanonicalRoleId(service, 'admin')
+  // The property's locked Administrator role (migration 026)
+  const roleId = await systemRoleId(service, property.id, 'admin')
+  if (!roleId) return NextResponse.json({ error: 'This property has no Administrator role. Run migration 026.' }, { status: 500 })
   const ctx: ProviderContext = { userId: provider.user.id, ip: requestIp(request) }
 
   // Try creating a new auth user first
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { error: engErr } = await service.from('engineers').insert({
     property_id: property.id,
     user_id: authData.user.id,
-    role_id: roleId,
+    property_role_id: roleId,
     full_name: full_name.trim(),
     email: email.trim().toLowerCase(),
     is_active: true,
@@ -103,7 +105,7 @@ async function addExistingUserToProperty({
   ctx,
 }: {
   service: Service
-  roleId: string | null
+  roleId: string
   property: { id: string; slug: string; name: string }
   full_name: string
   email: string
@@ -167,7 +169,7 @@ async function addExistingUserToProperty({
   const { error: engErr } = await service.from('engineers').insert({
     property_id: property.id,
     user_id: existingEngineer.user_id,
-    role_id: roleId,
+    property_role_id: roleId,
     full_name: full_name.trim(),
     email: normalizedEmail,
     is_active: true,

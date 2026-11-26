@@ -24,8 +24,9 @@ follow the matrix.
   lists from the database rows.
 - Org Admin: `organization_members (organization_id, user_id, org_role, is_active)`; SQL mirror `private.my_org_ids()`.
   Their Administrator rows in each property carry `engineers.org_member_id`.
-- Per-property role: `engineers (user_id, property_id, role_id, is_active, company_id) → roles.name`,
-  normalized by `normalizeRoleName()` in `lib/roles.ts` (SQL mirror: `private.my_memberships()`).
+- Per-property role (D32): `engineers (user_id, property_id, property_role_id, is_active, company_id) →
+  property_roles (portal, work_type, is_locked) + property_role_permissions (permission_key, scope)`, parsed by
+  `parsePropertyRole()` (fail closed); SQL mirror: `private.my_member_roles()` / `private.my_grants()` (027).
 - `user_metadata` is user-editable — **never** use it for authorization (display name only).
 - JWT claims are stale until the session refreshes. For revocation-sensitive checks (removed from property,
   deactivated, role changed) read the `engineers` row, not only the JWT — `resolveMembership()` does.
